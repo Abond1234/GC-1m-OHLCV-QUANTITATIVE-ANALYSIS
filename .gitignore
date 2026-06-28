@@ -1,0 +1,46 @@
+# Local Python environments
+.venv/
+.venv-1/
+venv/
+env/
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+
+# Raw, processed, and generated research data
+data/
+*.dbn
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.csv
+*.tsv
+
+# Logs, local state, and generated artifacts
+logs/
+models/
+.agents/
+reports/figures/
+reports/results/
+
+# Secrets and local configuration
+.env
+.env.*
+*.pem
+*.key
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
