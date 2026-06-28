@@ -793,9 +793,9 @@ When helping with this project:
 | Phase                | Status         |
 | -------------------- | -------------- |
 | Data Acquisition     | ✅ Complete     |
-| Data Validation      | 🔄 In Progress |
-| Exploratory Analysis | 🔄 In Progress |
-| Signal Research      | ⏳ Not Started  |
+| Data Validation      | ✅ Complete     |
+| Exploratory Analysis | ✅ Complete     |
+| Signal Research      | 🔄 Next Phase   |
 | Strategy Development | ⏳ Not Started  |
 | Backtesting          | ⏳ Not Started  |
 | Evaluation           | ⏳ Not Started  |
@@ -1418,5 +1418,655 @@ Intraday volatility table:   3.17 seconds
 ### Result
 
 3.5.1 should now produce visible progress quickly and should not appear to hang during the return-distribution analysis.
+
+---
+
+## 3.6 Return Analysis
+
+### Status
+
+Added to notebook:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+### Tracking Summary
+
+* Minute return analysis added.
+* Daily return analysis added using active/front contract bars.
+* Distribution characteristics added across minute, daily open-to-close, and same-contract close-to-close returns.
+* Fat-tail exceedance analysis added.
+* Preliminary trend versus mean-reversion diagnostics added.
+* Rollover-aware daily return handling added by separating open-to-close returns from same-contract close-to-close returns.
+
+### Key Findings
+
+#### 3.6.1 Minute Returns
+
+Minute returns are centered near zero and are directionally balanced.
+
+```text
+GC mean minute return:   0.0038 bps
+MGC mean minute return:  0.0039 bps
+
+GC positive minute rate:  44.2%
+GC negative minute rate:  43.9%
+GC zero minute rate:      11.8%
+
+MGC positive minute rate: 44.6%
+MGC negative minute rate: 44.2%
+MGC zero minute rate:     11.2%
+```
+
+Raw signed return autocorrelation is small, so there is no obvious simple directional edge from raw one-minute returns alone.
+
+#### 3.6.2 Daily Returns
+
+Daily open-to-close returns show a small positive average in this sample.
+
+```text
+GC mean open-to-close daily return:   5.46 bps
+GC median open-to-close daily return: 3.38 bps
+GC daily return std:                100.24 bps
+
+MGC mean open-to-close daily return:   5.51 bps
+MGC median open-to-close daily return: 3.32 bps
+MGC daily return std:                100.44 bps
+```
+
+Rollover-aware close-to-close returns were also computed by excluding days where the active contract changed.
+
+```text
+Rollover days detected:
+GC:  26
+MGC: 26
+```
+
+#### 3.6.3 Distribution Characteristics
+
+Daily returns remain fat-tailed, though much less extreme than one-minute returns.
+
+```text
+GC daily open-to-close excess kurtosis:  6.26
+MGC daily open-to-close excess kurtosis: 6.12
+```
+
+Minute returns have much higher excess kurtosis, confirming that the most extreme non-normality is concentrated at the intraday level.
+
+#### 3.6.4 Fat Tails
+
+Tail exceedance frequencies:
+
+```text
+GC |minute return| > 10 bps:  1.24%
+MGC |minute return| > 10 bps: 1.28%
+
+GC |daily O-C return| > 100 bps:  21.98%
+MGC |daily O-C return| > 100 bps: 21.98%
+
+GC |daily O-C return| > 200 bps:  4.95%
+MGC |daily O-C return| > 200 bps: 4.95%
+```
+
+Large daily moves are common enough that risk logic must explicitly handle tail behavior.
+
+#### 3.6.5 Trend vs Mean Reversion Tendencies
+
+Preliminary signed-return dependence is weak and mixed.
+
+Minute return current/future correlations:
+
+```text
+GC 1-minute horizon:  -0.0145
+MGC 1-minute horizon: -0.0215
+
+GC 15-minute horizon:  0.0050
+MGC 15-minute horizon: 0.0059
+```
+
+Daily return autocorrelation is also small and unstable across lags:
+
+```text
+GC lag 1 daily autocorr:   0.0366
+GC lag 2 daily autocorr:  -0.0722
+
+MGC lag 1 daily autocorr:  0.0354
+MGC lag 2 daily autocorr: -0.0663
+```
+
+### Research Implication
+
+Return direction is much less stable than volatility. Volatility clusters strongly, but raw signed returns show weak and inconsistent autocorrelation.
+
+Future signal research should avoid assuming a simple unconditional trend or mean-reversion edge. Directional ideas should be tested conditionally by:
+
+```text
+Session
+Volatility regime
+Volume regime
+Breakout context
+Prior range structure
+Large move / tail-event context
+```
+
+### Next
+
+Proceed to 3.7 Market Microstructure in the notebook.
+
+---
+
+## 3.7 Market Microstructure
+
+### Status
+
+Added to notebook:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+### Tracking Summary
+
+* Typical 1-minute bar characteristics added.
+* Volume spike analysis added using product-specific 95th and 99th percentile volume thresholds.
+* Large move analysis added using product-specific return quantile thresholds.
+* Volume-price relationship analysis added using correlations and volume deciles.
+* Analysis uses the active/front contract series, not the full multi-contract universe.
+
+### Key Findings
+
+#### 3.7.1 Typical Bar Characteristics
+
+Typical active/front 1-minute bars are small but non-trivial.
+
+```text
+GC median 1-minute range:  2.45 bps
+GC mean 1-minute range:    3.33 bps
+GC median body:            1.11 bps
+GC median volume:          65
+
+MGC median 1-minute range: 2.31 bps
+MGC mean 1-minute range:   3.24 bps
+MGC median body:           1.10 bps
+MGC median volume:         36
+```
+
+Zero-return rates:
+
+```text
+GC:  11.8%
+MGC: 11.2%
+```
+
+#### 3.7.2 Volume Spikes
+
+Volume spike thresholds:
+
+```text
+GC 95th percentile volume: 414
+GC 99th percentile volume: 888
+
+MGC 95th percentile volume: 414
+MGC 99th percentile volume: 938
+```
+
+Volume spikes are associated with much larger price movement.
+
+```text
+GC avg abs return all bars:        1.84 bps
+GC avg abs return on 95% spikes:   5.60 bps
+GC avg abs return on 99% spikes:   8.91 bps
+
+MGC avg abs return all bars:       1.90 bps
+MGC avg abs return on 95% spikes:  6.45 bps
+MGC avg abs return on 99% spikes: 10.95 bps
+```
+
+#### 3.7.3 Large Move Analysis
+
+Large move thresholds:
+
+```text
+GC 99th percentile abs return:  10.84 bps
+MGC 99th percentile abs return: 10.96 bps
+
+GC 99.9th percentile abs return:  25.07 bps
+MGC 99.9th percentile abs return: 25.35 bps
+```
+
+Large moves often overlap with volume spikes, but not always.
+
+```text
+GC 99% large-move bars that are also 99% volume spikes:  26.9%
+MGC 99% large-move bars that are also 99% volume spikes: 36.3%
+```
+
+#### 3.7.4 Volume-Price Relationships
+
+Volume has a strong positive relationship with absolute movement and bar range.
+
+```text
+GC corr(volume, abs return):  0.496
+GC corr(volume, range):       0.645
+
+MGC corr(volume, abs return): 0.571
+MGC corr(volume, range):      0.760
+```
+
+Volume has little directional information by itself.
+
+```text
+GC corr(volume, signed return):  -0.023
+MGC corr(volume, signed return): -0.043
+```
+
+The top volume decile has much larger price movement and a much higher large-move rate than lower deciles.
+
+```text
+GC top volume decile mean abs return:  4.57 bps
+MGC top volume decile mean abs return: 5.02 bps
+
+GC top volume decile large-move rate:  6.97%
+MGC top volume decile large-move rate: 8.64%
+```
+
+### Research Implication
+
+Volume is a strong activity and volatility signal, but not a standalone directional signal.
+
+Future signal research should use volume as context:
+
+```text
+Volume expansion + breakout
+Volume spike + continuation/fade test
+Large move + volume confirmation
+Session-specific volume spike behavior
+Volume decile as a volatility/risk filter
+```
+
+### Next
+
+Sections 3.8 and 3.9 have now been completed. Proceed next to structured signal research and first strategy prototypes.
+
+---
+
+## 3.8 Preliminary Signal Exploration
+
+### Status
+
+Section 3.8 has been added to:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+The section was designed as an early EDA signal lab, not a final strategy backtest.
+
+It explores simple forward-return behavior after:
+
+```text
+High-volume bars
+Volume spikes
+Volatility regimes
+Session windows
+60-minute breakouts
+Large one-minute moves
+```
+
+Forward returns were measured over:
+
+```text
+5 minutes
+15 minutes
+30 minutes
+60 minutes
+```
+
+### Engineering Notes
+
+The section reuses existing cleaned objects from prior EDA sections:
+
+```text
+bar_features
+daily_vol
+active_front
+```
+
+It creates one reusable signal dataframe:
+
+```text
+signal_frame
+```
+
+This avoids repeatedly rebuilding forward returns across each subsection.
+
+The section includes timing checks around heavier preparation steps.
+
+### 3.8.1 Volume-Based Ideas
+
+Initial result:
+
+```text
+High volume and volume spikes do not create a clean standalone continuation edge.
+```
+
+Volume spike bars often show slight short-term fade behavior rather than strong follow-through.
+
+Key output examples:
+
+```text
+99th percentile volume spike, 60-minute mean absolute forward move:
+GC:  31.8 bps
+MGC: 47.1 bps
+
+99th percentile volume spike continuation rate:
+GC 5m:  46.9%
+GC 60m: 48.6%
+MGC 5m:  47.1%
+MGC 60m: 48.6%
+```
+
+This confirms the earlier 3.7 conclusion:
+
+```text
+Volume is useful as a volatility/activity context variable.
+Volume is not enough by itself as a directional signal.
+```
+
+### 3.8.2 Volatility-Based Ideas
+
+Forward absolute returns rise strongly by volatility regime.
+
+Main finding:
+
+```text
+Low regime    = smallest forward movement
+Normal regime = moderate movement
+High regime   = larger movement
+Extreme regime = largest movement
+```
+
+Key output examples:
+
+```text
+60-minute mean absolute forward move:
+Low regime:     GC 8.65 bps,  MGC 8.81 bps
+Normal regime:  GC 12.10 bps, MGC 12.25 bps
+High regime:    GC 17.15 bps, MGC 17.31 bps
+Extreme regime: GC 29.77 bps, MGC 29.95 bps
+```
+
+This makes volatility regime useful for:
+
+```text
+Position sizing
+Stop placement
+Target placement
+Signal filtering
+Risk throttling
+```
+
+The volatility regime is more useful as a risk and opportunity filter than as a direct directional signal.
+
+### 3.8.3 Session-Based Ideas
+
+Session remains important.
+
+New York generally produces the largest forward absolute movement, followed by London.
+
+The result supports treating sessions separately in later strategy research.
+
+Useful future split:
+
+```text
+New York signals
+London signals
+Overnight signals
+Post-New York signals
+```
+
+### 3.8.4 Breakout Behavior
+
+Naive 60-minute breakouts did not show clean continuation.
+
+Initial finding:
+
+```text
+Breakout follow-through rates were generally below 50%.
+Mean directional follow-through was often negative.
+```
+
+Key output examples:
+
+```text
+Breakout rate:
+GC:  5.24% of bars
+MGC: 5.42% of bars
+
+All 60-minute breakouts:
+GC 5m mean follow-through:  -0.29 bps, follow-through rate 43.8%
+GC 60m mean follow-through: -0.40 bps, follow-through rate 46.6%
+
+MGC 5m mean follow-through:  -0.36 bps, follow-through rate 43.0%
+MGC 60m mean follow-through: -0.42 bps, follow-through rate 46.5%
+```
+
+Volume-confirmed breakouts did not automatically solve this.
+
+Interpretation:
+
+```text
+Simple breakout logic is likely too naive.
+Breakouts may need session filters, volatility filters, retest logic, or trend context.
+```
+
+### 3.8.5 Mean Reversion Behavior
+
+Large one-minute moves showed mixed behavior.
+
+Short-horizon behavior often leaned slightly toward reversal, especially after large moves.
+
+Key output examples:
+
+```text
+All 99th percentile large moves:
+GC 5m continuation rate:  46.7%
+GC 60m continuation rate: 48.6%
+
+MGC 5m continuation rate:  46.9%
+MGC 60m continuation rate: 48.7%
+```
+
+However, overnight large moves showed more evidence of continuation over longer horizons.
+
+Interpretation:
+
+```text
+Large-move behavior is session-dependent.
+New York large moves may be more two-way/noisy.
+Overnight shocks may carry more continuation information.
+```
+
+### Research Implication
+
+The strongest early signal research direction is not a single raw trigger.
+
+The better path is conditional signal design:
+
+```text
+Volume spike + session
+Breakout + session + volatility regime
+Large move + volume confirmation
+Large move + session-specific fade/continuation test
+Volatility regime as position/risk filter
+```
+
+### EDA Status
+
+Section 3.8 is complete in the notebook and has been followed by Section 3.9, the final EDA synthesis.
+
+Promising first strategy-research candidates:
+
+```text
+Session-filtered breakout/fade tests
+Overnight large-move continuation tests
+New York large-move fade tests
+Volatility-regime-aware position sizing
+```
+
+---
+
+## 3.9 EDA Findings & Research Implications
+
+### Status
+
+Section 3.9 has been added to:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+This completes the EDA phase.
+
+### Final EDA Thesis
+
+The data does not point to a simple one-variable edge.
+
+It points to conditional research:
+
+```text
+Session matters.
+Volatility regime matters.
+Volume predicts activity better than direction.
+Naive breakout continuation is weak.
+Large-move behavior depends on session and volatility context.
+```
+
+### 3.9.1 Data Quality Conclusion
+
+The cleaned OHLCV data is suitable for research.
+
+Key points:
+
+```text
+No missing values in core OHLCV columns.
+No true duplicate timestamp-symbol rows.
+Timestamps are minute-aligned and timezone-aware.
+Observed gaps are mostly expected futures-session gaps.
+```
+
+### 3.9.2 Contract and Liquidity Conclusion
+
+The active/front contract should be selected by liquidity.
+
+GC and MGC both concentrate activity in a dominant contract most of the time, with migration around roll windows.
+
+Research implication:
+
+```text
+Use active_front as the base tradable universe.
+Avoid thin/inactive contracts.
+Flag rollover periods before strategy testing.
+```
+
+### 3.9.3 Session Conclusion
+
+New York is the main liquidity and volatility window.
+
+London is active and useful, but its behavior is not identical to New York.
+
+Overnight and Post-NY should be treated as separate market states.
+
+Research implication:
+
+```text
+All future strategy results should be reported by session.
+Signals should not be judged only on all-session averages.
+```
+
+### 3.9.4 Volatility Conclusion
+
+Gold futures show fat tails and strong volatility clustering.
+
+Volatility regimes clearly separate expected forward movement magnitude.
+
+Research implication:
+
+```text
+Volatility regime should influence position size, stop distance, target distance, and signal permission.
+```
+
+### 3.9.5 Return and Microstructure Conclusion
+
+Unconditional return autocorrelation is weak.
+
+Volume is strongly related to range and absolute return, but weakly related to signed direction.
+
+Research implication:
+
+```text
+Avoid unconditional trend or mean-reversion assumptions.
+Use volume as a context variable, not a standalone buy/sell trigger.
+```
+
+### 3.9.6 Preliminary Signal Conclusion
+
+Section 3.8 produced useful positive and negative evidence.
+
+Weak direction:
+
+```text
+Naive 60-minute breakout continuation.
+Raw volume-spike continuation.
+Always-on trend or mean reversion.
+```
+
+Promising direction:
+
+```text
+New York large-move fade tests.
+Overnight large-move continuation tests.
+Breakout failure/retest tests.
+Volume-spike filters for event intensity.
+Volatility-regime-aware risk sizing.
+```
+
+### Recommended Next Phase
+
+Move from EDA into structured signal research and first strategy prototypes.
+
+Recommended base research objects:
+
+```text
+active_front
+bar_features
+signal_frame
+```
+
+Every prototype should include:
+
+```text
+Explicit entry rules
+Explicit exit rules
+Costs and slippage
+Stop and target logic
+Session filter
+Rollover filter
+Volatility-regime filter
+Train/test or walk-forward validation
+```
+
+### EDA Completion Note
+
+EDA is complete enough to proceed.
+
+The next work should not add more broad descriptive EDA unless a specific strategy question requires it.
+
+Next phase:
+
+```text
+Structured signal research and strategy prototype development.
+```
 
 ---
