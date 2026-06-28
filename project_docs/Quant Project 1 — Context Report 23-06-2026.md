@@ -2070,3 +2070,695 @@ Structured signal research and strategy prototype development.
 ```
 
 ---
+
+# Forward Research Roadmap: Sections 4.0 to 10.0
+
+This roadmap defines the intended structure for the remainder of the exploration notebook after EDA.
+
+Future AI sessions should follow this sequence unless the user explicitly changes direction.
+
+The core principle is:
+
+```text
+Do not jump straight from EDA into a full backtest.
+First build the final research dataset.
+Then formalize the discretionary system.
+Then engineer the measurable features.
+Then run event studies.
+Then run the first simple research backtest.
+Then validate robustness.
+Then hand off strong candidates to strategy_research notebooks.
+```
+
+---
+
+## 4.0 Research Dataset Construction & Continuous Active Contract Series
+
+### Purpose
+
+Build the final clean minute-level research table that every strategy will use going forward.
+
+This section is foundational. If the active contract construction is weak, every later signal test and backtest becomes questionable.
+
+### Required Subsections
+
+```text
+4.1 Final Active Contract Selection Rules
+4.2 Rollover Safeguards
+4.3 Continuous Front-Month Series Construction
+4.4 Rollover-Day Exclusion / Warning Flags
+4.5 Session-Aware Calendar Handling
+4.6 Return, Range, Volume, and Volatility Feature Rebuild
+4.7 Save Final Research Tables
+4.8 Section 4 Summary
+```
+
+### Target Output
+
+Create one final strategy-ready table named one of:
+
+```text
+active_front_final
+research_bars
+```
+
+Preferred name:
+
+```text
+research_bars
+```
+
+### Required Properties
+
+```text
+One row = one minute
+Product = GC or MGC
+One selected active contract per product/date
+No spread instruments
+No multi-contract distortion
+Session labels included
+Rollover flags included
+Return features included
+Range features included
+Volume features included
+Volatility features included
+```
+
+### Engineering Instruction
+
+Start from the EDA active-front logic, but add rollover safeguards before treating the table as final.
+
+Do not rely only on rolling volume if contract migration is ambiguous.
+
+---
+
+## 5.0 Discretionary Strategy Formalization
+
+### Purpose
+
+Translate the user's discretionary trading logic into clear rules a computer can test.
+
+This is not backtesting yet.
+
+The goal is to convert subjective trading language into measurable definitions.
+
+### Required Subsections
+
+```text
+5.1 Strategy Thesis
+5.2 Market Bias / Trend Definition
+5.3 POI Definition
+5.4 Entry Trigger Definition
+5.5 Stop-Loss Logic
+5.6 Target / Exit Logic
+5.7 Invalidation Rules
+5.8 Session Filters
+5.9 Volatility and Volume Filters
+5.10 Strategy Rules in Plain English
+5.11 Strategy Rules in Pseudocode
+5.12 Section 5 Summary
+```
+
+### Translation Rule
+
+Every discretionary concept must become measurable.
+
+Examples:
+
+```text
+"Trend is bullish"
+```
+
+must become something like:
+
+```text
+close > rolling VWAP
+20 EMA > 50 EMA
+price above previous session midpoint
+higher swing highs / higher swing lows
+```
+
+And:
+
+```text
+"Price reaches my POI"
+```
+
+must become something like:
+
+```text
+price enters previous session high/low zone
+price retests broken range
+price returns to VWAP band
+price enters volatility-adjusted pullback zone
+price trades near a swing high/low level
+```
+
+### Output
+
+End Section 5 with:
+
+```text
+Plain-English strategy rules
+Pseudocode strategy rules
+Open assumptions that still need user confirmation
+```
+
+---
+
+## 6.0 POI & Signal Feature Engineering
+
+### Purpose
+
+Build the actual columns needed to test the strategy defined in Section 5.
+
+Section 5 defines the logic.
+
+Section 6 makes the logic machine-readable.
+
+### Required Subsections
+
+```text
+6.1 Trend / Bias Features
+6.2 Session Range Features
+6.3 Previous Day / Previous Session Levels
+6.4 Swing High / Swing Low Detection
+6.5 Pullback / Retest Features
+6.6 Mean-Reversion Features Around POIs
+6.7 Breakout Failure Features
+6.8 Volume Spike / Large Move Features
+6.9 Volatility Regime Features
+6.10 Forward Return Labels
+6.11 Build signal_frame
+6.12 Section 6 Summary
+```
+
+### Research Framing
+
+The goal is conditional signal design.
+
+Bad framing:
+
+```text
+Fade every large move.
+```
+
+Better framing:
+
+```text
+Fade a large New York session move only if:
+price is at a predefined POI,
+volatility is elevated but not extreme,
+the move is stretched relative to recent range,
+volume suggests exhaustion,
+the trade is not on a rollover day.
+```
+
+### Output
+
+Build a strategy-level `signal_frame` from `research_bars`.
+
+It should include:
+
+```text
+POI features
+Trend/bias features
+Session features
+Volatility regime features
+Volume spike features
+Large move features
+Breakout/retest/failure features
+Forward return labels
+```
+
+---
+
+## 7.0 Prototype Signal Research
+
+### Purpose
+
+Run controlled event studies on the strategy conditions.
+
+This is not a full trading backtest.
+
+The question is:
+
+```text
+When the strategy condition appears, what tends to happen after 5, 15, 30, and 60 minutes?
+```
+
+### Required Subsections
+
+```text
+7.1 Baseline Forward Return Study
+7.2 POI Touch Event Study
+7.3 POI Rejection Event Study
+7.4 POI + Mean Reversion Event Study
+7.5 POI + Breakout Failure Event Study
+7.6 Session-Specific Results
+7.7 Volatility-Regime-Specific Results
+7.8 GC vs MGC Comparison
+7.9 Candidate Signal Ranking
+7.10 Section 7 Summary
+```
+
+### Goal
+
+By the end of Section 7, determine:
+
+```text
+Which setups deserve a backtest
+Which setups should be rejected
+Which filters improve behavior
+Which sessions matter
+Whether each idea behaves more like fade, continuation, or failure/retest
+```
+
+---
+
+## 8.0 First Research Backtest
+
+### Purpose
+
+Convert the best Section 7 candidate signals into trades.
+
+Keep the first backtest simple, readable, and research-oriented.
+
+Do not build a large professional backtesting engine yet.
+
+### Required Subsections
+
+```text
+8.1 Backtest Design
+8.2 Entry Rules
+8.3 Exit Rules
+8.4 Stop-Loss Rules
+8.5 Target Rules
+8.6 Time-Based Exit
+8.7 Transaction Costs and Slippage
+8.8 Position Sizing
+8.9 Trade Log Construction
+8.10 Performance Metrics
+8.11 Equity Curve
+8.12 Drawdown Analysis
+8.13 Section 8 Summary
+```
+
+### Required Outputs
+
+Measure performance in R-multiples first, dollars later.
+
+Backtest output should include:
+
+```text
+Number of trades
+Win rate
+Average win
+Average loss
+Expectancy per trade
+Profit factor
+Max drawdown
+Average R
+Median R
+Best trade
+Worst trade
+Performance by year
+Performance by session
+Performance by volatility regime
+```
+
+---
+
+## 9.0 Robustness & Validation
+
+### Purpose
+
+Test whether the backtest result is stable or curve-fit.
+
+The core question is:
+
+```text
+Did we find a real behavior, or did we overfit 2021-2026 gold data?
+```
+
+### Required Subsections
+
+```text
+9.1 Train/Test Split
+9.2 Walk-Forward Testing
+9.3 Year-by-Year Performance
+9.4 Month-by-Month Performance
+9.5 Session-by-Session Performance
+9.6 Volatility-Regime Performance
+9.7 Parameter Sensitivity
+9.8 Transaction Cost Sensitivity
+9.9 Trade Randomization / Monte Carlo
+9.10 Failure Mode Analysis
+9.11 Section 9 Summary
+```
+
+### Validation Rule
+
+Treat a strategy with suspicion if it only works:
+
+```text
+in one year,
+in one session,
+in one volatility regime,
+with one fragile parameter setting,
+or on a tiny sample.
+```
+
+---
+
+## 10.0 Final Research Conclusion & Handoff
+
+### Purpose
+
+Close the exploration notebook and decide what moves into dedicated strategy research.
+
+### Required Subsections
+
+```text
+10.1 What We Learned
+10.2 Best Candidate Strategy
+10.3 Rejected Strategy Ideas
+10.4 Dataset Objects to Preserve
+10.5 Strategy Rules to Move Forward
+10.6 Known Limitations
+10.7 Next Notebook Plan
+10.8 Final Go / No-Go Decision
+```
+
+### Handoff Rule
+
+After Section 10, stop expanding the exploration notebook.
+
+Move strong candidates into:
+
+```text
+notebooks/strategy_research/
+```
+
+Possible next notebooks:
+
+```text
+notebooks/strategy_research/01_poi_mean_reversion_strategy.ipynb
+notebooks/strategy_research/02_breakout_failure_strategy.ipynb
+notebooks/strategy_research/03_ny_large_move_fade.ipynb
+```
+
+---
+
+## Correct Project Flow From Here
+
+```text
+3.0 EDA
+  -> complete
+
+4.0 Final research dataset / active-front construction
+  -> create research_bars
+
+5.0 Formalize discretionary POI system
+  -> convert trader logic into measurable rules
+
+6.0 Build POI, trend, mean-reversion, session, volatility features
+  -> create strategy-level signal_frame
+
+7.0 Event studies / signal diagnostics
+  -> rank candidate signals
+
+8.0 First research backtest
+  -> convert best events into trades
+
+9.0 Robustness testing
+  -> test stability and overfitting risk
+
+10.0 Final handoff
+  -> decide what moves into strategy_research
+
+strategy_research notebook
+  -> refine the strongest candidate in a cleaner notebook
+
+proper backtester / production-quality research code
+  -> later phase, after the idea earns it
+```
+
+### Standing Instruction For Future AI Sessions
+
+When continuing this project, do not skip ahead to backtesting unless Sections 4-7 have produced a clean dataset, formal strategy definitions, engineered signal features, and event-study evidence.
+
+The exploration notebook should prove that a strategy idea deserves deeper work.
+
+The strategy research notebook should refine, clean, and prepare that idea for a more serious backtesting framework.
+
+---
+
+# 4.0 Research Dataset Construction & Continuous Active Contract Series Progress
+
+## 4.1 Final Active Contract Selection Rules
+
+### Status
+
+Added to:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+### Purpose
+
+Section 4.1 formalizes the active-contract selection schedule that will be used to build the continuous research dataset.
+
+This section does not yet create the final minute-level `research_bars` table. It creates the daily active-contract schedule that later Section 4 cells will use.
+
+### Final Selection Rule
+
+The active contract is selected by observed liquidity, not by hard-coded calendar roll dates.
+
+Rules:
+
+```text
+Universe: GC and MGC outrights only; spread symbols excluded.
+Selection frequency: one active contract per product per UTC trade date.
+Primary liquidity measure: 5-trading-day rolling sum of daily contract volume.
+Raw active candidate: contract with the highest rolling 5-day volume for each product/date.
+Confirmed normal switch: accept a new raw candidate after it remains the raw winner for at least 2 consecutive product-days, has at least 50% of current-day product volume, and has at least a 1.10x rolling-volume lead over the previously selected contract.
+Confirmed decisive switch: accept a new raw candidate immediately when it has at least 80% of current-day product volume, the previously selected contract has no more than 20% of current-day product volume, and the new candidate has at least a 1.10x rolling-volume lead.
+Ambiguous transition: if the raw winner changes but neither confirmation path passes, retain the prior selected contract and flag the date.
+Rollover handling: confirmed switch days and ambiguous transition days become diagnostics for Section 4.2 rollover safeguards.
+```
+
+### Objects Created
+
+```text
+active_contract_selection_rules
+active_contract_rankings
+raw_active_candidates
+final_active_contract_schedule
+active_contract_selection_summary
+active_contract_roll_audit
+```
+
+### Validation Summary
+
+Validated against the full processed parquet dataset:
+
+```text
+GC product-days:  1,555
+MGC product-days: 1,555
+GC confirmed switches:  25
+MGC confirmed switches: 25
+GC ambiguous transition days:  6
+MGC ambiguous transition days: 4
+```
+
+The remaining ambiguous transition days are expected and useful diagnostics. They occur when the raw rolling-volume winner changes, but the new contract has not yet cleared either the persistence rule or the decisive same-day liquidity migration rule.
+
+### Research Implication
+
+The project now has a defensible daily active-contract selection schedule.
+
+Next work should proceed to:
+
+```text
+4.2 Rollover Safeguards
+```
+
+Section 4.2 should convert confirmed switch days and ambiguous transition days into explicit rollover warning/exclusion windows before `research_bars` is constructed.
+
+---
+
+## 4.0 Section Completion Update
+
+### Status
+
+Section 4.0 is complete in:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+The notebook now contains the full required subsection sequence:
+
+```text
+4.1 Final Active Contract Selection Rules
+4.2 Rollover Safeguards
+4.3 Continuous Front-Month Series Construction
+4.4 Rollover-Day Exclusion / Warning Flags
+4.5 Session-Aware Calendar Handling
+4.6 Return, Range, Volume, and Volatility Feature Rebuild
+4.7 Save Final Research Tables
+4.8 Section 4 Summary
+```
+
+### Final Objects
+
+Section 4 creates the following core objects:
+
+```text
+active_contract_daily
+rollover_summary
+active_front_final
+research_bars
+```
+
+`research_bars` is now the main dataset for Section 5 onward.
+
+### Saved Tables
+
+The final Section 4 tables were saved to:
+
+```text
+data/processed/active_contract_daily.parquet
+data/processed/rollover_summary.parquet
+data/processed/active_front_final.parquet
+data/processed/research_bars_gc_mgc_1m.parquet
+```
+
+These are generated research artifacts and are excluded from Git by `.gitignore`.
+
+### Validation Summary
+
+Final saved table sizes:
+
+```text
+active_contract_daily:       3,110 rows
+rollover_summary:               50 rows
+active_front_final:      3,487,656 rows
+research_bars:           3,487,656 rows
+```
+
+Product row counts in `research_bars`:
+
+```text
+GC:  1,759,671 rows
+MGC: 1,727,985 rows
+```
+
+Final validation checks passed:
+
+```text
+Expected products only: GC and MGC
+No spread symbols
+No missing OHLCV values
+No duplicate timestamp-product rows
+Sorted by product/timestamp
+Rollover flags present
+Session labels present
+Return/range/volume/volatility feature columns present
+```
+
+### Rollover Handling
+
+Detected active-contract switches:
+
+```text
+GC rolls:  25
+MGC rolls: 25
+Total rolls: 50
+```
+
+Section 4 does not delete rollover periods. It flags them with:
+
+```text
+is_roll_day
+is_pre_roll_day
+is_post_roll_day
+roll_window_flag
+roll_window_type
+days_since_roll
+days_to_next_roll
+tradable_research_flag
+```
+
+Default `tradable_research_flag` is conservative and excludes roll-window days, ambiguous rollover candidates, and low selected-volume-share days.
+
+### Continuous Series Decision
+
+The active-front series is a raw stitched active-contract series.
+
+Prices were not back-adjusted. This is intentional at this stage because raw tradable prices plus explicit rollover flags are more transparent for signal research and backtesting diagnostics.
+
+### Session Handling
+
+UTC timestamps remain the canonical key. New York session fields were added:
+
+```text
+ts_event_utc
+ts_event_ny
+trade_date_utc
+trade_date_ny
+day_of_week
+hour_ny
+minute_ny
+session_label
+```
+
+Session labels:
+
+```text
+Overnight/Asia
+London
+NY Morning
+NY RTH
+Late Session
+CME Maintenance Break / Closed
+```
+
+### Feature Rebuild
+
+`research_bars` includes:
+
+```text
+1-minute returns
+5/15/30/60-minute forward returns
+bar range
+candle body
+upper/lower wick
+true range
+rolling ATR-style range
+rolling realized volatility
+rolling high-low range
+rolling volume
+relative volume
+volume z-score
+selected contract volume share
+rollover flags
+session labels
+tradable research flag
+```
+
+Return and rolling-feature calculations are separated by product and are prevented from crossing contract changes or major timestamp gaps.
+
+### Next
+
+Proceed to:
+
+```text
+5.0 Discretionary Strategy Formalization
+```
+
+Do not begin backtesting yet. Section 5 should translate the discretionary POI-based system into objective, measurable research rules using `research_bars` as the base dataset.
+
+---
