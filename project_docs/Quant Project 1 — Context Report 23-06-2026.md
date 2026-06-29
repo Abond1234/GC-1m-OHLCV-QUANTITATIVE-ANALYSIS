@@ -2762,3 +2762,310 @@ Proceed to:
 Do not begin backtesting yet. Section 5 should translate the discretionary POI-based system into objective, measurable research rules using `research_bars` as the base dataset.
 
 ---
+
+---
+
+# 5.0 Discretionary Strategy Formalization Progress
+
+## Status
+
+Section 5.0 is complete in:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+This section formalizes the user's discretionary GC/MGC POI strategy into objective research rules. It intentionally does not implement signal generation, candidate-trade construction, or backtesting. Those belong in Section 6 onward.
+
+## Completed Subsections
+
+```text
+5.1 Strategy Thesis
+5.2 Instrument, Session, and Research Scope
+5.3 Market Structure and Swing-Break Logic
+5.4 POI Definition
+5.5 POI Validity and Retest Logic
+5.6 Entry Trigger Definition
+5.7 Stop-Loss Logic
+5.8 Target / Exit Logic
+5.9 Invalidation Rules
+5.10 Confluence and Feature Engineering Framework
+5.11 Strategy Rules in Plain English
+5.12 Strategy Rules in Pseudocode
+5.13 Section 5 Summary
+```
+
+## Core Strategy Formalization
+
+The strategy is now defined as an intraday GC/MGC POI-retest research model:
+
+```text
+GC = analysis / signal instrument
+MGC = intended execution instrument
+Timeframe = 1-minute OHLCV
+Base dataset = research_bars from Section 4
+Timezone for strategy logic = America/New_York
+```
+
+The core principle is:
+
+```text
+A valid POI creates a decision zone.
+A retest creates a candidate event.
+It is not an automatic trade.
+```
+
+## Locked Session Rules
+
+POI search window:
+
+```text
+1:00am-12:00pm New York time
+```
+
+Execution windows:
+
+```text
+London:   3:00am-6:00am New York time
+New York: 7:00am-12:00pm New York time
+```
+
+Expiry:
+
+```text
+All POIs expire at 12:00pm New York time.
+No POI carries past 12:00pm.
+No POI carries into the next New York calendar day.
+```
+
+## Market Structure Rules
+
+Swing definition is treated as a research parameter.
+
+Required swing variants:
+
+```text
+3-bar swings
+5-bar swings
+7-bar swings
+```
+
+Required swing-break variants:
+
+```text
+Wick break
+Close break
+```
+
+Initial displacement definition:
+
+```text
+Bullish displacement = most recent confirmed swing low before the break through the candle that breaks the swing high.
+Bearish displacement = most recent confirmed swing high before the break through the candle that breaks the swing low.
+```
+
+The POI direction must match the swing-breaking displacement direction.
+
+## Final POI Definition
+
+A valid POI requires both:
+
+```text
+1. Classic ICT wick-to-wick FVG.
+2. Close-to-next-open gap in the same direction.
+```
+
+The POI zone is the full high-to-low range of the middle candle:
+
+```text
+POI_high = H[i]
+POI_low  = L[i]
+POI_mid  = (H[i] + L[i]) / 2
+```
+
+Bullish POI:
+
+```text
+L[i+1] > H[i-1]
+AND
+O[i+1] > C[i]
+```
+
+Bearish POI:
+
+```text
+H[i+1] < L[i-1]
+AND
+O[i+1] < C[i]
+```
+
+Gold futures tick size:
+
+```text
+tick_size = 0.10
+```
+
+Record:
+
+```text
+fvg_size_ticks
+close_open_gap_ticks
+poi_size_ticks
+```
+
+A one-tick minimum FVG and one-tick close-open gap is recommended as the first test, but remains a research parameter.
+
+## POI Retest Rules
+
+Retest/touch definition for a later candle `j`:
+
+```text
+high[j] >= POI_low
+AND
+low[j] <= POI_high
+```
+
+Multiple touches are allowed and should be recorded separately before expiry.
+
+Required retest fields include:
+
+```text
+retest_number
+first_touch_flag
+time_since_poi_creation
+candles_since_poi_creation
+time_since_previous_touch
+full_poi_cross_flag
+```
+
+For later trade simulation, overlapping trades from the same POI must be controlled unless a specific re-entry or pyramiding rule is explicitly being tested.
+
+## Entry, Stop, and Exit Research Variables
+
+Entry trigger variants:
+
+```text
+Boundary touch
+50% POI touch
+Distal edge touch
+```
+
+Stop variants:
+
+```text
+POI distal edge stop
+Previous-candle adjacent stop
+Next-candle adjacent stop
+Conservative adjacent-candle stop
+```
+
+Stop constraints:
+
+```text
+Minimum stop = 25 ticks
+Maximum stop = 100 ticks
+```
+
+Target variants:
+
+```text
+1R
+2R
+3R
+4R
+5R
+```
+
+Forced exit:
+
+```text
+All trades flat by 12:00pm New York time.
+No overnight positions.
+```
+
+Bars where both stop and target are touched are path-ambiguous on 1-minute OHLCV data. The conservative default should mark those cases as ambiguous or assume stop-first, then test sensitivity later.
+
+## Invalidation Rules
+
+Invalid candidates include:
+
+```text
+Expired POI
+Invalid stop size
+Entry outside execution windows
+Rollover danger period
+Malformed or missing execution mapping data
+```
+
+Historical red-folder news filtering is deferred. Placeholder fields should be added in Section 6:
+
+```text
+is_red_folder_news_window
+news_event_name
+minutes_to_news
+minutes_since_news
+```
+
+Full POI violation rules remain research variants to test:
+
+```text
+No full violation rule
+Wick-through invalidation
+Close-through invalidation
+Full-zone traversal flag
+```
+
+## Confluence Framework
+
+Section 5 defines the feature categories that Section 6 should engineer:
+
+```text
+VWAP
+Volume
+Volatility
+Session context
+Market structure
+Chop / consolidation
+Extension / exhaustion
+POI quality metrics
+```
+
+These should initially be recorded as explanatory variables, not hard filters. The research task is to determine which combinations improve POI retest expectancy.
+
+## Required Section 6 Outputs
+
+The next section should implement the formalized rules into:
+
+```text
+poi_table
+retest_table
+candidate_trade_table
+```
+
+Section 6 should not jump directly to a full backtest. It should build machine-readable POI, retest, entry, stop, target, and confluence features first.
+
+## Current Project Status
+
+| Phase                         | Status      |
+| ----------------------------- | ----------- |
+| Data Acquisition              | Complete    |
+| Data Validation               | Complete    |
+| Exploratory Analysis          | Complete    |
+| Research Dataset Construction | Complete    |
+| Strategy Formalization        | Complete    |
+| POI Feature Engineering       | Next Phase  |
+| Event Studies                 | Not Started |
+| Backtesting                   | Not Started |
+| Robustness Testing            | Not Started |
+
+## Next
+
+Proceed to:
+
+```text
+6.0 POI & Signal Feature Engineering
+```
+
+The first implementation goal is to build `poi_table`, `retest_table`, and `candidate_trade_table` from `research_bars` using the Section 5 definitions.
+
+---
