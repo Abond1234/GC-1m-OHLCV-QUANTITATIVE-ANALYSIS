@@ -36,6 +36,7 @@ class Section6Config:
     max_stop_ticks: float = 100.0
     target_r_multiples: tuple[int, ...] = (1, 2, 3, 4, 5)
     forward_horizons: tuple[int, ...] = (5, 15, 30, 60)
+    structural_swing_windows: tuple[int, ...] = (15, 21, 31)
 
 
 SECTION6_REQUIRED_COLUMNS = [
@@ -1040,6 +1041,449 @@ def save_section6_tables(
     return output_paths
 
 
+STRUCTURAL_COLUMNS = [
+    "structural_swing_break_flag",
+    "structural_swing_window_broken",
+    "structural_swing_windows_broken",
+    "structural_break_mode",
+    "structural_swing_bar_id",
+    "structural_swing_price",
+    "structural_break_bar_id",
+    "structural_break_distance_ticks",
+    "local_swing_only_flag",
+]
+
+
+def build_section6b_structural_tables(
+    feature_frame: pd.DataFrame,
+    poi_table: pd.DataFrame,
+    retest_table: pd.DataFrame,
+    candidate_trade_table: pd.DataFrame,
+    signal_frame: pd.DataFrame,
+    config: Section6Config | None = None,
+) -> dict[str, pd.DataFrame | pd.Series]:
+    """Build non-destructive Section 6B structural swing validation tables."""
+
+    cfg = config or Section6Config()
+    structural_break_events = build_structural_swing_break_events(feature_frame, cfg)
+    structural_poi_table = annotate_poi_structural_validation(
+        poi_table=poi_table,
+        structural_break_events=structural_break_events,
+        config=cfg,
+    )
+    structural_retest_table = _merge_structural_columns(retest_table, structural_poi_table)
+    structural_candidate_trade_table = _merge_structural_columns(
+        candidate_trade_table,
+        structural_poi_table,
+    )
+    structural_signal_frame = _merge_structural_columns(signal_frame, structural_poi_table)
+
+    validation = build_section6b_validation(
+        poi_table=poi_table,
+        retest_table=retest_table,
+        candidate_trade_table=candidate_trade_table,
+        signal_frame=signal_frame,
+        structural_poi_table=structural_poi_table,
+        structural_retest_table=structural_retest_table,
+        structural_candidate_trade_table=structural_candidate_trade_table,
+        structural_signal_frame=structural_signal_frame,
+    )
+    summary = build_section6b_summary(
+        structural_poi_table=structural_poi_table,
+        structural_retest_table=structural_retest_table,
+        structural_candidate_trade_table=structural_candidate_trade_table,
+        structural_signal_frame=structural_signal_frame,
+    )
+
+    return {
+        "structural_break_events": structural_break_events,
+        "structural_poi_table": structural_poi_table,
+        "structural_retest_table": structural_retest_table,
+        "structural_candidate_trade_table": structural_candidate_trade_table,
+        "structural_signal_frame": structural_signal_frame,
+        "section6b_validation": validation,
+        "section6b_summary": summary,
+    }
+
+
+def build_structural_swing_break_events(
+    feature_frame: pd.DataFrame,
+    config: Section6Config | None = None,
+) -> pd.DataFrame:
+    """Detect first breaks of confirmed higher-order structural swings."""
+
+    cfg = config or Section6Config()
+    required = {
+        "bar_id",
+        "high",
+        "low",
+        "close",
+        "continuous_segment_id",
+        "trade_date_ny",
+        "ts_event_utc",
+        "ts_event_ny",
+    }
+    _validate_input_columns(feature_frame, required)
+
+    records: list[pd.DataFrame] = []
+    for segment_id, segment in feature_frame.groupby(
+        "continuous_segment_id",
+        observed=True,
+        sort=False,
+    ):
+        segment = segment.sort_values("bar_id", kind="mergesort").reset_index(drop=True)
+        n = len(segment)
+        if n < min(cfg.structural_swing_windows, default=15):
+            continue
+
+        high = segment["high"].to_numpy("float64")
+        low = segment["low"].to_numpy("float64")
+        close = segment["close"].to_numpy("float64")
+        bar_ids = segment["bar_id"].to_numpy("int32")
+
+        for swing_window in cfg.structural_swing_windows:
+            if n < swing_window:
+                continue
+            swing_high, swing_low = _confirmed_swings(high, low, swing_window)
+            swing_state = _build_prior_swing_state(high, low, swing_high, swing_low, swing_window)
+
+            for break_mode in cfg.break_modes:
+                if break_mode not in {"wick", "close"}:
+                    raise ValueError(f"Unsupported break_mode: {break_mode!r}")
+                bullish_break_price = high if break_mode == "wick" else close
+                bearish_break_price = low if break_mode == "wick" else close
+
+                bullish_break_idx = np.flatnonzero(
+                    (swing_state["prior_high_swing_idx"] >= 0)
+                    & (bullish_break_price > swing_state["prior_high_level"])
+                )
+                bearish_break_idx = np.flatnonzero(
+                    (swing_state["prior_low_swing_idx"] >= 0)
+                    & (bearish_break_price < swing_state["prior_low_level"])
+                )
+
+                records.extend(
+                    [
+                        _structural_break_frame(
+                            segment=segment,
+                            segment_id=segment_id,
+                            direction="bullish",
+                            break_mode=break_mode,
+                            swing_window=swing_window,
+                            break_idx=bullish_break_idx,
+                            break_price=bullish_break_price,
+                            structural_level=swing_state["prior_high_level"],
+                            structural_swing_idx=swing_state["prior_high_swing_idx"],
+                            bar_ids=bar_ids,
+                            cfg=cfg,
+                        ),
+                        _structural_break_frame(
+                            segment=segment,
+                            segment_id=segment_id,
+                            direction="bearish",
+                            break_mode=break_mode,
+                            swing_window=swing_window,
+                            break_idx=bearish_break_idx,
+                            break_price=bearish_break_price,
+                            structural_level=swing_state["prior_low_level"],
+                            structural_swing_idx=swing_state["prior_low_swing_idx"],
+                            bar_ids=bar_ids,
+                            cfg=cfg,
+                        ),
+                    ]
+                )
+
+    frames = [frame for frame in records if not frame.empty]
+    if not frames:
+        return pd.DataFrame(
+            columns=[
+                "continuous_segment_id",
+                "direction",
+                "structural_break_mode",
+                "structural_swing_window_broken",
+                "structural_swing_bar_id",
+                "structural_swing_price",
+                "structural_break_bar_id",
+                "structural_break_distance_ticks",
+                "structural_break_ts_event_utc",
+                "structural_break_ts_event_ny",
+                "structural_break_trade_date_ny",
+            ]
+        )
+
+    events = pd.concat(frames, ignore_index=True)
+    events = events.sort_values(
+        [
+            "continuous_segment_id",
+            "direction",
+            "structural_break_mode",
+            "structural_swing_window_broken",
+            "structural_swing_bar_id",
+            "structural_break_bar_id",
+        ],
+        kind="mergesort",
+    )
+    # A structural swing level is considered broken when it is first exceeded
+    # for a given window/mode/direction. Later repeats are not new structure.
+    events = events.drop_duplicates(
+        [
+            "continuous_segment_id",
+            "direction",
+            "structural_break_mode",
+            "structural_swing_window_broken",
+            "structural_swing_bar_id",
+        ],
+        keep="first",
+    ).reset_index(drop=True)
+    return events
+
+
+def annotate_poi_structural_validation(
+    poi_table: pd.DataFrame,
+    structural_break_events: pd.DataFrame,
+    config: Section6Config | None = None,
+) -> pd.DataFrame:
+    """Annotate Version A POIs with higher-order structural break metadata."""
+
+    cfg = config or Section6Config()
+    _validate_input_columns(
+        poi_table,
+        {
+            "poi_id",
+            "direction",
+            "break_mode",
+            "displacement_start_bar_id",
+            "poi_activation_bar_id",
+        },
+    )
+    out = poi_table.copy().reset_index(drop=True)
+    n = len(out)
+
+    matches_by_window: dict[int, np.ndarray] = {}
+    primary_window = np.full(n, -1, dtype=np.int32)
+    primary_break_bar = np.full(n, -1, dtype=np.int32)
+    primary_swing_bar = np.full(n, -1, dtype=np.int32)
+    primary_swing_price = np.full(n, np.nan)
+    primary_break_distance = np.full(n, np.nan)
+    primary_break_mode = np.full(n, None, dtype=object)
+
+    events = structural_break_events
+    for window in sorted(cfg.structural_swing_windows):
+        window_match = np.zeros(n, dtype=bool)
+        window_events = events.loc[
+            events["structural_swing_window_broken"].eq(window)
+        ]
+        if window_events.empty:
+            matches_by_window[window] = window_match
+            continue
+
+        for (direction, break_mode), poi_group in out.groupby(
+            ["direction", "break_mode"],
+            observed=True,
+            sort=False,
+        ):
+            event_group = window_events.loc[
+                window_events["direction"].eq(direction)
+                & window_events["structural_break_mode"].eq(break_mode)
+            ]
+            if event_group.empty or poi_group.empty:
+                continue
+
+            event_group = event_group.sort_values("structural_break_bar_id", kind="mergesort")
+            event_break_ids = event_group["structural_break_bar_id"].to_numpy("int32")
+            poi_pos = poi_group.index.to_numpy()
+            starts = out.loc[poi_pos, "displacement_start_bar_id"].to_numpy("int32")
+            ends = out.loc[poi_pos, "poi_activation_bar_id"].to_numpy("int32")
+            event_pos = np.searchsorted(event_break_ids, starts, side="left")
+            has_event = event_pos < len(event_break_ids)
+            if not has_event.any():
+                continue
+
+            candidate_pos = poi_pos[has_event]
+            candidate_event_pos = event_pos[has_event]
+            candidate_ends = ends[has_event]
+            is_match = event_break_ids[candidate_event_pos] <= candidate_ends
+            if not is_match.any():
+                continue
+
+            matched_poi_pos = candidate_pos[is_match]
+            matched_event_pos = candidate_event_pos[is_match]
+            matched_events = event_group.iloc[matched_event_pos]
+            window_match[matched_poi_pos] = True
+
+            replace_primary = window > primary_window[matched_poi_pos]
+            if replace_primary.any():
+                replace_pos = matched_poi_pos[replace_primary]
+                replace_events = matched_events.iloc[np.flatnonzero(replace_primary)]
+                primary_window[replace_pos] = window
+                primary_break_bar[replace_pos] = replace_events[
+                    "structural_break_bar_id"
+                ].to_numpy("int32")
+                primary_swing_bar[replace_pos] = replace_events[
+                    "structural_swing_bar_id"
+                ].to_numpy("int32")
+                primary_swing_price[replace_pos] = replace_events[
+                    "structural_swing_price"
+                ].to_numpy("float64")
+                primary_break_distance[replace_pos] = replace_events[
+                    "structural_break_distance_ticks"
+                ].to_numpy("float64")
+                primary_break_mode[replace_pos] = replace_events[
+                    "structural_break_mode"
+                ].to_numpy(object)
+
+        matches_by_window[window] = window_match
+
+    structural_flag = primary_window >= 0
+    out["structural_swing_break_flag"] = structural_flag
+    out["structural_swing_window_broken"] = pd.Series(
+        np.where(structural_flag, primary_window, pd.NA),
+        index=out.index,
+        dtype="Int64",
+    )
+    out["structural_swing_windows_broken"] = _format_structural_window_list(
+        matches_by_window,
+        n,
+    )
+    out["structural_break_mode"] = pd.Series(primary_break_mode, index=out.index).where(
+        structural_flag,
+        pd.NA,
+    )
+    out["structural_swing_bar_id"] = pd.Series(
+        np.where(structural_flag, primary_swing_bar, pd.NA),
+        index=out.index,
+        dtype="Int64",
+    )
+    out["structural_swing_price"] = np.where(structural_flag, primary_swing_price, np.nan)
+    out["structural_break_bar_id"] = pd.Series(
+        np.where(structural_flag, primary_break_bar, pd.NA),
+        index=out.index,
+        dtype="Int64",
+    )
+    out["structural_break_distance_ticks"] = np.where(
+        structural_flag,
+        primary_break_distance,
+        np.nan,
+    )
+    out["local_swing_only_flag"] = ~structural_flag
+    _optimize_structural_dtypes(out)
+    return out
+
+
+def build_section6b_validation(
+    *,
+    poi_table: pd.DataFrame,
+    retest_table: pd.DataFrame,
+    candidate_trade_table: pd.DataFrame,
+    signal_frame: pd.DataFrame,
+    structural_poi_table: pd.DataFrame,
+    structural_retest_table: pd.DataFrame,
+    structural_candidate_trade_table: pd.DataFrame,
+    structural_signal_frame: pd.DataFrame,
+) -> pd.Series:
+    """Return structural Version B validation checks."""
+
+    required = set(STRUCTURAL_COLUMNS)
+    validated = structural_poi_table["structural_swing_break_flag"]
+    local_only = structural_poi_table["local_swing_only_flag"]
+
+    return pd.Series(
+        {
+            "poi_row_count_preserved": len(structural_poi_table) == len(poi_table),
+            "retest_row_count_preserved": len(structural_retest_table) == len(retest_table),
+            "candidate_row_count_preserved": len(structural_candidate_trade_table)
+            == len(candidate_trade_table),
+            "signal_row_count_preserved": len(structural_signal_frame) == len(signal_frame),
+            "structural_columns_present_poi": required.issubset(structural_poi_table.columns),
+            "structural_columns_present_retest": required.issubset(
+                structural_retest_table.columns
+            ),
+            "structural_columns_present_candidate": required.issubset(
+                structural_candidate_trade_table.columns
+            ),
+            "structural_columns_present_signal": required.issubset(
+                structural_signal_frame.columns
+            ),
+            "structural_partition_valid": bool((validated ^ local_only).all()),
+            "validated_rows_have_structural_window": structural_poi_table.loc[
+                validated,
+                "structural_swing_window_broken",
+            ]
+            .notna()
+            .all(),
+            "local_only_rows_have_no_structural_window": structural_poi_table.loc[
+                local_only,
+                "structural_swing_window_broken",
+            ]
+            .isna()
+            .all(),
+        }
+    )
+
+
+def build_section6b_summary(
+    *,
+    structural_poi_table: pd.DataFrame,
+    structural_retest_table: pd.DataFrame,
+    structural_candidate_trade_table: pd.DataFrame,
+    structural_signal_frame: pd.DataFrame,
+) -> pd.Series:
+    """Return headline Version A vs Version B structural counts."""
+
+    return pd.Series(
+        {
+            "baseline_poi_count": len(structural_poi_table),
+            "structurally_validated_poi_count": int(
+                structural_poi_table["structural_swing_break_flag"].sum()
+            ),
+            "local_swing_only_poi_count": int(
+                structural_poi_table["local_swing_only_flag"].sum()
+            ),
+            "baseline_retest_count": len(structural_retest_table),
+            "structurally_validated_retest_count": int(
+                structural_retest_table["structural_swing_break_flag"].sum()
+            ),
+            "local_swing_only_retest_count": int(
+                structural_retest_table["local_swing_only_flag"].sum()
+            ),
+            "baseline_candidate_count": len(structural_candidate_trade_table),
+            "structurally_validated_candidate_count": int(
+                structural_candidate_trade_table["structural_swing_break_flag"].sum()
+            ),
+            "local_swing_only_candidate_count": int(
+                structural_candidate_trade_table["local_swing_only_flag"].sum()
+            ),
+            "baseline_signal_count": len(structural_signal_frame),
+            "structurally_validated_signal_count": int(
+                structural_signal_frame["structural_swing_break_flag"].sum()
+            ),
+            "local_swing_only_signal_count": int(
+                structural_signal_frame["local_swing_only_flag"].sum()
+            ),
+        }
+    )
+
+
+def save_section6b_structural_tables(
+    tables: dict[str, pd.DataFrame | pd.Series],
+    output_dir: str | Path,
+) -> dict[str, Path]:
+    """Save Version B structural enhanced tables without touching Version A."""
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_paths = {
+        "structural_poi_table": out_dir / "section6b_structural_poi_table_gc.parquet",
+        "structural_retest_table": out_dir / "section6b_structural_retest_table_gc.parquet",
+        "structural_candidate_trade_table": out_dir
+        / "section6b_structural_candidate_trade_table_gc.parquet",
+        "structural_signal_frame": out_dir / "section6b_structural_signal_frame_gc.parquet",
+    }
+    for key, path in output_paths.items():
+        tables[key].to_parquet(path, index=False)
+    return output_paths
+
+
 def _append_directional_pois(
     *,
     records: list[dict[str, object]],
@@ -1150,6 +1594,97 @@ def _append_directional_pois(
                 **_feature_snapshot_from_arrays(feature_arrays, activation_idx, prefix="poi"),
             }
             records.append(record)
+
+
+def _structural_break_frame(
+    *,
+    segment: pd.DataFrame,
+    segment_id: object,
+    direction: str,
+    break_mode: str,
+    swing_window: int,
+    break_idx: np.ndarray,
+    break_price: np.ndarray,
+    structural_level: np.ndarray,
+    structural_swing_idx: np.ndarray,
+    bar_ids: np.ndarray,
+    cfg: Section6Config,
+) -> pd.DataFrame:
+    if break_idx.size == 0:
+        return pd.DataFrame()
+
+    swing_idx = structural_swing_idx[break_idx].astype("int32", copy=False)
+    valid = swing_idx >= 0
+    if not valid.any():
+        return pd.DataFrame()
+
+    break_idx = break_idx[valid]
+    swing_idx = swing_idx[valid]
+    swing_price = structural_level[break_idx]
+    if direction == "bullish":
+        distance = (break_price[break_idx] - swing_price) / cfg.tick_size
+    else:
+        distance = (swing_price - break_price[break_idx]) / cfg.tick_size
+
+    return pd.DataFrame(
+        {
+            "continuous_segment_id": segment_id,
+            "direction": direction,
+            "structural_break_mode": break_mode,
+            "structural_swing_window_broken": swing_window,
+            "structural_swing_bar_id": bar_ids[swing_idx],
+            "structural_swing_price": swing_price,
+            "structural_break_bar_id": bar_ids[break_idx],
+            "structural_break_distance_ticks": distance,
+            "structural_break_ts_event_utc": segment["ts_event_utc"].to_numpy()[break_idx],
+            "structural_break_ts_event_ny": segment["ts_event_ny"].to_numpy()[break_idx],
+            "structural_break_trade_date_ny": segment["trade_date_ny"].to_numpy()[break_idx],
+        }
+    )
+
+
+def _merge_structural_columns(
+    table: pd.DataFrame,
+    structural_poi_table: pd.DataFrame,
+) -> pd.DataFrame:
+    if table.empty:
+        return table.copy()
+    structural_cols = ["poi_id"] + [c for c in STRUCTURAL_COLUMNS if c in structural_poi_table]
+    columns_to_drop = [c for c in STRUCTURAL_COLUMNS if c in table.columns]
+    base = table.drop(columns=columns_to_drop)
+    out = base.merge(
+        structural_poi_table[structural_cols],
+        on="poi_id",
+        how="left",
+        validate="many_to_one",
+    )
+    _optimize_structural_dtypes(out)
+    return out
+
+
+def _format_structural_window_list(
+    matches_by_window: dict[int, np.ndarray],
+    row_count: int,
+) -> pd.Series:
+    windows = sorted(matches_by_window)
+    labels = []
+    for row_idx in range(row_count):
+        broken = [str(window) for window in windows if matches_by_window[window][row_idx]]
+        labels.append(",".join(broken) if broken else pd.NA)
+    return pd.Series(labels, dtype="category")
+
+
+def _optimize_structural_dtypes(df: pd.DataFrame) -> None:
+    for col in ("structural_break_mode", "structural_swing_windows_broken"):
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+    for col in (
+        "structural_swing_window_broken",
+        "structural_swing_bar_id",
+        "structural_break_bar_id",
+    ):
+        if col in df.columns and str(df[col].dtype) != "Int64":
+            df[col] = df[col].astype("Int64")
 
 
 def _precompute_poi_masks(

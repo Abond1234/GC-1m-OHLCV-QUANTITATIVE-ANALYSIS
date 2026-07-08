@@ -3259,3 +3259,170 @@ candidate signal ranking
 Do not begin a full backtest until Section 7 has ranked which conditions show robust forward behavior.
 
 ---
+
+# 6B Structural Swing Validation Refinement
+
+## Status
+
+Section 6B was added after the completed Section 6.0 baseline in:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+The implementation was added to:
+
+```text
+src/features/poi_signal_features.py
+```
+
+This is a non-destructive refinement. The original Section 6 Version A tables remain unchanged and continue to represent the baseline mechanical/local swing model.
+
+## Version A Baseline
+
+Version A remains:
+
+```text
+3-bar, 5-bar, and 7-bar local swing windows
+wick-break and close-break variants
+section6_poi_table_gc.parquet
+section6_retest_table_gc.parquet
+section6_candidate_trade_table_gc.parquet
+section6_signal_frame_gc.parquet
+```
+
+## Version B Structural Layer
+
+Version B starts from the existing Version A POIs and annotates each POI with higher-order structural swing validation.
+
+Structural swing windows:
+
+```text
+15-bar swing
+21-bar swing
+31-bar swing
+```
+
+No previous-day highs/lows, session highs/lows, or calendar-derived levels are used. The structural definition is based only on confirmed price-action swing highs and lows inside the GC active-front series. Structural swing computation is continuous-segment aware so it does not cross contract/gap boundaries.
+
+For each Version A POI:
+
+```text
+Bullish POI: check whether the displacement interval broke a prior structural swing high.
+Bearish POI: check whether the displacement interval broke a prior structural swing low.
+```
+
+The structural check uses the POI's own `break_mode` (`wick` or `close`) so Version B remains directly comparable to the existing Version A wick/close variants.
+
+If multiple structural windows are broken, the primary column stores the largest window broken. An additional helper column stores all windows broken.
+
+## New Structural Columns
+
+Added to Version B tables:
+
+```text
+structural_swing_break_flag
+structural_swing_window_broken
+structural_swing_windows_broken
+structural_break_mode
+structural_swing_bar_id
+structural_swing_price
+structural_break_bar_id
+structural_break_distance_ticks
+local_swing_only_flag
+```
+
+Column meanings:
+
+```text
+structural_swing_break_flag = True when the POI displacement broke a 15/21/31-bar structural swing.
+structural_swing_window_broken = largest structural swing window broken.
+structural_swing_windows_broken = all broken structural windows as a comma-separated label.
+structural_break_mode = wick or close structural break mode.
+structural_swing_bar_id = bar_id of the broken structural swing high/low.
+structural_swing_price = price level of the broken structural swing.
+structural_break_bar_id = bar_id of the candle that broke the structural swing.
+structural_break_distance_ticks = distance beyond the structural swing level in ticks.
+local_swing_only_flag = True when the Version A POI broke only the local 3/5/7-bar swing and no 15/21/31 structural swing.
+```
+
+## Saved Version B Tables
+
+Saved separate enhanced outputs:
+
+```text
+data/processed/section6b_structural_poi_table_gc.parquet
+data/processed/section6b_structural_retest_table_gc.parquet
+data/processed/section6b_structural_candidate_trade_table_gc.parquet
+data/processed/section6b_structural_signal_frame_gc.parquet
+```
+
+These files do not overwrite the Version A `section6_*` outputs.
+
+## Full-Run Counts
+
+Version A row counts preserved:
+
+```text
+Baseline POIs:          202,466
+Baseline retests:     6,684,664
+Baseline candidates:  1,597,373
+Baseline signals:     1,597,373
+```
+
+Version B structural classification:
+
+```text
+Structurally validated POIs:          84,890
+Local-swing-only POIs:               117,576
+Structurally validated retests:    2,787,207
+Local-swing-only retests:          3,897,457
+Structurally validated candidates:   685,420
+Local-swing-only candidates:         911,953
+Structurally validated signals:      685,420
+Local-swing-only signals:            911,953
+```
+
+Primary structural window counts:
+
+```text
+15-bar: 26,904
+21-bar: 21,539
+31-bar: 36,447
+None:  117,576
+```
+
+## Validation Checks Passed
+
+```text
+poi_row_count_preserved:                      True
+retest_row_count_preserved:                   True
+candidate_row_count_preserved:                True
+signal_row_count_preserved:                   True
+structural_columns_present_poi:               True
+structural_columns_present_retest:            True
+structural_columns_present_candidate:         True
+structural_columns_present_signal:            True
+structural_partition_valid:                   True
+validated_rows_have_structural_window:        True
+local_only_rows_have_no_structural_window:    True
+```
+
+## Section 7 Implication
+
+Section 7 should compare:
+
+```text
+all baseline POIs
+local-swing-only POIs
+structurally validated POIs
+15-bar structural break POIs
+21-bar structural break POIs
+31-bar structural break POIs
+```
+
+The research question is whether higher-order structural breaks improve forward behavior versus small local 3/5/7-bar swing breaks.
+
+Do not begin a full backtest until this structural split is evaluated through event studies.
+
+---

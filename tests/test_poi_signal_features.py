@@ -9,6 +9,7 @@ import pandas as pd
 from src.features.poi_signal_features import (
     SECTION6_REQUIRED_COLUMNS,
     Section6Config,
+    build_section6b_structural_tables,
     build_section6_signal_tables,
     save_section6_tables,
 )
@@ -137,6 +138,42 @@ class Section6PoiSignalFeatureTests(unittest.TestCase):
                 },
             )
             self.assertTrue(all(path.exists() for path in output_paths.values()))
+
+    def test_structural_validation_marks_and_propagates_validated_pois(self):
+        config = Section6Config(
+            swing_windows=(3,),
+            break_modes=("wick",),
+            structural_swing_windows=(3,),
+            min_stop_ticks=1.0,
+            max_stop_ticks=100.0,
+        )
+
+        section6_tables = build_section6_signal_tables(_synthetic_research_bars(), config)
+        section6b_tables = build_section6b_structural_tables(
+            feature_frame=section6_tables["section6_feature_frame"],
+            poi_table=section6_tables["poi_table"],
+            retest_table=section6_tables["retest_table"],
+            candidate_trade_table=section6_tables["candidate_trade_table"],
+            signal_frame=section6_tables["signal_frame"],
+            config=config,
+        )
+
+        self.assertTrue(section6b_tables["section6b_validation"].all())
+        structural_pois = section6b_tables["structural_poi_table"]
+        self.assertTrue(structural_pois["structural_swing_break_flag"].all())
+        self.assertFalse(structural_pois["local_swing_only_flag"].any())
+        self.assertEqual(int(structural_pois["structural_swing_window_broken"].iloc[0]), 3)
+        self.assertEqual(structural_pois["structural_break_mode"].iloc[0], "wick")
+        self.assertGreater(structural_pois["structural_break_distance_ticks"].iloc[0], 0)
+
+        for key in (
+            "structural_retest_table",
+            "structural_candidate_trade_table",
+            "structural_signal_frame",
+        ):
+            table = section6b_tables[key]
+            self.assertIn("structural_swing_break_flag", table.columns)
+            self.assertTrue(table["structural_swing_break_flag"].all())
 
 
 if __name__ == "__main__":
