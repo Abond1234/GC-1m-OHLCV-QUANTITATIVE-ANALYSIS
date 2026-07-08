@@ -3426,3 +3426,510 @@ The research question is whether higher-order structural breaks improve forward 
 Do not begin a full backtest until this structural split is evaluated through event studies.
 
 ---
+
+# 7.0 Prototype Signal Research Progress
+
+## Status
+
+Section 7.0 is complete in:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+The reusable implementation was added to:
+
+```text
+src/features/poi_event_study.py
+```
+
+A reproducible runner was added to:
+
+```text
+scripts/run_section7_event_study.py
+```
+
+Section 7 is an event-study and signal-diagnostic section. It is not a full backtest and does not include an equity curve, dollar PnL simulation, prop-firm challenge simulation, trade sequencing, commissions, or slippage.
+
+## Completed Subsections
+
+```text
+7.1 Section 7 Research Contract
+7.2 Load and Validate Section 6 / 6B Signal Tables
+7.3 Baseline Forward R Study
+7.4 POI Touch Event Study
+7.5 Version A vs Version B Structural Validation Study
+7.6 Swing Window and Break Mode Study
+7.7 Entry Variant and Stop Model Study
+7.8 Session-Specific Results
+7.9 Volatility-Regime-Specific Results
+7.10 Volume / Relative Volume Filter Study
+7.11 Trend, VWAP, Extension, and Exhaustion Context Study
+7.12 Candidate Signal Ranking
+7.13 Section 7 Summary and Backtest Candidates
+```
+
+## Inputs
+
+Section 7 used the Section 6B structural signal frame as the main input:
+
+```text
+data/processed/section6b_structural_signal_frame_gc.parquet
+```
+
+It also used:
+
+```text
+data/processed/research_bars_gc_mgc_1m.parquet
+```
+
+The structural signal frame contains:
+
+```text
+Signal rows: 1,597,373
+Columns:        129
+```
+
+The research bars file contains:
+
+```text
+Rows: 3,487,656
+```
+
+Section 7 reconstructs the GC-only `bar_id` ordering used by Section 6 before rebuilding forward path labels.
+
+## Validation Checks Passed
+
+```text
+signal_required_columns_present:              True
+bar_required_columns_present:                 True
+signal_ids_unique:                            True
+existing_5_15_30_60_forward_r_present:        True
+structural_columns_present:                   True
+structural_partition_valid:                   True
+session_columns_present:                      True
+entry_rows_in_approved_execution_windows:     True
+no_candidate_entry_after_1200_ny:             True
+risk_points_positive:                         True
+valid_candidate_flag_all_true:                True
+volatility_context_present:                   True
+volume_context_present:                       True
+gc_research_bars_available:                   True
+```
+
+## Forward Label Method
+
+Forward labels were rebuilt for:
+
+```text
+5m, 15m, 30m, 60m, 120m, 180m, 240m, 360m
+```
+
+For each horizon, Section 7 calculates:
+
+```text
+fixed-horizon forward R
+capped/forced-exit forward R
+MFE_R
+MAE_R
++1R, +2R, +3R, +4R, +5R, +7.5R, +10R, +15R hit rates
+-1R hit rate
+entry-bar and path-order ambiguity diagnostics
+5R and 10R capped diagnostic versions
+```
+
+The holding-period rule is enforced:
+
+```text
+No candidate entry after 12:00pm New York time.
+Positions entered before 12:00pm may continue after noon.
+All event-study holding windows are capped at the same-day 3:30pm New York forced-exit boundary.
+```
+
+Fixed horizons are invalid when the requested horizon extends beyond the forced-exit boundary. Capped horizons use:
+
+```text
+effective_exit_time = min(entry_time + horizon, same-day 15:30 NY forced-exit time)
+```
+
+## Generated Outputs
+
+Saved generated outputs:
+
+```text
+data/processed/section7_event_study_summary_gc.parquet
+data/processed/section7_candidate_signal_ranking_gc.parquet
+```
+
+These are reproducible generated artifacts and remain excluded from Git.
+
+Output sizes:
+
+```text
+section7_event_study_summary_gc.parquet:       176,560 rows
+section7_candidate_signal_ranking_gc.parquet:      374 rows
+```
+
+Full Section 7 event-study runtime:
+
+```text
+593.71 seconds
+```
+
+## Horizon Validity
+
+Capped horizon validity stayed high because late-morning entries were force-exit capped:
+
+```text
+5m capped valid rows:    1,597,238
+15m capped valid rows:   1,596,853
+30m capped valid rows:   1,596,406
+60m capped valid rows:   1,594,815
+120m capped valid rows:  1,590,235
+180m capped valid rows:  1,583,476
+240m capped valid rows:  1,576,988
+360m capped valid rows:  1,578,933
+```
+
+Fixed horizons lose observations at longer holds:
+
+```text
+240m fixed valid rows: 1,442,819
+360m fixed valid rows:   832,681
+```
+
+Forced-exit-capped rates:
+
+```text
+240m capped forced-exit rate:  8.40%
+360m capped forced-exit rate: 46.72%
+```
+
+## Baseline Forward R Findings
+
+The all-candidate POI stream is not a clean standalone edge.
+
+Across capped horizons:
+
+```text
+Positive R rate: approximately 49.6% to 50.3%
+Median R: near 0R across most horizons
+Uncapped mean R: mixed to negative
+5R-capped mean R: only slightly positive at most horizons
+```
+
+Runner potential is real, but adverse path risk is also large:
+
+```text
++5R hit rate rises from 1.39% at 5m to 47.67% at capped 360m.
+-1R path-hit rate rises from 36.65% at 5m to 87.69% at capped 360m.
+```
+
+Interpretation:
+
+```text
+Raw POI logic is an event generator, not a finished trading signal.
+The discretionary observation that some POIs run massively is supported.
+The data also shows that many candidates experience severe adverse excursion.
+```
+
+## First-Touch Findings
+
+First touch is not automatically cleaner.
+
+At the 60m capped horizon:
+
+```text
+First-touch valid candidates: 62,877
+Mean R:                     -0.0533
+5R-capped mean R:           -0.0093
+Median R:                   -0.0286
+Positive R rate:             49.34%
++5R hit rate:                15.94%
+-1R path-hit rate:           72.98%
+```
+
+Interpretation:
+
+```text
+First-touch should be analyzed separately but should not be treated as a permission filter by default.
+```
+
+## Structural Validation Findings
+
+Higher-order structural validation does not uniformly dominate local-only POIs.
+
+At the 60m capped horizon:
+
+```text
+Structurally validated:
+  5R-capped mean R:  0.0138
+  Median R:         -0.0263
+  -1R hit rate:      73.83%
+
+Local-swing-only:
+  5R-capped mean R:  0.0051
+  Median R:          0.0182
+  -1R hit rate:      75.83%
+```
+
+The 15-bar structural window was the strongest structural cohort at 60m:
+
+```text
+15-bar structural window:
+  5R-capped mean R:  0.0968
+  Median R:          0.1053
+```
+
+The 21-bar and 31-bar structural cohorts were weaker at the 60m horizon.
+
+Interpretation:
+
+```text
+Structural validation should move forward as an interaction/filter candidate, especially the 15-bar cohort.
+It should not be used as a blanket permission rule without a backtest.
+```
+
+## Swing Window and Break Mode Findings
+
+The 60m capped study shows a strong side asymmetry:
+
+```text
+Bearish/short variants rank above bullish/long variants across swing and break-mode groups.
+```
+
+Examples at 60m capped:
+
+```text
+5-bar wick bearish:
+  5R-capped mean R: 0.1316
+  Median R:         0.0400
+
+5-bar close bearish:
+  5R-capped mean R: 0.1115
+  Median R:         0.0217
+
+Most bullish/long swing-break groups were negative after 5R capping.
+```
+
+Interpretation:
+
+```text
+Section 8 should start short-side-first rather than backtesting every direction equally.
+```
+
+## Entry Variant and Stop Model Findings
+
+Short boundary entries are the cleanest broad entry family.
+
+At 60m capped:
+
+```text
+Short boundary + POI distal edge:
+  Valid rows:        198,571
+  5R-capped mean R:  0.1261
+  Median R:          0.0263
+  +5R hit rate:      24.77%
+  -1R hit rate:      74.52%
+
+Short boundary + conservative adjacent:
+  Valid rows:        340,089
+  5R-capped mean R:  0.0895
+  Median R:          0.0000
+```
+
+Midpoint/distal short entries can raise runner rates, but they also raise adverse path risk. Long entry/stop variants are broadly weaker.
+
+## Session Findings
+
+At 60m capped:
+
+```text
+London shorts:
+  5R-capped mean R: 0.1748
+  Median R:         0.1194
+
+New York shorts:
+  5R-capped mean R: 0.0683
+  Median R:        -0.0390
+
+London longs:
+  5R-capped mean R: -0.1830
+  Median R:         -0.1111
+```
+
+New York shorts improve at longer capped horizons:
+
+```text
+120m: 5R-capped mean R 0.1718
+180m: 5R-capped mean R 0.2537
+240m: 5R-capped mean R 0.2618
+360m: 5R-capped mean R 0.2163
+```
+
+Interpretation:
+
+```text
+London short candidates behave more like quicker 60m reactions.
+New York short candidates show more 2-4 hour runner behavior.
+```
+
+## Volatility Findings
+
+Volatility is a meaningful interaction variable.
+
+At 60m capped:
+
+```text
+Extreme-volatility shorts:
+  5R-capped mean R: 0.1271
+  Median R:         0.0286
+
+Extreme-volatility longs:
+  5R-capped mean R: -0.1105
+  Median R:         -0.0328
+
+Elevated-volatility longs:
+  5R-capped mean R: 0.1313
+  Median R:         0.0769
+```
+
+Interpretation:
+
+```text
+Extreme volatility favors short-side candidates in the broad event study.
+Elevated-volatility longs are one of the few broad long-side families worth a limited Section 8 test.
+```
+
+## Volume Findings
+
+Relative volume helps explain movement magnitude, especially on shorts.
+
+At 60m capped:
+
+```text
+Normal relative-volume shorts:
+  5R-capped mean R: 0.1636
+
+High relative-volume shorts:
+  5R-capped mean R: 0.1633
+
+Spike relative-volume shorts:
+  5R-capped mean R: 0.0343
+  -1R hit rate:     78.69%
+```
+
+Interpretation:
+
+```text
+Volume spike flags alone increase movement but do not cleanly improve directional edge.
+Volume should be tested as a sizing/target/hold-time interaction rather than as a standalone permission filter.
+```
+
+## VWAP, Trend, Extension, and Context Findings
+
+At 60m capped:
+
+```text
+Shorts near VWAP:
+  5R-capped mean R: 0.1787
+  Median R:         0.1351
+
+Shorts moderately extended from VWAP:
+  5R-capped mean R: 0.1535
+  Median R:         0.0800
+
+Very-extended shorts:
+  5R-capped mean R: 0.0085
+  Median R:        -0.1071
+
+Longs against VWAP:
+  5R-capped mean R: -0.1590
+```
+
+Trend alignment is not a universal positive filter. Broad short candidates against the 20/50 trend bias performed better than aligned shorts at 60m capped.
+
+POI-quality buckets generated some high-mean small-sample groups, but those are hypothesis-generation only until they pass minimum sample thresholds.
+
+## Candidate Ranking Findings
+
+Candidate ranking used:
+
+```text
+sample size
+5R-capped mean R
+median R
+downside quantile
+positive R rate
+MFE/MAE behavior
++2R/+3R/+5R hit rates
+-1R hit rate
+consistency across horizons
+```
+
+Minimum sample threshold:
+
+```text
+1,000 rows
+```
+
+Important conclusion:
+
+```text
+No composite group earned a clean robust approval.
+The highest-ranked groups still had negative robust scores because downside quantiles and -1R path-hit rates remained severe.
+```
+
+The top-ranked groups still showed positive capped mean/median behavior and strong runner rates, so they are useful Section 8 research candidates, not production rules.
+
+## Section 8 Candidate Scope
+
+Recommended first Section 8 research-backtest candidates:
+
+```text
+1. Short-only POI candidates, especially New York extreme-volatility shorts.
+2. Short boundary entries with POI-distal or conservative stops.
+3. London short 60m reaction candidates.
+4. New York short 120-240m runner candidates with forced-exit-aware holding.
+5. 15-bar structural validation as an interaction/filter candidate.
+6. Elevated-volatility long candidates as the only broad long-side family worth limited testing.
+```
+
+Rejected or deprioritized for first Section 8 scope:
+
+```text
+1. The raw all-candidate POI stream.
+2. First-touch as a standalone permission filter.
+3. London long candidates.
+4. Long candidates against VWAP.
+5. Broad extreme-volatility long candidates.
+6. Volume-spike-only permission filters.
+7. Tiny POI-quality buckets with attractive means but insufficient sample size.
+```
+
+## Current Project Status
+
+| Phase                         | Status      |
+| ----------------------------- | ----------- |
+| Data Acquisition              | Complete    |
+| Data Validation               | Complete    |
+| Exploratory Analysis          | Complete    |
+| Research Dataset Construction | Complete    |
+| Strategy Formalization        | Complete    |
+| POI Feature Engineering       | Complete    |
+| Structural Swing Validation   | Complete    |
+| Event Studies                 | Complete    |
+| Backtesting                   | Next Phase  |
+| Robustness Testing            | Not Started |
+
+## Next
+
+Proceed to:
+
+```text
+8.0 First Research Backtest
+```
+
+Section 8 should not backtest every raw POI candidate. It should start with the narrow candidate scopes identified above, preserve the 12:00pm no-new-entry rule, and enforce the 3:30pm New York forced-exit rule.
+
+---
