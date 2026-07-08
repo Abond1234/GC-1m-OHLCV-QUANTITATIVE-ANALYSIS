@@ -3069,3 +3069,193 @@ Proceed to:
 The first implementation goal is to build `poi_table`, `retest_table`, and `candidate_trade_table` from `research_bars` using the Section 5 definitions.
 
 ---
+
+# 6.0 POI & Signal Feature Engineering Progress
+
+## Status
+
+Section 6.0 is complete in:
+
+```text
+notebooks/exploration/exp1.ipynb
+```
+
+The reusable implementation was added to:
+
+```text
+src/features/poi_signal_features.py
+```
+
+Section 6 converts the Section 5 discretionary POI rules into machine-readable research tables. It remains a feature-engineering and event-labeling section, not a backtest.
+
+## Completed Subsections
+
+```text
+6.1 Implementation Contract and Parameters
+6.2 Build Section 6 Research Tables
+6.3 Output Validation
+6.4 POI, Retest, and Candidate Diagnostics
+6.5 Save Section 6 Research Tables
+6.6 Section 6 Summary
+```
+
+## Implementation Scope
+
+The first Section 6 implementation validates GC-only signal logic, matching the Section 5 research plan:
+
+```text
+GC = analysis / signal instrument
+MGC = intended execution instrument for a later phase
+```
+
+MGC execution mapping remains deferred until Section 7 event studies identify which POI retest variants deserve trade simulation.
+
+## Core Objects Created
+
+```text
+section6_feature_frame
+poi_table
+retest_table
+candidate_trade_table
+signal_frame
+section6_summary
+section6_validation
+```
+
+`candidate_trade_table` contains valid continuation entry/stop variants after Section 5 stop-distance filtering. Invalid stop variants are rejected rather than persisted as candidate trades.
+
+## Saved Tables
+
+The generated Section 6 research tables were saved to:
+
+```text
+data/processed/section6_poi_table_gc.parquet
+data/processed/section6_retest_table_gc.parquet
+data/processed/section6_candidate_trade_table_gc.parquet
+data/processed/section6_signal_frame_gc.parquet
+```
+
+These are generated research artifacts and remain excluded from Git by `.gitignore`.
+
+## Full-Run Counts
+
+Validated against the saved Section 4 `research_bars` dataset:
+
+```text
+GC feature rows:            1,759,671
+GC tradable rows:           1,676,591
+POIs:                         202,466
+POIs with retests:            181,630
+Retests:                    6,684,664
+First-touch retests:          181,630
+Valid candidate variants:   1,597,373
+Signal frame rows:          1,597,373
+```
+
+## POI Variant Counts
+
+```text
+swing_n  break_mode  direction
+3        close       bearish      14,527
+                     bullish      14,349
+         wick        bearish      17,187
+                     bullish      16,873
+5        close       bearish      16,008
+                     bullish      15,858
+         wick        bearish      18,682
+                     bullish      18,393
+7        close       bearish      16,491
+                     bullish      16,290
+         wick        bearish      19,080
+                     bullish      18,728
+```
+
+## Valid Candidate Variant Counts
+
+```text
+entry_variant  stop_model             valid_candidate_count
+boundary       conservative_adjacent  700,230
+boundary       poi_distal_edge        404,942
+distal         conservative_adjacent   86,784
+midpoint       conservative_adjacent  316,298
+midpoint       poi_distal_edge         89,119
+```
+
+No valid `distal + poi_distal_edge` continuation variants survived the 25-100 tick stop-distance filter in the full run.
+
+## Validation Checks Passed
+
+```text
+poi_ids_unique:                     True
+retest_ids_unique:                  True
+candidate_trade_ids_unique:         True
+poi_activation_in_search_window:    True
+retests_after_poi_activation:       True
+retests_in_execution_window:        True
+valid_signals_have_valid_stops:     True
+```
+
+## Key Engineering Decisions
+
+POI activation is defined as:
+
+```text
+max(POI confirmation candle, swing-break candle)
+```
+
+Retests must occur after activation, on the same New York date, inside the London or New York execution windows, and before or at 12:00pm New York time.
+
+The retest engine uses day-level vectorized interval checks rather than one scan per POI. This is necessary because the full run contains more than 200,000 variant-level POIs and more than 6.6 million retest rows.
+
+`signal_frame` is the main Section 7 input. It contains:
+
+```text
+candidate parameters
+entry, stop, and target prices
+forward 5/15/30/60-minute R labels
+POI quality features
+swing-break metadata
+retest context
+trend, VWAP, volume, volatility, session, and extension features
+news-filter placeholder fields
+```
+
+## Current Project Status
+
+| Phase                         | Status      |
+| ----------------------------- | ----------- |
+| Data Acquisition              | Complete    |
+| Data Validation               | Complete    |
+| Exploratory Analysis          | Complete    |
+| Research Dataset Construction | Complete    |
+| Strategy Formalization        | Complete    |
+| POI Feature Engineering       | Complete    |
+| Event Studies                 | Next Phase  |
+| Backtesting                   | Not Started |
+| Robustness Testing            | Not Started |
+
+## Next
+
+Proceed to:
+
+```text
+7.0 Prototype Signal Research
+```
+
+Section 7 should run controlled event studies on `signal_frame`, especially:
+
+```text
+baseline forward R by horizon
+POI touch behavior
+first-touch versus later-touch behavior
+swing window and break-mode comparisons
+entry and stop model comparisons
+session-specific results
+volatility-regime-specific results
+continuation versus reversal outcome labels
+candidate signal ranking
+```
+
+Do not begin a full backtest until Section 7 has ranked which conditions show robust forward behavior.
+
+---
