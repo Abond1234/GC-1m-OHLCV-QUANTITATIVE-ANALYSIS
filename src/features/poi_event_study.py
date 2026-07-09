@@ -117,6 +117,28 @@ SECTION7_BAR_REQUIRED_COLUMNS = [
     "roll_window_flag",
 ]
 
+SECTION7_VISUAL_AUDIT_BAR_COLUMNS = list(
+    dict.fromkeys(SECTION7_BAR_REQUIRED_COLUMNS + ["open"])
+)
+
+SECTION7_VISUAL_AUDIT_SIGNAL_COLUMNS = list(
+    dict.fromkeys(
+        SECTION7_SIGNAL_REQUIRED_COLUMNS
+        + [
+            "poi_created_ts_event_ny",
+            "poi_activation_ts_event_ny",
+            "poi_low",
+            "poi_high",
+            "target_1R_price",
+            "target_2R_price",
+            "target_3R_price",
+            "target_5R_price",
+            "forward_60m_r",
+            "retest_volatility_regime",
+        ]
+    )
+)
+
 
 def default_section7_group_specs() -> list[EventStudyGroupSpec]:
     """Return the standard Section 7 diagnostic grouping contract."""
@@ -899,6 +921,368 @@ def save_section7_outputs(
     return paths
 
 
+def build_section7_visual_audit_batches(
+    signal_frame: pd.DataFrame,
+    research_bars: pd.DataFrame,
+    output_dir: str | Path,
+    samples_per_batch: int = 12,
+    random_state: int = 714,
+    context_minutes_before: int = 90,
+    context_minutes_after: int = 240,
+    forward_r_column: str = "forward_60m_r",
+    min_sample_size: int | None = None,
+) -> pd.DataFrame:
+    """Create Section 7.14 visual audit chart batches.
+
+    The charts are for algorithm validation only. They randomly sample candidate
+    rows from pre-defined audit cohorts and overlay the Section 6/7 event levels
+    on the underlying 1-minute GC bars.
+    """
+
+    _validate_columns(
+        signal_frame,
+        [c for c in SECTION7_VISUAL_AUDIT_SIGNAL_COLUMNS if c != forward_r_column]
+        + ([forward_r_column] if forward_r_column in signal_frame.columns else []),
+        "signal_frame",
+    )
+    _validate_columns(research_bars, SECTION7_VISUAL_AUDIT_BAR_COLUMNS, "research_bars")
+    if samples_per_batch <= 0:
+        raise ValueError("samples_per_batch must be positive.")
+
+    minimum = samples_per_batch if min_sample_size is None else min_sample_size
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    bars = prepare_section7_visual_audit_bar_frame(research_bars)
+    rng = np.random.default_rng(random_state)
+    batch_specs = [
+        {
+            "batch_name": "london_short_boundary",
+            "description": "London short boundary candidates",
+            "mask": signal_frame["execution_window_label"].eq("London Execution")
+            & signal_frame["trade_side"].eq("short")
+            & signal_frame["entry_variant"].eq("boundary"),
+        },
+        {
+            "batch_name": "new_york_short_boundary",
+            "description": "New York short boundary candidates",
+            "mask": signal_frame["execution_window_label"].eq("New York Execution")
+            & signal_frame["trade_side"].eq("short")
+            & signal_frame["entry_variant"].eq("boundary"),
+        },
+        {
+            "batch_name": "elevated_volatility_long",
+            "description": "Elevated-volatility long candidates",
+            "mask": signal_frame["trade_side"].eq("long")
+            & signal_frame["retest_volatility_regime"].eq("elevated"),
+        },
+    ]
+
+    records: list[dict[str, Any]] = []
+    for batch in batch_specs:
+        candidates = signal_frame.loc[batch["mask"]].reset_index(drop=True)
+        available = len(candidates)
+        if available < minimum:
+            records.append(
+                {
+                    "batch_name": batch["batch_name"],
+                    "description": batch["description"],
+                    "status": "skipped_insufficient_sample",
+                    "available_count": available,
+                    "chart_path": pd.NA,
+                    "signal_id": pd.NA,
+                    "candidate_trade_id": pd.NA,
+                }
+            )
+            continue
+
+        sample_count = min(samples_per_batch, available)
+        sample_idx = rng.choice(available, size=sample_count, replace=False)
+        sampled = candidates.iloc[np.sort(sample_idx)].reset_index(drop=True)
+        batch_dir = out_dir / str(batch["batch_name"])
+        batch_dir.mkdir(parents=True, exist_ok=True)
+
+        for position, (_, event) in enumerate(sampled.iterrows(), start=1):
+            chart_path = batch_dir / (
+                f"{batch['batch_name']}_{position:02d}_{_safe_filename(event['signal_id'])}.png"
+            )
+            title = plot_section7_visual_audit_event(
+                event=event,
+                bars=bars,
+                output_path=chart_path,
+                context_minutes_before=context_minutes_before,
+                context_minutes_after=context_minutes_after,
+                forward_r_column=forward_r_column,
+            )
+            records.append(
+                {
+                    "batch_name": batch["batch_name"],
+                    "description": batch["description"],
+                    "status": "plotted",
+                    "available_count": available,
+                    "sample_position": position,
+                    "signal_id": event["signal_id"],
+                    "candidate_trade_id": event["candidate_trade_id"],
+                    "retest_id": event["retest_id"],
+                    "poi_id": event["poi_id"],
+                    "chart_path": str(chart_path),
+                    "title": title,
+                }
+            )
+
+    return pd.DataFrame.from_records(records)
+
+
+def prepare_section7_visual_audit_bar_frame(research_bars: pd.DataFrame) -> pd.DataFrame:
+    """Build the GC OHLC bar frame used by the Section 7.14 visual audit."""
+
+    _validate_columns(research_bars, SECTION7_VISUAL_AUDIT_BAR_COLUMNS, "research_bars")
+    bars = (
+        research_bars.loc[research_bars["product"].eq("GC"), SECTION7_VISUAL_AUDIT_BAR_COLUMNS]
+        .sort_values(["trade_date_ny", "ts_event_utc"], kind="mergesort")
+        .reset_index(drop=True)
+    )
+    bars["bar_id"] = np.arange(len(bars), dtype=np.int32)
+    return bars
+
+
+def plot_section7_visual_audit_event(
+    event: pd.Series,
+    bars: pd.DataFrame,
+    output_path: str | Path,
+    context_minutes_before: int = 90,
+    context_minutes_after: int = 240,
+    forward_r_column: str = "forward_60m_r",
+) -> str:
+    """Plot one Section 7 candidate event with POI, entry, stop, and targets."""
+
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    required_event_cols = [
+        "signal_id",
+        "retest_bar_id",
+        "retest_ts_event_ny",
+        "entry_price",
+        "stop_price",
+        "risk_points",
+        "trade_side",
+        "swing_n",
+        "break_mode",
+        "entry_variant",
+        "stop_model",
+        "execution_window_label",
+        "poi_low",
+        "poi_high",
+    ]
+    missing = sorted(set(required_event_cols).difference(event.index))
+    if missing:
+        raise KeyError(f"event is missing required columns: {missing}")
+
+    _validate_columns(
+        bars,
+        [
+            "bar_id",
+            "ts_event_ny",
+            "trade_date_ny",
+            "open",
+            "high",
+            "low",
+            "close",
+            "continuous_segment_id",
+        ],
+        "bars",
+    )
+
+    retest_bar_id = int(event["retest_bar_id"])
+    if retest_bar_id < 0 or retest_bar_id >= len(bars):
+        raise IndexError(f"retest_bar_id {retest_bar_id} is outside the bar frame.")
+
+    event_bar = bars.iloc[retest_bar_id]
+    same_context = (
+        bars["trade_date_ny"].eq(event_bar["trade_date_ny"])
+        & bars["continuous_segment_id"].eq(event_bar["continuous_segment_id"])
+    )
+    window = bars.loc[
+        same_context
+        & bars["bar_id"].between(
+            max(0, retest_bar_id - context_minutes_before),
+            retest_bar_id + context_minutes_after,
+            inclusive="both",
+        )
+    ].copy()
+    if window.empty:
+        raise ValueError(f"No bars available for visual audit event {event['signal_id']}.")
+
+    x_dt = pd.to_datetime(window["ts_event_ny"]).dt.tz_localize(None)
+    x = mdates.date2num(x_dt)
+    candle_width = 0.70 / (24 * 60)
+    up_color = "#12715b"
+    down_color = "#a23a3a"
+
+    fig, ax = plt.subplots(figsize=(15, 7))
+    for x_val, open_, high, low, close in zip(
+        x,
+        window["open"].to_numpy("float64"),
+        window["high"].to_numpy("float64"),
+        window["low"].to_numpy("float64"),
+        window["close"].to_numpy("float64"),
+    ):
+        color = up_color if close >= open_ else down_color
+        ax.vlines(x_val, low, high, color=color, linewidth=0.9, alpha=0.85)
+        body_low = min(open_, close)
+        body_height = max(abs(close - open_), 0.01)
+        ax.add_patch(
+            Rectangle(
+                (x_val - candle_width / 2, body_low),
+                candle_width,
+                body_height,
+                facecolor=color,
+                edgecolor=color,
+                linewidth=0.6,
+                alpha=0.82,
+            )
+        )
+
+    poi_low = float(event["poi_low"])
+    poi_high = float(event["poi_high"])
+    ax.axhspan(
+        poi_low,
+        poi_high,
+        color="#f2a900",
+        alpha=0.16,
+        label="POI zone",
+        zorder=0,
+    )
+
+    entry_ts = _local_naive_timestamp(event["retest_ts_event_ny"])
+    entry_x = mdates.date2num(entry_ts)
+    entry_price = float(event["entry_price"])
+    stop_price = float(event["stop_price"])
+    risk_points = float(event["risk_points"])
+    long_side = str(event["trade_side"]) == "long"
+
+    ax.scatter(
+        [entry_x],
+        [entry_price],
+        marker="^" if long_side else "v",
+        s=90,
+        color="#111111",
+        label="Entry",
+        zorder=5,
+    )
+    ax.axvline(
+        entry_x,
+        color="#111111",
+        linewidth=0.9,
+        linestyle=":",
+        alpha=0.70,
+        label="Entry time",
+    )
+    ax.axhline(entry_price, color="#111111", linewidth=1.1, linestyle="-", label="Entry price")
+    ax.axhline(stop_price, color="#d62728", linewidth=1.1, linestyle="--", label="Stop")
+
+    target_colors = {1: "#2ca02c", 2: "#1f77b4", 3: "#9467bd", 5: "#ff7f0e"}
+    for multiple in (1, 2, 3, 5):
+        target_col = f"target_{multiple}R_price"
+        if target_col in event.index and pd.notna(event[target_col]):
+            target_price = float(event[target_col])
+        else:
+            target_price = (
+                entry_price + multiple * risk_points
+                if long_side
+                else entry_price - multiple * risk_points
+            )
+        ax.axhline(
+            target_price,
+            color=target_colors[multiple],
+            linewidth=0.9,
+            linestyle=":",
+            label=f"{multiple}R target",
+        )
+
+    if "poi_created_ts_event_ny" in event.index and pd.notna(event["poi_created_ts_event_ny"]):
+        created_ts = _local_naive_timestamp(event["poi_created_ts_event_ny"])
+        if x_dt.min() <= created_ts <= x_dt.max():
+            ax.axvline(
+                mdates.date2num(created_ts),
+                color="#6c757d",
+                linewidth=1.0,
+                linestyle="-.",
+                label="POI created",
+            )
+
+    forced_exit_ts = entry_ts.normalize() + pd.Timedelta(hours=15, minutes=30)
+    if x_dt.min() <= forced_exit_ts <= x_dt.max():
+        ax.axvline(
+            mdates.date2num(forced_exit_ts),
+            color="#8c564b",
+            linewidth=1.1,
+            linestyle="--",
+            label="15:30 forced exit",
+        )
+
+    forward_r = event[forward_r_column] if forward_r_column in event.index else np.nan
+    structural_status = (
+        "structural"
+        if bool(event.get("structural_swing_break_flag", False))
+        else "local-only"
+    )
+    title = (
+        f"{event['execution_window_label']} | {event['trade_side']} | "
+        f"sw{event['swing_n']} {event['break_mode']} | "
+        f"{event['entry_variant']} / {event['stop_model']} | "
+        f"{structural_status} | {forward_r_column}={_fmt_float(forward_r)}"
+    )
+    ax.set_title(title, fontsize=11)
+    ax.set_ylabel("GC price")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    ax.grid(True, axis="y", alpha=0.22)
+    ax.grid(True, axis="x", alpha=0.10)
+
+    y_values = [
+        window["low"].min(),
+        window["high"].max(),
+        poi_low,
+        poi_high,
+        entry_price,
+        stop_price,
+    ]
+    y_values.extend(
+        [
+            float(event[f"target_{multiple}R_price"])
+            for multiple in (1, 2, 3, 5)
+            if f"target_{multiple}R_price" in event.index
+            and pd.notna(event[f"target_{multiple}R_price"])
+        ]
+    )
+    y_min = float(np.nanmin(y_values))
+    y_max = float(np.nanmax(y_values))
+    margin = max((y_max - y_min) * 0.08, 0.5)
+    ax.set_ylim(y_min - margin, y_max + margin)
+    ax.set_xlim(x.min() - candle_width, x.max() + candle_width)
+
+    handles, labels = ax.get_legend_handles_labels()
+    deduped = dict(zip(labels, handles))
+    ax.legend(
+        deduped.values(),
+        deduped.keys(),
+        loc="upper left",
+        fontsize=8,
+        ncol=2,
+        frameon=True,
+    )
+    fig.autofmt_xdate()
+    fig.tight_layout()
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    return title
+
+
 def _summarize_group_frame(
     frame: pd.DataFrame,
     group_cols: list[str],
@@ -1122,6 +1506,24 @@ def _datetime64_ns(values: pd.Series) -> np.ndarray:
         .to_numpy(dtype="datetime64[ns]")
         .astype("int64")
     )
+
+
+def _local_naive_timestamp(value: Any) -> pd.Timestamp:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        return ts.tz_localize(None)
+    return ts
+
+
+def _fmt_float(value: Any) -> str:
+    if pd.isna(value):
+        return "NA"
+    return f"{float(value):.2f}"
+
+
+def _safe_filename(value: Any) -> str:
+    text = str(value)
+    return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in text)[:120]
 
 
 def _validate_columns(df: pd.DataFrame, required_columns: list[str], name: str) -> None:

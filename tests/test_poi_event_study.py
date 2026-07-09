@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+import tempfile
 
 import numpy as np
 import pandas as pd
@@ -11,6 +13,7 @@ from src.features.poi_event_study import (
     Section7Config,
     build_bar_horizon_path_features,
     build_section7_validation,
+    build_section7_visual_audit_batches,
     build_signal_horizon_metrics,
     prepare_section7_bar_frame,
     prepare_section7_signal_frame,
@@ -149,6 +152,93 @@ class Section7EventStudyTests(unittest.TestCase):
         self.assertIn("mean_r_cap_5", summary.columns)
         self.assertIn("hit_pos_1r_rate", summary.columns)
         self.assertIn("hit_pos_15r_rate", summary.columns)
+
+    def test_visual_audit_batch_writes_chart_manifest(self):
+        bars = _synthetic_research_bars().copy()
+        bars["open"] = bars["close"].shift(1).fillna(bars["close"])
+        bars = bars[
+            [
+                "ts_event_utc",
+                "ts_event_ny",
+                "trade_date_ny",
+                "product",
+                "open",
+                "high",
+                "low",
+                "close",
+                "minute_of_day_ny",
+                "continuous_segment_id",
+                "tradable_research_flag",
+                "roll_window_flag",
+            ]
+        ]
+
+        base = _synthetic_signal_frame().iloc[0].to_dict()
+        base.update(
+            {
+                "poi_created_ts_event_ny": pd.Timestamp(
+                    "2024-01-03 11:58",
+                    tz="America/New_York",
+                ),
+                "poi_activation_ts_event_ny": pd.Timestamp(
+                    "2024-01-03 11:59",
+                    tz="America/New_York",
+                ),
+                "poi_low": 2000.25,
+                "poi_high": 2000.75,
+                "target_1R_price": 2003.00,
+                "target_2R_price": 2005.50,
+                "target_3R_price": 2008.00,
+                "target_5R_price": 2013.00,
+            }
+        )
+        london_short = dict(base)
+        london_short.update(
+            {
+                "signal_id": "GC_SIG_LONDON_SHORT",
+                "candidate_trade_id": "GC_CAND_LONDON_SHORT",
+                "execution_window_label": "London Execution",
+                "trade_side": "short",
+                "entry_variant": "boundary",
+                "retest_volatility_regime": "extreme",
+            }
+        )
+        ny_short = dict(london_short)
+        ny_short.update(
+            {
+                "signal_id": "GC_SIG_NY_SHORT",
+                "candidate_trade_id": "GC_CAND_NY_SHORT",
+                "execution_window_label": "New York Execution",
+            }
+        )
+        elevated_long = dict(base)
+        elevated_long.update(
+            {
+                "signal_id": "GC_SIG_ELEVATED_LONG",
+                "candidate_trade_id": "GC_CAND_ELEVATED_LONG",
+                "execution_window_label": "New York Execution",
+                "trade_side": "long",
+                "entry_variant": "boundary",
+                "retest_volatility_regime": "elevated",
+            }
+        )
+        signals = pd.DataFrame([london_short, ny_short, elevated_long])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manifest = build_section7_visual_audit_batches(
+                signal_frame=signals,
+                research_bars=bars,
+                output_dir=tmp_dir,
+                samples_per_batch=1,
+                random_state=1,
+                min_sample_size=1,
+            )
+
+            plotted = manifest.loc[manifest["status"].eq("plotted")]
+            self.assertEqual(len(plotted), 3)
+            self.assertTrue(
+                all(Path(path).exists() for path in plotted["chart_path"].to_list())
+            )
 
 
 if __name__ == "__main__":
