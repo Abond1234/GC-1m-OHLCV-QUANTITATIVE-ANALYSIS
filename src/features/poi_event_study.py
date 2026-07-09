@@ -139,6 +139,33 @@ SECTION7_VISUAL_AUDIT_SIGNAL_COLUMNS = list(
     )
 )
 
+SECTION7_POI_SELECTION_AUDIT_SIGNAL_COLUMNS = list(
+    dict.fromkeys(
+        [
+            "signal_id",
+            "poi_id",
+            "direction",
+            "trade_date_ny",
+            "swing_n",
+            "break_mode",
+            "execution_window_label",
+            "poi_middle_bar_id",
+            "poi_confirm_bar_id",
+            "poi_activation_bar_id",
+            "break_bar_id",
+            "poi_middle_ts_event_ny",
+            "poi_created_ts_event_ny",
+            "poi_activation_ts_event_ny",
+            "break_ts_event_ny",
+            "poi_low",
+            "poi_high",
+            "structural_swing_break_flag",
+            "structural_swing_window_broken",
+            "local_swing_only_flag",
+        ]
+    )
+)
+
 
 def default_section7_group_specs() -> list[EventStudyGroupSpec]:
     """Return the standard Section 7 diagnostic grouping contract."""
@@ -1283,6 +1310,297 @@ def plot_section7_visual_audit_event(
     return title
 
 
+def build_section7_poi_selection_audit_batches(
+    signal_frame: pd.DataFrame,
+    research_bars: pd.DataFrame,
+    output_dir: str | Path,
+    samples_per_group: int = 15,
+    random_state: int = 7142,
+    context_bars_before: int = 40,
+    context_bars_after: int = 60,
+) -> pd.DataFrame:
+    """Create Section 7.14B POI-selection visual audit batches.
+
+    This audit validates whether the POI candle and zone are selected correctly.
+    It intentionally does not draw entries, stops, targets, or forward outcomes.
+    """
+
+    _validate_columns(
+        signal_frame,
+        SECTION7_POI_SELECTION_AUDIT_SIGNAL_COLUMNS,
+        "signal_frame",
+    )
+    _validate_columns(research_bars, SECTION7_VISUAL_AUDIT_BAR_COLUMNS, "research_bars")
+    if samples_per_group <= 0:
+        raise ValueError("samples_per_group must be positive.")
+
+    out_dir = Path(output_dir)
+    structural_dir = out_dir / "structural"
+    local_dir = out_dir / "local_only"
+    structural_dir.mkdir(parents=True, exist_ok=True)
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    bars = prepare_section7_visual_audit_bar_frame(research_bars)
+    unique_pois = (
+        signal_frame.loc[:, SECTION7_POI_SELECTION_AUDIT_SIGNAL_COLUMNS]
+        .sort_values(["poi_id", "signal_id"], kind="mergesort")
+        .drop_duplicates("poi_id", keep="first")
+        .reset_index(drop=True)
+    )
+
+    batch_specs = [
+        {
+            "batch_name": "structural",
+            "mask": unique_pois["structural_swing_break_flag"].astype(bool),
+            "output_dir": structural_dir,
+        },
+        {
+            "batch_name": "local_only",
+            "mask": unique_pois["local_swing_only_flag"].astype(bool),
+            "output_dir": local_dir,
+        },
+    ]
+
+    records: list[dict[str, Any]] = []
+    rng = np.random.default_rng(random_state)
+    sample_counter = 1
+    for batch in batch_specs:
+        candidates = unique_pois.loc[batch["mask"]].reset_index(drop=True)
+        available = len(candidates)
+        if candidates.empty:
+            records.append(
+                _poi_selection_index_record(
+                    sample_id=pd.NA,
+                    event=None,
+                    image_path=pd.NA,
+                    batch_name=batch["batch_name"],
+                    status="skipped_no_candidates",
+                    available_count=available,
+                )
+            )
+            continue
+
+        sampled = _sample_poi_selection_candidates(
+            candidates,
+            sample_count=min(samples_per_group, available),
+            rng=rng,
+        )
+        for _, event in sampled.iterrows():
+            sample_id = f"POI_SEL_{sample_counter:03d}"
+            file_name = (
+                f"{sample_id}_{batch['batch_name']}_{_safe_filename(event['signal_id'])}.png"
+            )
+            image_path = Path(batch["output_dir"]) / file_name
+            plot_section7_poi_selection_audit_event(
+                event=event,
+                bars=bars,
+                output_path=image_path,
+                context_bars_before=context_bars_before,
+                context_bars_after=context_bars_after,
+            )
+            records.append(
+                _poi_selection_index_record(
+                    sample_id=sample_id,
+                    event=event,
+                    image_path=image_path,
+                    batch_name=batch["batch_name"],
+                    status="plotted",
+                    available_count=available,
+                )
+            )
+            sample_counter += 1
+
+    out = pd.DataFrame.from_records(records)
+    index_path = out_dir / "poi_selection_audit_index.csv"
+    out.to_csv(index_path, index=False)
+    return out
+
+
+def plot_section7_poi_selection_audit_event(
+    event: pd.Series,
+    bars: pd.DataFrame,
+    output_path: str | Path,
+    context_bars_before: int = 40,
+    context_bars_after: int = 60,
+) -> str:
+    """Plot one POI-selection audit event without trade overlays."""
+
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    required_event_cols = [
+        "signal_id",
+        "direction",
+        "swing_n",
+        "break_mode",
+        "poi_middle_bar_id",
+        "poi_confirm_bar_id",
+        "break_bar_id",
+        "poi_created_ts_event_ny",
+        "poi_low",
+        "poi_high",
+        "structural_swing_break_flag",
+    ]
+    missing = sorted(set(required_event_cols).difference(event.index))
+    if missing:
+        raise KeyError(f"event is missing required columns: {missing}")
+    _validate_columns(
+        bars,
+        [
+            "bar_id",
+            "ts_event_ny",
+            "trade_date_ny",
+            "open",
+            "high",
+            "low",
+            "close",
+            "continuous_segment_id",
+        ],
+        "bars",
+    )
+
+    poi_bar_id = int(event["poi_middle_bar_id"])
+    confirm_bar_id = int(event["poi_confirm_bar_id"])
+    if poi_bar_id < 0 or poi_bar_id >= len(bars):
+        raise IndexError(f"poi_middle_bar_id {poi_bar_id} is outside the bar frame.")
+    if confirm_bar_id < 0 or confirm_bar_id >= len(bars):
+        confirm_bar_id = poi_bar_id
+
+    poi_bar = bars.iloc[poi_bar_id]
+    same_context = (
+        bars["trade_date_ny"].eq(poi_bar["trade_date_ny"])
+        & bars["continuous_segment_id"].eq(poi_bar["continuous_segment_id"])
+    )
+    left_bar = max(0, confirm_bar_id - context_bars_before)
+    right_bar = confirm_bar_id + context_bars_after
+    left_bar = min(left_bar, poi_bar_id)
+    right_bar = max(right_bar, poi_bar_id)
+    if "break_bar_id" in event.index and pd.notna(event["break_bar_id"]):
+        break_bar_id = int(event["break_bar_id"])
+        left_bar = min(left_bar, break_bar_id)
+        right_bar = max(right_bar, break_bar_id)
+
+    window = bars.loc[
+        same_context & bars["bar_id"].between(left_bar, right_bar, inclusive="both")
+    ].copy()
+    if window.empty:
+        raise ValueError(f"No bars available for POI-selection audit {event['signal_id']}.")
+
+    x_dt = pd.to_datetime(window["ts_event_ny"]).dt.tz_localize(None)
+    x = mdates.date2num(x_dt)
+    candle_width = 0.70 / (24 * 60)
+    up_color = "#12715b"
+    down_color = "#a23a3a"
+
+    fig, ax = plt.subplots(figsize=(13, 6))
+    for x_val, open_, high, low, close in zip(
+        x,
+        window["open"].to_numpy("float64"),
+        window["high"].to_numpy("float64"),
+        window["low"].to_numpy("float64"),
+        window["close"].to_numpy("float64"),
+    ):
+        color = up_color if close >= open_ else down_color
+        ax.vlines(x_val, low, high, color=color, linewidth=0.9, alpha=0.88)
+        body_low = min(open_, close)
+        body_height = max(abs(close - open_), 0.01)
+        ax.add_patch(
+            Rectangle(
+                (x_val - candle_width / 2, body_low),
+                candle_width,
+                body_height,
+                facecolor=color,
+                edgecolor=color,
+                linewidth=0.6,
+                alpha=0.85,
+            )
+        )
+
+    poi_low = float(event["poi_low"])
+    poi_high = float(event["poi_high"])
+    ax.axhspan(
+        poi_low,
+        poi_high,
+        color="#f2a900",
+        alpha=0.18,
+        label="POI zone",
+        zorder=0,
+    )
+
+    poi_x = mdates.date2num(_local_naive_timestamp(poi_bar["ts_event_ny"]))
+    direction = str(event["direction"])
+    bullish = direction == "bullish"
+    arrow_price = poi_low if bullish else poi_high
+    y_min = float(min(window["low"].min(), poi_low))
+    y_max = float(max(window["high"].max(), poi_high))
+    y_range = max(y_max - y_min, 0.5)
+    marker = "^" if bullish else "v"
+    ax.scatter(
+        [poi_x],
+        [arrow_price],
+        marker=marker,
+        s=110,
+        color="#111111",
+        label="POI selected",
+        zorder=6,
+    )
+    ax.annotate(
+        "POI selected",
+        xy=(poi_x, arrow_price),
+        xytext=(26, 0),
+        textcoords="offset points",
+        ha="left",
+        va="center",
+        fontsize=9,
+        arrowprops={"arrowstyle": "->", "color": "#111111", "linewidth": 1.0},
+        color="#111111",
+        zorder=7,
+    )
+
+    structural_flag = bool(event.get("structural_swing_break_flag", False))
+    structural_status = "structural" if structural_flag else "local-only"
+    structural_window = event.get("structural_swing_window_broken", pd.NA)
+    structural_window_text = (
+        f"sw_window={int(structural_window)}"
+        if pd.notna(structural_window)
+        else "sw_window=NA"
+    )
+    poi_created_text = (
+        _local_naive_timestamp(event["poi_created_ts_event_ny"]).strftime("%Y-%m-%d %H:%M")
+        if pd.notna(event["poi_created_ts_event_ny"])
+        else "NA"
+    )
+    session = (
+        str(event["execution_window_label"])
+        if "execution_window_label" in event.index
+        and pd.notna(event["execution_window_label"])
+        else "session=NA"
+    )
+    title = (
+        f"{event['signal_id']} | {direction} | sw{event['swing_n']} {event['break_mode']} | "
+        f"{structural_status} {structural_window_text} | POI created {poi_created_text} | "
+        f"{session}"
+    )
+    ax.set_title(title, fontsize=10)
+    ax.set_ylabel("GC price")
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    ax.grid(True, axis="y", alpha=0.22)
+    ax.grid(True, axis="x", alpha=0.10)
+    ax.set_xlim(x.min() - candle_width, x.max() + candle_width)
+    margin = y_range * 0.10
+    ax.set_ylim(y_min - margin, y_max + margin)
+    ax.legend(loc="upper left", fontsize=8, frameon=True)
+    fig.autofmt_xdate()
+    fig.tight_layout()
+
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    return title
+
+
 def _summarize_group_frame(
     frame: pd.DataFrame,
     group_cols: list[str],
@@ -1406,6 +1724,121 @@ def _horizon_quality_record(
         "valid_count": int(metrics["valid"].sum()),
         "valid_rate": float(metrics["valid"].mean()),
         "forced_exit_rate": float(metrics["forced_exit_flag"].mean()),
+    }
+
+
+def _sample_poi_selection_candidates(
+    candidates: pd.DataFrame,
+    sample_count: int,
+    rng: np.random.Generator,
+) -> pd.DataFrame:
+    if sample_count >= len(candidates):
+        return candidates.sample(frac=1.0, random_state=int(rng.integers(0, 2**32 - 1)))
+
+    direction_counts = candidates["direction"].value_counts()
+    if {"bullish", "bearish"}.issubset(set(direction_counts.index)) and sample_count >= 2:
+        base_each = sample_count // 2
+        allocations = {
+            "bullish": min(base_each, int(direction_counts["bullish"])),
+            "bearish": min(sample_count - base_each, int(direction_counts["bearish"])),
+        }
+        shortfall = sample_count - sum(allocations.values())
+        if shortfall > 0:
+            for direction in ("bullish", "bearish"):
+                available_extra = int(direction_counts[direction]) - allocations[direction]
+                take = min(shortfall, available_extra)
+                allocations[direction] += take
+                shortfall -= take
+                if shortfall == 0:
+                    break
+
+        sampled_parts = []
+        for direction, count in allocations.items():
+            if count <= 0:
+                continue
+            group = candidates.loc[candidates["direction"].eq(direction)]
+            sampled_parts.append(
+                group.sample(
+                    n=count,
+                    replace=False,
+                    random_state=int(rng.integers(0, 2**32 - 1)),
+                )
+            )
+        sampled = pd.concat(sampled_parts, ignore_index=True)
+        if len(sampled) < sample_count:
+            remainder = candidates.loc[~candidates["poi_id"].isin(sampled["poi_id"])]
+            sampled = pd.concat(
+                [
+                    sampled,
+                    remainder.sample(
+                        n=sample_count - len(sampled),
+                        replace=False,
+                        random_state=int(rng.integers(0, 2**32 - 1)),
+                    ),
+                ],
+                ignore_index=True,
+            )
+        return sampled.sample(
+            frac=1.0,
+            random_state=int(rng.integers(0, 2**32 - 1)),
+        ).reset_index(drop=True)
+
+    return candidates.sample(
+        n=sample_count,
+        replace=False,
+        random_state=int(rng.integers(0, 2**32 - 1)),
+    ).reset_index(drop=True)
+
+
+def _poi_selection_index_record(
+    *,
+    sample_id: Any,
+    event: pd.Series | None,
+    image_path: Any,
+    batch_name: str,
+    status: str,
+    available_count: int,
+) -> dict[str, Any]:
+    if event is None:
+        return {
+            "sample_id": sample_id,
+            "signal_id": pd.NA,
+            "image_path": image_path,
+            "poi_time": pd.NA,
+            "poi_low": np.nan,
+            "poi_high": np.nan,
+            "direction": pd.NA,
+            "swing_n": pd.NA,
+            "break_mode": pd.NA,
+            "structural_validation_flag": pd.NA,
+            "structural_window": pd.NA,
+            "session_label": pd.NA,
+            "manual_review_status": "",
+            "manual_notes": "",
+            "batch_name": batch_name,
+            "status": status,
+            "available_count": available_count,
+        }
+
+    structural_window = event.get("structural_swing_window_broken", pd.NA)
+    return {
+        "sample_id": sample_id,
+        "signal_id": event["signal_id"],
+        "image_path": str(image_path),
+        "poi_time": event.get("poi_middle_ts_event_ny", event.get("poi_created_ts_event_ny", pd.NA)),
+        "poi_low": event["poi_low"],
+        "poi_high": event["poi_high"],
+        "direction": event["direction"],
+        "swing_n": event["swing_n"],
+        "break_mode": event["break_mode"],
+        "structural_validation_flag": bool(event.get("structural_swing_break_flag", False)),
+        "structural_window": structural_window if pd.notna(structural_window) else pd.NA,
+        "session_label": event.get("execution_window_label", pd.NA),
+        "manual_review_status": "",
+        "manual_notes": "",
+        "batch_name": batch_name,
+        "status": status,
+        "available_count": available_count,
     }
 
 

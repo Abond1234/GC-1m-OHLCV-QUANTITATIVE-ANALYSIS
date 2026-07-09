@@ -13,6 +13,7 @@ from src.features.poi_event_study import (
     Section7Config,
     build_bar_horizon_path_features,
     build_section7_validation,
+    build_section7_poi_selection_audit_batches,
     build_section7_visual_audit_batches,
     build_signal_horizon_metrics,
     prepare_section7_bar_frame,
@@ -239,6 +240,88 @@ class Section7EventStudyTests(unittest.TestCase):
             self.assertTrue(
                 all(Path(path).exists() for path in plotted["chart_path"].to_list())
             )
+
+    def test_poi_selection_audit_writes_index_and_charts(self):
+        bars = _synthetic_research_bars().copy()
+        bars["open"] = bars["close"].shift(1).fillna(bars["close"])
+        bars = bars[
+            [
+                "ts_event_utc",
+                "ts_event_ny",
+                "trade_date_ny",
+                "product",
+                "open",
+                "high",
+                "low",
+                "close",
+                "minute_of_day_ny",
+                "continuous_segment_id",
+                "tradable_research_flag",
+                "roll_window_flag",
+            ]
+        ]
+
+        base = _synthetic_signal_frame().iloc[0].to_dict()
+        base.update(
+            {
+                "poi_id": "GC_POI_STRUCT",
+                "poi_middle_bar_id": 4,
+                "poi_confirm_bar_id": 5,
+                "poi_activation_bar_id": 5,
+                "break_bar_id": 9,
+                "poi_middle_ts_event_ny": pd.Timestamp(
+                    "2024-01-03 11:59",
+                    tz="America/New_York",
+                ),
+                "poi_created_ts_event_ny": pd.Timestamp(
+                    "2024-01-03 12:00",
+                    tz="America/New_York",
+                ),
+                "poi_activation_ts_event_ny": pd.Timestamp(
+                    "2024-01-03 12:00",
+                    tz="America/New_York",
+                ),
+                "break_ts_event_ny": pd.Timestamp(
+                    "2024-01-03 12:04",
+                    tz="America/New_York",
+                ),
+                "poi_low": 2000.25,
+                "poi_high": 2000.75,
+                "structural_swing_break_flag": True,
+                "structural_swing_window_broken": 15,
+                "local_swing_only_flag": False,
+            }
+        )
+        local = dict(base)
+        local.update(
+            {
+                "signal_id": "GC_SIG_LOCAL_POI",
+                "poi_id": "GC_POI_LOCAL",
+                "direction": "bearish",
+                "structural_swing_break_flag": False,
+                "structural_swing_window_broken": pd.NA,
+                "local_swing_only_flag": True,
+            }
+        )
+        signals = pd.DataFrame([base, local])
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            index = build_section7_poi_selection_audit_batches(
+                signal_frame=signals,
+                research_bars=bars,
+                output_dir=tmp_dir,
+                samples_per_group=1,
+                random_state=2,
+            )
+
+            plotted = index.loc[index["status"].eq("plotted")]
+            self.assertEqual(len(plotted), 2)
+            self.assertTrue((Path(tmp_dir) / "poi_selection_audit_index.csv").exists())
+            self.assertTrue(
+                all(Path(path).exists() for path in plotted["image_path"].to_list())
+            )
+            self.assertIn("manual_review_status", index.columns)
+            self.assertIn("manual_notes", index.columns)
 
 
 if __name__ == "__main__":
