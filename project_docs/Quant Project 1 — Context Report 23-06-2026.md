@@ -350,7 +350,7 @@ notebooks/exploration/exp1.ipynb
 ```text
 Sections 1-5: Data acquisition, EDA, research dataset construction, and strategy formalization
 Section 6: Final refined POI definition and machine-readable signal tables — complete
-Section 7: POI-context and conditional-signal research — current phase
+Section 7: True POI context and conditional-signal research — complete; no Section 8 candidate approved
 Section 8: Future sequential backtesting phase — not started
 Appendix A: Superseded prototype event study retained for research history
 ```
@@ -4444,7 +4444,7 @@ This final section is the current-state override for older milestone/status stat
 
 ```text
 Section 6: Final refined POI definition and machine-readable signal tables — complete.
-Section 7: POI-context and conditional-signal research — current phase.
+Section 7: True POI context and conditional-signal research — complete; no Section 8 candidate approved.
 Original baseline and prototype event studies — retained for research history but superseded.
 Section 8: Sequential backtesting — not started.
 ```
@@ -4454,18 +4454,234 @@ Notebook reading order:
 ```text
 Sections 1-5 — Data, EDA, research dataset, and strategy formalization
 Section 6 — Complete POI-engine development and authoritative refined baseline
-Section 7 — Authoritative refined event-study baseline, limitations, and context-research roadmap
+Section 7 — Completed True POI context, first-passage, out-of-sample, and candidate-policy research
 Appendix A — Legacy prototype event study, not current independent evidence
 ```
 
 Current research contract:
 
 ```text
-The refined POI definition is frozen as the authoritative project baseline.
-Section 7 must use the refined Section 6 signal frame and now focuses on market context.
-The objective is to separate continuation, reversal, and no-trade conditions.
-No new context features were implemented during notebook cleanup.
-No full sequential backtest has started.
+The refined True POI definition is frozen as the authoritative project baseline.
+Section 7 used the refined Section 6 signal frame and completed the market-context research phase.
+The research separates continuation, reversal, and no-trade conditions at the True POI/retest level.
+No full sequential backtest has started, and no Section 8 candidate is approved.
+```
+
+---
+
+# Authoritative True POI Context Research Completion — 2026-07-12
+
+This entry supersedes older current-phase statements while preserving every historical progress entry above.
+
+## Status, Terminology, and Locked Time Rules
+
+```text
+Section 6: complete and frozen.
+Section 7: complete as an event-level context and first-passage policy study.
+Section 8: not started.
+Section 8 approval: none.
+```
+
+Reader-facing terminology is now `True POI`, `true_poi_id`, `true_retest_id`, and `true_trade_opportunity_id`. A True POI is one unique refined A/B/C market formation after duplicate swing-window and break-mode representations are removed. “True” means the unique underlying formation; it does not imply profitability, validation, or a guaranteed reaction. Existing `canonical_*` columns and internal `section6c_*` / `section7r_*` filenames remain legacy compatibility and reproducibility fields. Exact `true_*` aliases were added to reusable refinement code and all new Section 7 objects.
+
+The authoritative timing distinction is:
+
+```text
+POI search: 1:00am-12:00pm New York
+London entry: 3:00am-6:00am New York
+New York entry: 7:00am-12:00pm New York
+12:00pm: no new entries and True POI expiry
+3:30pm: mandatory exit for positions already entered
+No overnight positions
+```
+
+The stale noon-flat statement in notebook Section 5.8 was corrected without otherwise rewriting completed Section 5.
+
+## Implementation and Generated Objects
+
+New reusable implementation:
+
+```text
+src/features/poi_context_features.py
+src/features/poi_first_passage.py
+src/research/poi_context_event_study.py
+scripts/run_section7_poi_context_research.py
+scripts/update_section7_notebook.py
+tests/test_poi_context_features.py
+tests/test_poi_first_passage.py
+tests/test_poi_context_event_study.py
+```
+
+Generated outputs:
+
+```text
+section7_true_poi_context_frame_gc.parquet
+section7_true_poi_outcome_labels_gc.parquet
+section7_true_poi_feature_study_summary_gc.parquet
+section7_true_poi_interaction_summary_gc.parquet
+section7_true_poi_stop_target_summary_gc.parquet
+section7_true_poi_candidate_ranking_gc.parquet
+section7_true_poi_backtest_candidate_registry_gc.parquet
+section7_true_poi_location_quality_summary_gc.parquet
+reports/section7_true_poi_feature_registry.csv
+reports/section7_true_poi_backtest_candidate_registry_gc.csv
+```
+
+Generated Parquet and CSV artifacts remain excluded from Git.
+
+## Full-Run Counts and Partitions
+
+```text
+Legacy refined signal rows read:       1,080,394
+Unique True POIs:                           7,433
+Unique True POI/retest opportunities:     179,036
+Paired directional label rows:            358,072
+Unique trading dates:                         882
+Feature registry rows:                        264
+```
+
+Chronological partitions:
+
+```text
+Development through 2023-12-31: 776 True POIs; 13,643 retests; 352 dates
+Validation calendar 2024:        694 True POIs; 11,487 retests; 194 dates
+Final test through 2026-05-22:  5,963 True POIs; 153,906 retests; 336 dates
+```
+
+Actual eligible retests begin 2021-05-26. Research variants remain attributes and flags, never independent headline samples.
+
+## Feature Registry and No-Lookahead Contract
+
+The registry covers every one of the 264 delivered `feat_*` columns: 29 formation/geometry, 24 displacement, 132 approach, 23 touch-interaction, 49 market-context, four retest-state, and three session-context fields. Approach windows are 3/5/10/15/30 completed minutes ending at `touch_bar - 1`. Market context includes past-only VWAP, trend, volatility, volume, time-of-day baseline, session state, and extension/exhaustion.
+
+Touch-close fields may only be used for next-bar confirmation entries. Automated checks require:
+
+```text
+formation availability bar < retest bar
+pre-touch availability bar  < retest bar
+touch-close availability bar == retest bar
+```
+
+Development quantiles and volatility thresholds are fit only on development data and applied unchanged to validation/test. Forward labels never enter the `feat_*` namespace.
+
+## Location Quality and Directional Outcomes
+
+True POI retests were compared with non-POI controls matched by partition, session, 30-minute time bin, development-fitted volatility bucket, and recent-move bucket.
+
+Median 60-minute expansion in one-minute ATR units:
+
+```text
+                 True POI    Matched control
+Development        5.196          4.778
+Validation         5.256          5.099
+Final test         5.944          5.560
+```
+
+True POIs are modestly better expansion locations, but the difference is small relative to matched state. Both samples exceed 0.5/1.0 one-minute ATR almost universally at 60 minutes, so those thresholds are not discriminative. Location quality does not imply direction.
+
+Robust ±5R 60-minute directional means:
+
+```text
+Continuation short: development 0.094; validation 0.137; final test 0.185
+Continuation long:  development 0.046; validation -0.064; final test 0.124
+Reversal short:      development 0.195; validation 0.124; final test -0.105
+Reversal long:       development 0.116; validation -0.185; final test -0.060
+```
+
+Broad reversal does not survive final test or ordered execution. Continuation short remains the strongest broad directional family, but a True POI touch is not an automatic short.
+
+## First Passage, Stops, Targets, and Holding
+
+The reusable first-passage engine records entry fill, target-before-stop, stop-before-target, time/mandatory exit before either, no fill, invalid path, same-bar and entry-bar ambiguity, barrier times, forced-exit R, and maximum favorable/adverse R. Paths cannot cross dates, contracts, continuous segments, or invalid entry/forced-exit boundaries.
+
+Ambiguity treatments are conservative stop-first for headlines, ambiguity-excluded sensitivity, and optimistic target-first sensitivity. At the primary 2R True-POI-invalidation continuation policy, same-bar ambiguity was 4.16% development, 4.89% validation, and 17.13% final test. Final-test mean changed from -0.169R conservative to +0.054R excluded and +0.464R optimistic. That sensitivity blocks approval of fragile same-bar policies.
+
+Stops tested:
+
+```text
+True POI invalidation plus one tick
+Recent pre-entry micro-swing
+Volatility-adjusted hybrid
+Touch/rejection candle for next-bar entry
+Legacy conservative-adjacent reference
+```
+
+Continuation at 2R and a 240-minute maximum hold:
+
+```text
+Volatility hybrid:  0.056R development; 0.039R validation; 0.043R test
+Recent micro-swing: 0.020R development; 0.029R validation; 0.032R test
+True POI stop:     -0.004R development; -0.034R validation; -0.169R test
+Touch-candle stop: -0.108R development; -0.094R validation; -0.093R test
+```
+
+All broad medians and 25th percentiles remained -1R. Only about 34% of validation volatility-hybrid risks met the legacy 25-100 tick range; out-of-range rows were reported, not discarded.
+
+Targets tested were 1/1.5/2/3/4/5/7.5/10/15R. Time exits were 15/30/60/120/180/240 minutes plus the 3:30pm mandatory exit. Higher target means were often rare-runner driven while median and downside stayed at the stop, so no universal target was selected.
+
+## Conditional Features and Pre-Specified Interactions
+
+Retained for conditional or risk use, not standalone direction:
+
+```text
+Opening-gap / POI-width ratio
+15-minute candle overlap
+Time-of-day-adjusted relative volume
+Displacement efficiency and relative volume
+POI age and prior-touch count
+Volatility and session-extension measures
+```
+
+Low 15-minute overlap produced robust continuation means of 0.158R/0.231R/0.191R across development/validation/test, but final-test monotonicity failed. High time-of-day-adjusted relative volume produced 0.155R/0.206R/0.189R and was also non-monotonic.
+
+Pre-specified continuation interactions that helped in validation and test were 15-bar structure x displacement quality, volatility x normalized stop width, early-London short context, and standard geometry x normalized FVG. Their strongest validation cohorts had limited date coverage and remain hypotheses. Displacement-volume x approach-volume, displacement-quality x approach-quality, compression x continuation, and generic trend alignment failed stability. Broad screens use trading-date block bootstrap intervals and Benjamini-Hochberg development q-values.
+
+## Exact Candidate Policies and Decisions
+
+Four policies passed minimum development/validation freeze coverage:
+
+```text
+S7P02_NY_BEAR_CONT — RESEARCH_ONLY
+New York; bearish True POI continuation short; Case 2; compressed 15m approach;
+boundary entry at first-contact edge; volatility-hybrid stop; 3R target;
+240m maximum hold; 15:30 forced exit; conservative ambiguity.
+Development +0.102R; validation +0.122R; final test +0.037R.
+Median and Q25 = -1R in every partition. Final-test stop-before-target = 58.31%.
+
+S7P05_NY_BULL_CONT — REJECT
+Validation +0.018R; final test -0.077R.
+
+S7P04_NY_BULL_REV_CONFIRM — REJECT
+Development -0.153R; validation -0.059R; final test -0.072R.
+
+S7P06_NY_BEAR_REV — REJECT
+Development -0.132R; validation -0.154R; final test -0.152R.
+```
+
+Final decision:
+
+```text
+No Section 8 candidate approved.
+```
+
+The leading policy remains `RESEARCH_ONLY` because its positive mean is runner-dependent and its central/downside outcomes fail the advancement standard.
+
+## Runtime, Validation, and Limitations
+
+Main full-run runtime was 321.1 seconds. The matched-control pass added 8.7 seconds. Peak observed RSS was approximately 4.05 GB during first passage. The engine uses one sorted bar index, chunks event/path matrices, and reuses prepared bar arrays across policies.
+
+Validation covered True POI/retest deduplication and alias consistency; formation/pre-touch/touch-close timing; continuation/reversal side mapping; first/later touch identity; entry fill and barrier ordering; same-bar/entry-bar ambiguity; time/forced exits; noon, date, contract, and segment boundaries; zero denominators and missing history; development-bin reuse; legacy Section 6 and refined Section 7 regression tests; compilation; and execution of every new notebook code cell against saved outputs.
+
+Known limitations:
+
+```text
+1-minute OHLCV cannot resolve intrabar ordering.
+OHLCV volume is not aggressor-side order-flow delta.
+Retests from one True POI and overlapping paths remain correlated despite grouped/date-block summaries.
+The final-test population is much larger because qualifying signals concentrate in 2025-2026.
+The 25-100 tick compatibility range excludes much of several meaningful stop families.
+Event-level expectancy is not a sequential backtest; re-entry and overlapping positions are not sequenced.
+GC-to-MGC execution mapping, costs, sizing, portfolio state, and Section 8 remain out of scope.
 ```
 
 ---

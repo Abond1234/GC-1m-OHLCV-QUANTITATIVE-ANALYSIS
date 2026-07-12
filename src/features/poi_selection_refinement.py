@@ -651,6 +651,7 @@ def select_final_refined_pois(audit: pd.DataFrame) -> pd.DataFrame:
     if out.empty:
         return out
     out["poi_id"] = out["poi_variant_id"].astype("string")
+    out = add_true_poi_identity_aliases(out)
     out = out.sort_values(
         ["trade_date_ny", "swing_n", "break_mode", "direction", "poi_activation_bar_id", "poi_middle_bar_id"],
         kind="mergesort",
@@ -832,7 +833,7 @@ def _enrich_refined_retests(
         validate="many_to_one",
     )
     out["poi_definition_version"] = config.poi_definition_version
-    return out
+    return add_true_poi_identity_aliases(out)
 
 
 def _enrich_refined_candidates(
@@ -897,7 +898,7 @@ def _enrich_refined_candidates(
         + out["stop_model"].astype("string")
     )
     out["poi_definition_version"] = config.poi_definition_version
-    return out
+    return add_true_poi_identity_aliases(out)
 
 
 def _finalize_refined_signal_frame(
@@ -909,8 +910,29 @@ def _finalize_refined_signal_frame(
     out = signal_frame.copy().reset_index(drop=True)
     out["signal_id"] = "GC6C_SIG_" + (out.index + 1).astype(str).str.zfill(8)
     out["poi_definition_version"] = config.poi_definition_version
-    first = ["signal_id", "candidate_variant_id", "canonical_candidate_id"]
+    out = add_true_poi_identity_aliases(out)
+    first = ["signal_id", "candidate_variant_id", "true_trade_opportunity_id", "canonical_candidate_id"]
     return out[first + [col for col in out.columns if col not in set(first)]]
+
+
+def add_true_poi_identity_aliases(frame: pd.DataFrame) -> pd.DataFrame:
+    """Add reader-facing True POI identities while retaining legacy aliases.
+
+    ``canonical_*`` remains a compatibility contract for historical Section 6C
+    artifacts. New code and outputs should use the exact ``true_*`` aliases.
+    """
+
+    out = frame.copy()
+    mapping = {
+        "canonical_poi_id": "true_poi_id",
+        "canonical_retest_id": "true_retest_id",
+        "canonical_retest_number": "true_retest_number",
+        "canonical_candidate_id": "true_trade_opportunity_id",
+    }
+    for legacy, current in mapping.items():
+        if legacy in out and current not in out:
+            out[current] = out[legacy]
+    return out
 
 
 def _attach_first_downstream_lineage(
