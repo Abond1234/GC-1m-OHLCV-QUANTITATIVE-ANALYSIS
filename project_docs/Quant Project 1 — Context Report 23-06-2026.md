@@ -326,6 +326,8 @@ statsmodels
 pyarrow
 databento
 jupyter
+import time
+from pathlib import Path
 ```
 
 ### Notes
@@ -342,6 +344,18 @@ jupyter
 ```text
 notebooks/exploration/exp1.ipynb
 ```
+
+## Authoritative Reader Map
+
+```text
+Sections 1-5: Data acquisition, EDA, research dataset construction, and strategy formalization
+Section 6: Final refined POI definition and machine-readable signal tables — complete
+Section 7: POI-context and conditional-signal research — current phase
+Section 8: Future sequential backtesting phase — not started
+Appendix A: Superseded prototype event study retained for research history
+```
+
+The main notebook uses normal sequential reader-facing numbering. Internal reproducibility names such as `section6c_*`, `section7r_*`, `poi_selection_refinement.py`, and `poi_event_study_refined.py` remain unchanged.
 
 ---
 
@@ -3931,5 +3945,527 @@ Proceed to:
 ```
 
 Section 8 should not backtest every raw POI candidate. It should start with the narrow candidate scopes identified above, preserve the 12:00pm no-new-entry rule, and enforce the 3:30pm New York forced-exit rule.
+
+---
+
+# 6C POI Selection Refinement and 7R Refined Event Study
+
+## Status
+
+Section 6C and Section 7R are complete. Section 8 has not begun.
+
+This work is non-destructive. The original Section 6 Version A, Section 6B Version B, and Section 7 files were signature-checked before and after the full run and remained untouched. Their results are retained for historical comparison, but the original Section 7 conclusions are now **legacy/superseded for Section 8 decision-making**.
+
+Reusable implementation:
+
+```text
+src/features/poi_selection_refinement.py
+src/features/poi_refinement_visuals.py
+src/features/poi_event_study_refined.py
+scripts/run_section6c_refinement.py
+scripts/run_section7r_event_study.py
+```
+
+## Exact Section 6C Definition
+
+For each possible formation:
+
+```text
+A = candle i-1
+B = candle i, the POI middle candle
+C = candle i+1, the confirmation candle
+```
+
+A/B/C must be consecutive one-minute GC observations from the same active contract, New York date, and continuous segment. They must pass the existing tradability and rollover-integrity requirements.
+
+Classic FVG:
+
+```text
+Bullish: low[C] > high[A]
+Bearish: high[C] < low[A]
+```
+
+Close-to-next-open gap:
+
+```text
+Bullish: open[C] > close[B]
+Bearish: open[C] < close[B]
+Minimum = 1 GC tick
+```
+
+Strict confirmation-body survival:
+
+```text
+Bullish: close[C] >= open[C]
+Bearish: close[C] <= open[C]
+Doji close at C's open passes.
+```
+
+If C closes against the opening-gap direction, the formation is rejected as:
+
+```text
+confirmation_close_inside_opening_gap
+```
+
+This rule is stricter than merely requiring the gap not to be fully filled.
+
+## Tick-Safe FVG Threshold
+
+GC tick size:
+
+```text
+1 tick = 0.10 points
+3 ticks = 0.30 points
+4 ticks = 0.40 points
+5 ticks = 0.50 points
+```
+
+Prices are mapped to nearest integer tick indices before FVG threshold comparisons. Binary floating-point equality is not used.
+
+Two-stage validity:
+
+```text
+formation_valid_flag = continuity + classic FVG + close-open gap +
+                       matching direction + confirmation survival +
+                       search-window + rollover integrity
+
+final_poi_valid_flag = formation_valid_flag AND fvg_size_ticks >= 3
+```
+
+The default minimum is 3 ticks. The 4-tick and 5-tick flags are predefined sensitivity cohorts in the same output tables; they are not post-performance parameter choices.
+
+## Case 1 / Case 2 / Case 3 Geometry
+
+Case 1 expanded:
+
+```text
+Bullish when open[C] > high[B]: [low[B], open[C]]
+Bearish when open[C] < low[B]:  [open[C], high[B]]
+```
+
+Case 2 standard:
+
+```text
+The opening gap is contained by B.
+POI = [low[B], high[B]]
+```
+
+Case 3 invalid:
+
+```text
+C closes against its opening-gap direction.
+No valid POI, retest, candidate, or signal row is produced.
+```
+
+Activation and no-lookahead:
+
+```text
+confirmation_bar_id = C
+activation_bar_id = max(confirmation_bar_id, swing_break_bar_id)
+retest_bar_id > activation_bar_id
+```
+
+## Canonical Identity
+
+Variant rows remain available for `swing_n` and `break_mode` research, but the physical formation is identified independently of those parameters:
+
+```text
+canonical_poi_id = product + direction + A/B/C bar identity
+poi_variant_id = local swing/break POI variant
+canonical_retest_id = canonical POI + retest bar
+candidate_variant_id = entry/stop candidate row
+canonical_candidate_id = canonical retest + entry variant + stop model
+```
+
+Raw swing/break rows are correlated views of the same market event. Headline Section 7R statistics use canonical candidate variants.
+
+## Saved Section 6C Outputs
+
+```text
+data/processed/section6c_refined_poi_audit_gc.parquet
+data/processed/section6c_refined_poi_table_gc.parquet
+data/processed/section6c_refined_retest_table_gc.parquet
+data/processed/section6c_refined_candidate_trade_table_gc.parquet
+data/processed/section6c_refined_signal_frame_gc.parquet
+data/processed/section6c_refinement_summary_gc.parquet
+```
+
+Every Section 6C row carries:
+
+```text
+poi_definition_version = 6C_v1
+```
+
+## Full-Run Formation Funnel
+
+```text
+Variant proposals re-evaluated:             202,466
+Genuine classic FVGs:                       202,466
+Genuine close-open gaps:                    202,466
+Rejected confirmation-body closures:         39,391
+Formation-valid before 3-tick threshold:    163,075
+Rejected below 3 ticks:                      70,106
+Final >=3-tick POI variants:                 92,969
+Final >=4-tick POI variants:                 70,810
+Final >=5-tick POI variants:                 54,846
+Case 1 expanded:                             28,973
+Case 2 standard:                             63,996
+Unique canonical physical POIs:              24,105
+```
+
+The audit also retains physical diagnostic rejections without multiplying them across correlated swing/break variants:
+
+```text
+no_classic_fvg:                             429,525
+no_close_open_gap:                          114,371
+rollover_integrity_failure:                  27,074
+segment_boundary_crossed:                     1,732
+confirmation_close_inside_opening_gap:       39,391
+fvg_below_3_ticks:                           70,106
+```
+
+Final POI breakdown:
+
+```text
+Bullish:               46,345
+Bearish:               46,624
+London activation:     25,169
+New York activation:   43,018
+Outside execution:     24,782
+3-bar variants:        28,556
+5-bar variants:        31,684
+7-bar variants:        32,729
+Wick break:            49,422
+Close break:           43,547
+```
+
+Exact FVG tick buckets:
+
+```text
+3 ticks:       22,159
+4 ticks:       15,964
+5 ticks:       11,474
+6-9 ticks:     23,476
+10-19 ticks:   14,421
+20+ ticks:      5,475
+```
+
+## Structural and Downstream Counts
+
+Structural POI variants:
+
+```text
+Structurally validated: 40,823
+Local-swing-only:       52,146
+Primary 15-bar:         12,806
+Primary 21-bar:         10,383
+Primary 31-bar:         17,634
+```
+
+Rebuilt downstream objects:
+
+```text
+POI variants with retests:             82,538
+Retest variant rows:                 3,185,556
+Unique canonical retests:              853,620
+First-touch variant rows:               82,538
+Later-touch variant rows:            3,103,018
+Valid candidate/signal variants:     1,080,394
+Unique canonical candidate variants:   302,020
+Unique canonical POIs in signals:         7,433
+Unique canonical retests in signals:    179,036
+Unique trading dates:                       882
+```
+
+Structural downstream split:
+
+```text
+Retests — structural: 1,380,040; local-only: 1,805,516
+Signals — structural:   471,164; local-only:   609,230
+```
+
+Version comparison, without treating the rows as independent:
+
+```text
+Version A POIs:        202,466
+Version B POIs:        202,466
+Version C POIs:         92,969
+
+Version A signals:   1,597,373
+Version B signals:   1,597,373
+Version C signals:   1,080,394
+```
+
+## Nineteen-Case Regression and False-FVG Audit
+
+Visual output:
+
+```text
+reports/figures/section6c_poi_refinement/
+```
+
+Artifacts:
+
+```text
+19 hand-labelled charts
+hand_labelled_regression_manifest.csv
+hand_labelled_abc_ohlc.csv
+13-stratum random visual audit
+random_stratified_audit_manifest.csv
+```
+
+Regression result:
+
+```text
+PASS:   16
+REVIEW:  3
+```
+
+The three REVIEW cases are raw-OHLC label conflicts, not implementation exceptions:
+
+### GC_SIG_00433067
+
+```text
+A 2025-06-13 09:11 NY: O=3457.7 H=3458.5 L=3456.6 C=3457.2
+B 2025-06-13 09:12 NY: O=3457.0 H=3459.7 L=3457.0 C=3459.7
+C 2025-06-13 09:13 NY: O=3459.9 H=3461.5 L=3459.7 C=3461.4
+```
+
+`low[C]=3459.7 > high[A]=3458.5`, and C closes above its open. Actual result: valid 12-tick bullish Case 1 expanded.
+
+### GC_SIG_00384676
+
+```text
+A 2025-05-13 09:11 NY: O=3249.5 H=3250.2 L=3249.0 C=3249.0
+B 2025-05-13 09:12 NY: O=3248.4 H=3249.1 L=3246.9 C=3247.6
+C 2025-05-13 09:13 NY: O=3247.4 H=3248.6 L=3247.0 C=3248.6
+```
+
+`high[C]=3248.6 < low[A]=3249.0`, so a genuine 4-tick bearish FVG exists. The formation is still invalid because C closes above its open and therefore back inside the bearish opening gap.
+
+### GC_SIG_01388071
+
+```text
+A 2026-04-09 08:45 NY: O=4769.6 H=4769.6 L=4767.4 C=4769.1
+B 2026-04-09 08:46 NY: O=4768.7 H=4769.2 L=4767.0 C=4767.6
+C 2026-04-09 08:47 NY: O=4767.1 H=4767.1 L=4762.6 C=4763.5
+```
+
+`high[C]=4767.1 < low[A]=4767.4`, so a genuine 3-tick bearish FVG exists. C closes below its open. Actual result: valid 3-tick bearish Case 2 standard.
+
+The original audit plots marked the actual B candle correctly, but the title emphasized “POI created” (confirmation time) and did not shade or label the A/C FVG interval. The new charts distinguish B, C, activation, and retest times and explicitly draw the FVG, opening gap, middle range, corrected zone, and any extension.
+
+## Performance
+
+Section 6C stage timings:
+
+```text
+Feature preparation:       4.23 seconds
+POI formation audit:      82.64 seconds
+Final POI filtering:       0.24 seconds
+Structural annotation:    88.93 seconds
+Retest construction:      43.98 seconds
+Candidate construction:   22.56 seconds
+Full Section 6C:         249.96 seconds
+```
+
+The expensive stages are unavoidable interval/state calculations over 1.76 million bars. Formation measurements use shifted arrays and integer tick-space comparisons. Retests reuse grouped day-level interval matrices and chunking rather than scanning once per POI. The 3/4/5-tick cohorts are flags in one signal frame rather than duplicated materialized datasets.
+
+## Section 7R Outputs
+
+Section 7R input:
+
+```text
+data/processed/section6c_refined_signal_frame_gc.parquet
+```
+
+Saved outputs:
+
+```text
+data/processed/section7r_event_study_summary_gc.parquet
+data/processed/section7r_candidate_signal_ranking_gc.parquet
+data/processed/section7r_fvg_threshold_comparison_gc.parquet
+```
+
+Output sizes:
+
+```text
+Event-study summary rows:       291,984
+Candidate-ranking rows:             248
+FVG-threshold comparison rows:      576
+Raw variant signal rows:      1,080,394
+Canonical candidate variants:   302,020
+```
+
+Runtime:
+
+```text
+Path-label construction:  44.56 seconds
+Full Section 7R:          661.30 seconds
+```
+
+## Section 7R Headline Findings
+
+Headline population: canonical candidate variants.
+
+Canonical baseline at capped 60 minutes:
+
+```text
+Valid rows:                  301,601
+Mean R:                       0.0565
+Mean R capped at +/-5:        0.0531
+Median R:                     0.0545
+Positive-R rate:             50.56%
++3R hit rate:                39.16%
++5R hit rate:                20.96%
+-1R path-hit rate:           74.82%
+```
+
+The baseline retains mild positive central tendency but still has severe two-sided path risk. It is an event generator, not a clean standalone signal.
+
+The refined data independently reproduces the broad short-side asymmetry at capped 60 minutes:
+
+```text
+Short mean R capped at +/-5:  0.1259
+Long mean R capped at +/-5:  -0.0157
+```
+
+Across capped horizons, short robust mean R remains positive from 5 through 360 minutes; long robust mean R is negative at every tested horizon.
+
+Geometry at capped 60 minutes:
+
+```text
+Case 2 standard short:  0.1666 capped mean R
+Case 1 expanded short: -0.0383 capped mean R
+Case 2 standard long:  -0.0144 capped mean R
+Case 1 expanded long:  -0.0202 capped mean R
+```
+
+Correctly expanded Case 1 events do not inherit the stronger Case 2 short result. Case 1 short outcomes have positive uncapped mean but negative capped mean and median, indicating outlier-driven behavior.
+
+Structural cohorts at capped 60 minutes:
+
+```text
+15-bar:     0.1226 capped mean R; 0.1622 median R
+21-bar:     0.0326 capped mean R; 0.0000 median R
+31-bar:     0.0302 capped mean R; -0.0370 median R
+Local-only: 0.0533 capped mean R; 0.0923 median R
+```
+
+The 15-bar cohort is independently reproduced as the strongest 60-minute structural window. Structural validation in aggregate does not dominate local-only, so 15-bar remains an interaction hypothesis rather than a blanket permission rule.
+
+FVG threshold comparison at capped 60 minutes:
+
+```text
+Short >=3 ticks: 0.1259 capped mean R
+Short >=4 ticks: 0.1298 capped mean R
+Short >=5 ticks: 0.1350 capped mean R
+
+Long >=3 ticks: -0.0157 capped mean R
+Long >=4 ticks: -0.0180 capped mean R
+Long >=5 ticks: -0.0209 capped mean R
+```
+
+The exact tick buckets are non-monotonic. A stricter minimum modestly improves broad shorts while worsening broad longs; no universal threshold above the locked 3-tick default is selected.
+
+Session at capped 60 minutes:
+
+```text
+London short:    0.2894 capped mean R
+New York short:  0.0829 capped mean R
+New York long:   0.0026 capped mean R
+London long:    -0.0868 capped mean R
+```
+
+London short strength and London long weakness are independently reproduced.
+
+Canonical versus raw variant baseline at capped 60 minutes:
+
+```text
+Canonical capped mean R: 0.0531
+Raw-row capped mean R:   0.0289
+Canonical median R:      0.0545
+Raw-row median R:        0.0303
+```
+
+Duplicate variant weighting materially changes headline estimates. Raw swing/break rows must be described as correlated parameter variants, not independent market events.
+
+Candidate ranking:
+
+```text
+No composite group has a positive robust rank score.
+Top canonical rank score: -0.2471
+```
+
+The highest-ranked canonical group is a New York extreme-volatility short, local-only, 3-bar close-break, boundary entry, POI-distal stop, normal relative volume cohort. It remains a research hypothesis, not approval for Section 8.
+
+## Validation
+
+Passed:
+
+```text
+29 Section 6C synthetic regression tests
+Legacy Section 6 tests
+Legacy and refined Section 7 tests
+All modified module/script py_compile checks
+All Section 6C acceptance-oriented full-run checks
+All Section 7R input, canonical-deduplication, session, path, and forced-exit checks
+Legacy Version A/B and Section 7 outputs unchanged
+Rejected formations absent from all downstream tables
+```
+
+## Current Project Status and Next Recommended Step
+
+| Phase                         | Status                                      |
+| ----------------------------- | ------------------------------------------- |
+| Data Acquisition              | Complete                                    |
+| Data Validation               | Complete                                    |
+| Exploratory Analysis          | Complete                                    |
+| Research Dataset Construction | Complete                                    |
+| Strategy Formalization        | Complete                                    |
+| POI Feature Engineering       | Section 6C complete                         |
+| Structural Swing Validation   | Reapplied to Section 6C                     |
+| Event Studies                 | Section 7R complete                         |
+| Backtesting                   | Not started; awaiting review/authorization  |
+| Robustness Testing            | Not started                                 |
+
+Next recommended step:
+
+```text
+Review the three raw-OHLC label conflicts and the canonical Section 7R findings.
+Do not begin Section 8 until that review is complete and Section 8 scope is explicitly authorized.
+```
+
+---
+
+# Authoritative Current Project Map — 2026-07-12
+
+This final section is the current-state override for older milestone/status statements retained above for research traceability.
+
+```text
+Section 6: Final refined POI definition and machine-readable signal tables — complete.
+Section 7: POI-context and conditional-signal research — current phase.
+Original baseline and prototype event studies — retained for research history but superseded.
+Section 8: Sequential backtesting — not started.
+```
+
+Notebook reading order:
+
+```text
+Sections 1-5 — Data, EDA, research dataset, and strategy formalization
+Section 6 — Complete POI-engine development and authoritative refined baseline
+Section 7 — Authoritative refined event-study baseline, limitations, and context-research roadmap
+Appendix A — Legacy prototype event study, not current independent evidence
+```
+
+Current research contract:
+
+```text
+The refined POI definition is frozen as the authoritative project baseline.
+Section 7 must use the refined Section 6 signal frame and now focuses on market context.
+The objective is to separate continuation, reversal, and no-trade conditions.
+No new context features were implemented during notebook cleanup.
+No full sequential backtest has started.
+```
 
 ---
