@@ -96,6 +96,26 @@ SECTION7_CONTEXT_COLUMNS = [
     "displacement_candles",
 ]
 
+# Optional Section 6C lineage and geometry fields.  Legacy Section 7 remains
+# valid when they are absent; Section 7R retains them when present.
+SECTION7_REFINED_CONTEXT_COLUMNS = [
+    "canonical_poi_id",
+    "poi_variant_id",
+    "canonical_retest_id",
+    "canonical_retest_number",
+    "candidate_variant_id",
+    "canonical_candidate_id",
+    "poi_definition_version",
+    "poi_geometry_case",
+    "poi_zone_expanded_flag",
+    "poi_zone_expansion_points",
+    "poi_zone_expansion_ticks",
+    "fvg_size_points",
+    "fvg_ge_3tick_flag",
+    "fvg_ge_4tick_flag",
+    "fvg_ge_5tick_flag",
+]
+
 SECTION7_EXISTING_FORWARD_COLUMNS = [
     "forward_5m_r",
     "forward_15m_r",
@@ -406,6 +426,7 @@ def prepare_section7_signal_frame(
         dict.fromkeys(
             SECTION7_SIGNAL_REQUIRED_COLUMNS
             + SECTION7_CONTEXT_COLUMNS
+            + SECTION7_REFINED_CONTEXT_COLUMNS
             + SECTION7_EXISTING_FORWARD_COLUMNS
         )
     )
@@ -481,11 +502,50 @@ def prepare_section7_signal_frame(
         bins=[-np.inf, 5, 10, 20, 40, np.inf],
         labels=["tiny", "small", "medium", "large", "very_large"],
     )
-    out["fvg_size_bucket"] = _cut_numeric(
-        out.get("fvg_size_ticks", pd.Series(np.nan, index=out.index)),
-        bins=[-np.inf, 2, 5, 10, 20, np.inf],
-        labels=["1-2", "2-5", "5-10", "10-20", ">20"],
-    )
+    if "fvg_ge_3tick_flag" in out.columns:
+        fvg_ticks = pd.to_numeric(out["fvg_size_ticks"], errors="coerce")
+        out["fvg_size_bucket"] = pd.Categorical(
+            np.select(
+                [
+                    fvg_ticks.eq(3),
+                    fvg_ticks.eq(4),
+                    fvg_ticks.eq(5),
+                    fvg_ticks.between(6, 9),
+                    fvg_ticks.between(10, 19),
+                    fvg_ticks.ge(20),
+                ],
+                ["3", "4", "5", "6-9", "10-19", "20+"],
+                default="below_3",
+            ),
+            categories=["below_3", "3", "4", "5", "6-9", "10-19", "20+"],
+            ordered=True,
+        )
+        expansion_ticks = pd.to_numeric(
+            out.get("poi_zone_expansion_ticks", pd.Series(np.nan, index=out.index)),
+            errors="coerce",
+        )
+        out["zone_expansion_tick_bucket"] = pd.Categorical(
+            np.select(
+                [
+                    expansion_ticks.eq(0),
+                    expansion_ticks.eq(1),
+                    expansion_ticks.eq(2),
+                    expansion_ticks.between(3, 5),
+                    expansion_ticks.between(6, 9),
+                    expansion_ticks.ge(10),
+                ],
+                ["0", "1", "2", "3-5", "6-9", "10+"],
+                default="unknown",
+            ),
+            categories=["0", "1", "2", "3-5", "6-9", "10+", "unknown"],
+            ordered=True,
+        )
+    else:
+        out["fvg_size_bucket"] = _cut_numeric(
+            out.get("fvg_size_ticks", pd.Series(np.nan, index=out.index)),
+            bins=[-np.inf, 2, 5, 10, 20, np.inf],
+            labels=["1-2", "2-5", "5-10", "10-20", ">20"],
+        )
     out["break_distance_bucket"] = _cut_numeric(
         out.get("break_distance_ticks", pd.Series(np.nan, index=out.index)),
         bins=[-np.inf, 5, 10, 20, 40, np.inf],
@@ -528,11 +588,13 @@ def prepare_section7_signal_frame(
         "directional_efficiency_bucket",
         "poi_size_bucket",
         "fvg_size_bucket",
+        "zone_expansion_tick_bucket",
         "break_distance_bucket",
         "trend_alignment",
         "vwap_alignment",
     ):
-        out[col] = out[col].astype("category")
+        if col in out.columns:
+            out[col] = out[col].astype("category")
 
     out = out.loc[out["retest_minute_ny"].le(cfg.last_entry_minute_ny)].reset_index(drop=True)
     return out
@@ -1615,6 +1677,7 @@ def _summarize_group_frame(
     grouped = frame.groupby(group_cols, observed=True, sort=False, dropna=False)
     agg_dict: dict[str, tuple[str, str]] = {
         "count": ("valid", "size"),
+        "candidate_rows": ("valid", "size"),
         "valid_count": ("valid", "sum"),
         "mean_r": ("forward_r", "mean"),
         "median_r": ("forward_r", "median"),
@@ -1626,6 +1689,15 @@ def _summarize_group_frame(
         "median_mae_r": ("mae_r", "median"),
         "forced_exit_rate": ("forced_exit_flag", "mean"),
     }
+    optional_cardinalities = {
+        "unique_candidate_variants": "candidate_variant_id",
+        "unique_canonical_retests": "canonical_retest_id",
+        "unique_canonical_pois": "canonical_poi_id",
+        "unique_trading_dates": "trade_date_ny",
+    }
+    for output_col, source_col in optional_cardinalities.items():
+        if source_col in frame.columns:
+            agg_dict[output_col] = (source_col, "nunique")
     for col in metrics["capped_forward"]:
         agg_dict[f"mean_{col.replace('forward_', '')}"] = (col, "mean")
     for col in metrics["capped_mfe"]:
@@ -1660,6 +1732,7 @@ def _single_group_summary(frame: pd.DataFrame, metrics: dict[str, list[str]]) ->
     forward_r = frame["forward_r"]
     row: dict[str, Any] = {
         "count": len(frame),
+        "candidate_rows": len(frame),
         "valid_count": valid_count,
         "mean_r": forward_r.mean(),
         "median_r": forward_r.median(),
@@ -1677,6 +1750,15 @@ def _single_group_summary(frame: pd.DataFrame, metrics: dict[str, list[str]]) ->
         "positive_r_rate": forward_r.dropna().gt(0).mean(),
         "negative_r_rate": forward_r.dropna().lt(0).mean(),
     }
+    optional_cardinalities = {
+        "unique_candidate_variants": "candidate_variant_id",
+        "unique_canonical_retests": "canonical_retest_id",
+        "unique_canonical_pois": "canonical_poi_id",
+        "unique_trading_dates": "trade_date_ny",
+    }
+    for output_col, source_col in optional_cardinalities.items():
+        if source_col in frame.columns:
+            row[output_col] = frame[source_col].nunique()
     for col in metrics["capped_forward"]:
         row[f"mean_{col.replace('forward_', '')}"] = frame[col].mean()
     for col in metrics["capped_mfe"]:

@@ -21,6 +21,10 @@ from src.features.poi_event_study import (
     summarize_section7_groups,
     EventStudyGroupSpec,
 )
+from src.features.poi_event_study_refined import (
+    build_section7r_event_study,
+    prepare_section7r_signal_populations,
+)
 
 
 def _synthetic_research_bars() -> pd.DataFrame:
@@ -107,6 +111,66 @@ def _synthetic_signal_frame() -> pd.DataFrame:
 
 
 class Section7EventStudyTests(unittest.TestCase):
+    @staticmethod
+    def _refined_duplicate_signal_frame() -> pd.DataFrame:
+        base = _synthetic_signal_frame().iloc[0].to_dict()
+        base.update(
+            {
+                "canonical_poi_id": "GC_POI_BULL_00000003_00000004_00000005",
+                "poi_variant_id": base["poi_id"],
+                "canonical_retest_id": "GC_POI_BULL_00000003_00000004_00000005_RT_00000005",
+                "canonical_retest_number": 1,
+                "candidate_variant_id": base["candidate_trade_id"],
+                "canonical_candidate_id": "CANONICAL_CANDIDATE_1",
+                "poi_definition_version": "6C_v1",
+                "poi_geometry_case": "case_2_standard",
+                "poi_zone_expanded_flag": False,
+                "poi_zone_expansion_points": 0.0,
+                "poi_zone_expansion_ticks": 0,
+                "fvg_size_points": 0.5,
+                "fvg_size_ticks": 5.0,
+                "fvg_ge_3tick_flag": True,
+                "fvg_ge_4tick_flag": True,
+                "fvg_ge_5tick_flag": True,
+            }
+        )
+        duplicate = dict(base)
+        duplicate.update(
+            {
+                "signal_id": "GC6C_SIG_00000002",
+                "candidate_trade_id": "GC6C_CAND_00000002",
+                "candidate_variant_id": "GC6C_CAND_00000002",
+                "poi_id": "GC_20240103_sw5_close_bull_001",
+                "poi_variant_id": "GC_20240103_sw5_close_bull_001",
+                "swing_n": 5,
+                "break_mode": "close",
+            }
+        )
+        return pd.DataFrame([base, duplicate])
+
+    def test_section7r_canonical_population_collapses_correlated_variants(self):
+        populations = prepare_section7r_signal_populations(
+            self._refined_duplicate_signal_frame(),
+            Section7Config(forward_horizons=(60,), min_ranking_sample_size=1),
+        )
+        self.assertEqual(len(populations["raw_variant_rows"]), 2)
+        self.assertEqual(len(populations["canonical_candidate_variants"]), 1)
+        self.assertTrue(populations["canonical_candidate_variants"]["canonical_candidate_id"].is_unique)
+
+    def test_section7r_reports_geometry_threshold_and_population_counts(self):
+        outputs = build_section7r_event_study(
+            self._refined_duplicate_signal_frame(),
+            _synthetic_research_bars(),
+            Section7Config(forward_horizons=(60,), min_ranking_sample_size=1),
+        )
+        summary = outputs["section7r_event_study_summary"]
+        self.assertTrue({"raw_variant_rows", "canonical_candidate_variants"}.issubset(summary["analysis_population"]))
+        self.assertTrue({"poi_geometry_case", "fvg_min_3_ticks", "fvg_min_4_ticks", "fvg_min_5_ticks"}.issubset(summary["group_spec"]))
+        baseline = summary.query("group_spec == 'baseline_all_candidates' and metric_mode == 'fixed'")
+        counts = baseline.set_index("analysis_population")["candidate_rows"].to_dict()
+        self.assertEqual(counts["raw_variant_rows"], 2)
+        self.assertEqual(counts["canonical_candidate_variants"], 1)
+
     def test_validation_accepts_structural_section6b_signal_frame(self):
         validation = build_section7_validation(
             _synthetic_signal_frame(),
