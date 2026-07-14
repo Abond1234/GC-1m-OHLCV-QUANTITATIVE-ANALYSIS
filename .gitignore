@@ -12,6 +12,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .ipynb_checkpoints/
+.codex-kernels/
 build/
 dist/
 *.egg-info/
@@ -32,6 +33,7 @@ models/
 .agents/
 reports/figures/
 reports/results/
+reports/statistical_research/figures/section5/
 
 # Secrets and local configuration
 .env

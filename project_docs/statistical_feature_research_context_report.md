@@ -1261,7 +1261,7 @@ Broad market EDA:                            COMPLETE
 POI research branch:                         SEPARATE — DO NOT LOAD
 Independent statistical observation frame:   COMPLETE
 Independent forward labels:                  COMPLETE
-Independent baseline behaviour:              NOT STARTED
+Independent baseline behaviour:              COMPLETE
 Independent feature engineering:             NOT STARTED
 Independent feature evaluation:              NOT STARTED
 Independent statistical backtest:            NOT STARTED
@@ -1271,7 +1271,7 @@ POI integration research:                    FUTURE PHASE
 The correct next action is:
 
 ```text
-Section 5.0 — Establish Baseline Behaviour
+Section 6.0 — Feature Engineering Framework
 ```
 
 ---
@@ -1288,7 +1288,7 @@ Decision-entry pairs must be strictly consecutive by one minute and remain withi
 
 The output is saved to `data/processed/statistical_research/eligible_observations_gc.parquet` and remains excluded from Git. Save/reload checks confirmed row and column preservation, UTC and New York timezone metadata, unique observation IDs and decision-entry pairs, complete saved fields, and absence of all quarantined forward columns. Synthetic boundary cases for session opens/closes, contract changes, missing minutes, and date crossings passed. No schema fallback was required because `symbol`, `active_symbol`, `instrument_id`, and `continuous_segment_id` were available. Fixed-horizon availability and price outcomes were intentionally outside the Section 3 gate and are now completed in Section 4 below.
 
-**Next section:** Section 5.0 — Establish Baseline Behaviour.
+**Next section:** Section 6.0 — Feature Engineering Framework.
 
 ---
 
@@ -1341,4 +1341,50 @@ src/statistical_research/labels.py
 tests/test_statistical_research_labels.py
 ```
 
-No POI-derived information, R-multiple labels, stops, targets, cost thresholds, continuation/reversal labels, or trade simulations were introduced. Section 5 remains unstarted.
+No POI-derived information, R-multiple labels, stops, targets, continuation/reversal labels, or trade simulations were introduced. Section 4 is the ready input to the completed Section 5 baseline below.
+
+---
+
+## Section 5 — Baseline Behaviour Completion
+
+**Status:** COMPLETE — `SECTION 5 STATUS: READY`
+
+The executed notebook now completes the exact sequence `5.0 Establish Baseline Behaviour`, `5.1 Baseline Scope, Metrics, and Comparison Rules`, `5.2 Unconditional Forward Outcome Distributions`, `5.3 Baseline Excursion, Range, and Volatility Behaviour`, `5.4 Forward Outcomes by Session`, `5.5 Forward Outcomes by Time of Day and Day of Week`, `5.6 Directional Symmetry and Tail Asymmetry`, `5.7 Year and Research-Partition Stability`, `5.8 Economic Significance and Transaction-Cost Thresholds`, `5.9 Baseline Validation and Save Outputs`, and `5.10 Baseline Summary and Benchmark Definition`. Section 6 was not started.
+
+The sole primary input is `data/processed/statistical_research/forward_labels_gc.parquet` (**586,530 × 169**). Population counts remain **219,938 London**, **366,592 New York**, **306,230 Development**, **118,076 Validation**, and **162,224 Final test**. Horizon availability remains **586,468 / 586,296 / 585,958 / 585,033 / 582,471 / 579,166** at 5/15/30/60/120/180 minutes, respectively.
+
+Primary generated outputs (excluded from Git as configured) are:
+
+```text
+data/processed/statistical_research/baseline_summary_gc.parquet                179,184 × 19
+data/processed/statistical_research/baseline_cost_thresholds_gc.parquet            126 × 23
+data/processed/statistical_research/baseline_validation_gc.parquet                 120 × 5
+reports/statistical_research/tables/section5/*.csv
+reports/statistical_research/figures/section5/*.png
+reports/statistical_research/summaries/section5_baseline_summary.md
+reports/statistical_research/summaries/section5_benchmark_definition.json
+```
+
+The unconditional mean signed returns in ticks at 5/15/30/60/120/180 minutes are **0.014, -0.036, -0.144, -0.536, -0.871, and -0.802**; date-block 95% intervals for daily-weighted mean returns include zero at every horizon. Median returns are **0, 0, 1, 1, 2, and 2 ticks**, while mean absolute returns expand from **14.192** to **82.643 ticks**. Mean future range expands from **28.710** to **175.074 ticks** and mean realized volatility from **6.370** to **41.112 bps**; fitted log-log horizon exponents are **0.505** and **0.520**, respectively, indicating approximately square-root rather than linear clock-time growth over this grid.
+
+New York movement is materially larger than London: mean future range grows from **33.023 to 199.960 ticks** in New York versus **21.520 to 133.565 ticks** in London. Signed-return centers are small relative to dispersion and vary by session and partition; Development-to-Validation signs are not uniformly stable. Overall weekday cells cover **238–250 New York trading dates** and are saved both overall and by year; no weekday filter is approved.
+
+Long and short signed returns are paired algebraic transformations, not independent samples, and long/short excursion identities reconcile exactly. Central p95/|p05| tail ratios remain near one (**1.000 to 0.963**), while p99/|p01| ratios fall from **0.959 to 0.843**, showing modest larger downside extreme-tail magnitude at longer horizons without establishing a tradable directional bias.
+
+The fixed sensitivity grid is **0, 1, 2, 3, 4, 5, and 10 ticks**. At a five-tick hurdle, combined absolute exit-to-exit exceedance rises from **63.49%** at 5 minutes to **93.34%** at 180 minutes. Five-tick long directional exceedance rises from **32.11% to 48.06%** and short directional exceedance from **31.38% to 45.29%**. Exit-to-exit, MFE, MAE, and range hurdle results remain separate movement diagnostics and are not PnL or a cost backtest.
+
+The notebook passed **120/120** Section 5 checks: 8 input/identity, 19 availability, 54 outcome-invariant, 12 path-boundary, 8 aggregation-reconciliation, 2 sampled statistical/visual audit, and 17 save/reload checks. Stable keys, schemas, null behavior, counts, quantile ordering, tick/bps/ATR transformations, classifications, session/time/weekday/year/partition reconciliation, forced-exit boundaries, and deterministic early/late London/New York samples all passed. The notebook was restarted and executed top-to-bottom with `.venv-1`; all **36/36 code cells** executed in order with no error output, ending in `SECTION 5 STATUS: READY`.
+
+Final-test governance: Section 5 used a metric and code contract frozen before its one-time descriptive Final-test exposure. The exposed Final-test information includes return center, direction rates, magnitude, excursions, range, realized volatility, tails, availability, sessions, time-of-day, weekdays, symmetry, and fixed hurdle sensitivity. Later work must not describe the Final test as completely unseen and must not tune feature definitions, bins, horizons, thresholds, or models to these baseline values. Development and Validation remain the primary interpretation samples.
+
+Reusable implementation and tests:
+
+```text
+src/statistical_research/baselines.py
+tests/test_statistical_research_baselines.py
+scripts/update_statistical_section5_notebook.py
+```
+
+Git commit information: this milestone is committed directly on `main` with message `Complete statistical baseline behaviour research`; the exact verified hash and `origin/main` push result are recorded in Git history and the final implementation handoff.
+
+**Exact next approved section:** Section 6.0 — Feature Engineering Framework.

@@ -10,6 +10,15 @@ from .labels import (
     build_label_availability_report,
     validate_tick_grid,
 )
+from .baselines import (
+    BASELINE_RANDOM_SEED,
+    BOOTSTRAP_REPLICATES,
+    COST_THRESHOLDS_TICKS,
+    BaselineBuildResult,
+    build_baseline_outputs,
+    save_baseline_outputs,
+    summarize_outcomes,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -20,4 +29,11 @@ __all__ = [
     "build_forward_label_table",
     "build_label_availability_report",
     "validate_tick_grid",
+    "BASELINE_RANDOM_SEED",
+    "BOOTSTRAP_REPLICATES",
+    "COST_THRESHOLDS_TICKS",
+    "BaselineBuildResult",
+    "build_baseline_outputs",
+    "save_baseline_outputs",
+    "summarize_outcomes",
 ]

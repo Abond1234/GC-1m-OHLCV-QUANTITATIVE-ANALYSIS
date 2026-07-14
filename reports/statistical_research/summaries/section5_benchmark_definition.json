@@ -1,0 +1,52 @@
+{
+  "instrument": "GC",
+  "event_level_not_trades": true,
+  "horizons_minutes": [
+    5,
+    15,
+    30,
+    60,
+    120,
+    180
+  ],
+  "sessions": [
+    "London",
+    "New York"
+  ],
+  "timezone": "America/New_York",
+  "decision_information": "completed bar t",
+  "theoretical_entry": "open of bar t+1",
+  "forward_path_begins": "bar t+1",
+  "availability_rule": "use an outcome only when label_available_<horizon> is true; never shorten a fixed horizon",
+  "research_partitions": {
+    "Development": "through 2023-12-31",
+    "Validation": "2024",
+    "Final test": "2025-01-01 through 2026-05-22"
+  },
+  "cost_threshold_ticks": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    10
+  ],
+  "bootstrap": {
+    "unit": "New York trading date",
+    "seed": 20260714,
+    "replicates": 2000,
+    "confidence_level": 0.95
+  },
+  "matching_dimensions": [
+    "horizon",
+    "session",
+    "direction",
+    "research_partition",
+    "availability",
+    "outcome_definition",
+    "cost_hurdle",
+    "date_coverage"
+  ],
+  "final_test_exposure": "One-time descriptive Section 5 exposure; do not tune subsequent feature definitions or thresholds to these results."
+}
