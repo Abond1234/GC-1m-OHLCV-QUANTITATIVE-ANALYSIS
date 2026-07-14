@@ -1,0 +1,1315 @@
+GC/MGC DISCRETIONARY-TO-SYSTEMATIC STRATEGY SPECIFICATION — V0.2
+
+Role framing: Senior Quant Developer + Senior Quant Researcher
+Status: Research specification draft for review before implementation
+Main objective: Convert the discretionary POI-based gold futures strategy into an agent-ready systematic research plan.
+
+================================================================================
+0. EXECUTIVE SUMMARY
+================================================================================
+
+This strategy should NOT be treated as “every POI retest is a trade.”
+
+The POI is the anchor / decision zone. The real systematic strategy is:
+
+    POI candidate generation + quantitative confluence selection + controlled execution testing.
+
+The strategy first detects valid POIs created during intraday swing-breaking displacement moves. A valid POI is stricter than a normal ICT FVG because it requires BOTH:
+
+    1. A classic ICT wick-to-wick FVG.
+    2. A close-to-next-open gap in the same direction.
+
+Once both conditions are true, the tradable zone is the full high-to-low range of the middle candle in the 3-candle FVG sequence.
+
+The POI is valid only for the trading day on which it is created. The next trading day starts fresh with no carryover POIs.
+
+POIs can be created from 1:00am to 12:00pm New York time. Execution is only allowed during:
+    - London window: 3:00am-6:00am New York time.
+    - New York window: 7:00am-12:00pm New York time.
+
+This means the New York session may use POIs created earlier, for example at 2:00am New York time, as long as the POI was created on the same trading day and has not expired/been invalidated.
+
+The system currently uses:
+    - GC for analysis/signal generation.
+    - MGC for execution/risk sizing.
+    - 1-minute OHLCV bars as the primary research timeframe.
+
+================================================================================
+1. STRATEGY IDENTITY
+================================================================================
+
+1.1 Core Strategy Type
+
+The strategy is an intraday gold futures POI-retest system.
+
+It can support:
+    - continuation trades,
+    - reversal trades,
+    - pullback trades.
+
+However, these should not be treated as one generic entry type. They should be classified separately during research.
+
+Recommended research classification:
+
+    A. Continuation POI Retest
+       Price breaks a swing, creates a valid POI during displacement, retraces into the POI,
+       then trades in the original displacement direction.
+
+    B. Reversal POI Retest
+       Price interacts with a valid POI as a reversal zone, possibly after extension,
+       exhaustion, or failure to continue.
+
+    C. Pullback POI Retest
+       This is likely a subcategory of continuation unless separately defined.
+       Price displaces, creates POI, retraces, then continues.
+
+1.2 Strategy Thesis
+
+Gold futures often create intraday displacement moves during active sessions. When price breaks a meaningful swing high or swing low, the displacement may leave behind an imbalance zone. If that imbalance contains both a classic wick-to-wick FVG and a close-to-next-open gap, the middle candle becomes a high-interest POI. A later retest of this POI creates a candidate trade. The trade only becomes stronger when additional confluence features support continuation or reversal.
+
+1.3 Research Philosophy
+
+The goal is not to force the discretionary system into a fixed hard-coded strategy immediately.
+
+The goal is to:
+    1. Detect all valid POIs.
+    2. Detect all same-day POI retests.
+    3. Build a candidate-trade dataset.
+    4. Engineer market/context/confluence features around each candidate.
+    5. Study which conditions separate good POI retests from weak ones.
+    6. Convert the strongest evidence into backtestable execution rules.
+
+================================================================================
+2. INSTRUMENT SCOPE
+================================================================================
+
+2.1 Signal Instrument
+
+Primary signal/analysis instrument:
+    - GC active/front-month continuous 1-minute series.
+
+Reason:
+    - GC is the major gold futures contract.
+    - It has deeper liquidity and gives cleaner market insight.
+
+2.2 Execution Instrument
+
+Execution instrument:
+    - MGC active/front-month continuous 1-minute series.
+
+Reason:
+    - MGC allows better risk control for a $50,000 account.
+    - MGC is more realistic for the intended account size.
+
+2.3 Implementation Warning
+
+The agent must not blindly assume GC and MGC are identical.
+
+Recommended implementation phases:
+
+    Phase 1 — Research validation:
+        Generate signals and execute on GC prices first to validate logic.
+
+    Phase 2 — Execution realism:
+        Generate signals on GC but map entries/stops/targets to MGC.
+        Align GC and MGC timestamps carefully.
+        Handle missing/illiquid MGC bars.
+        Estimate slippage and commission.
+
+================================================================================
+3. TIME AND SESSION RULES
+================================================================================
+
+3.1 Time Zone
+
+All session logic must be converted to New York time.
+
+Timestamps in the dataset should be:
+    - timezone-aware,
+    - converted from UTC/exchange time into America/New_York,
+    - tagged with session labels.
+
+3.2 POI Search Window
+
+POIs can be detected from:
+
+    1:00am New York time to 12:00pm New York time.
+
+This means a valid POI may form before London trading starts and remain eligible for London/NY execution later that same day.
+
+3.3 Execution Windows
+
+Trades can only be executed during:
+
+    London window:
+        3:00am-6:00am New York time.
+
+    New York window:
+        7:00am-12:00pm New York time.
+
+No new trade should be opened outside these windows.
+
+3.4 Daily POI Validity
+
+POIs are valid only for the trading day on which they are created.
+
+Rule:
+    - At the start of each new trading day, clear all previous POIs.
+    - Do not carry POIs from yesterday into today.
+    - Same-day POIs created earlier in the POI search window may be used later that day.
+    - Example: a POI created at 2:00am NY may be used during 7:00am-12:00pm NY if still valid.
+
+Open implementation detail:
+    The exact “trading day reset” should likely be based on New York calendar date, but this must be confirmed because futures sessions can span overnight.
+
+Recommended for first version:
+    Use New York calendar date as the daily reset boundary.
+
+================================================================================
+4. MARKET STRUCTURE REQUIREMENT
+================================================================================
+
+4.1 Core Market Structure Rule
+
+At any given moment, the strategy considers recent swing highs and swing lows.
+
+If price breaks a recent swing high or swing low, that creates a displacement event.
+
+The strategy then checks whether a valid POI formed inside that swing-breaking displacement move.
+
+Base sequence:
+
+    1. Identify current/recent swing high and swing low.
+    2. Price breaks either the swing high or swing low.
+    3. During that swing-breaking displacement, identify whether a valid POI exists.
+    4. If a valid POI exists, mark it.
+    5. Wait for same-day price retracement back to the POI.
+    6. Treat the retest as a candidate trade.
+
+4.2 Swing High / Swing Low Detection
+
+This is not fully locked yet and must be treated as a research parameter.
+
+Candidate definitions:
+
+    3-bar swing high:
+        H[i] > H[i-1] and H[i] > H[i+1]
+
+    3-bar swing low:
+        L[i] < L[i-1] and L[i] < L[i+1]
+
+    5-bar swing high:
+        H[i] is greater than highs of two candles before and two candles after.
+
+    5-bar swing low:
+        L[i] is lower than lows of two candles before and two candles after.
+
+Recommended:
+    Test 3-bar, 5-bar, and possibly 7-bar swing definitions.
+    Record how many POIs and retests each method generates.
+
+4.3 Swing Break Definition
+
+Bullish swing break:
+    Price trades above a prior valid swing high.
+
+Bearish swing break:
+    Price trades below a prior valid swing low.
+
+Potential implementation options:
+    - wick break: high > swing_high or low < swing_low.
+    - close break: close > swing_high or close < swing_low.
+
+Recommended first version:
+    Use wick break for candidate generation.
+    Later compare against close break.
+
+4.4 Displacement Move Definition
+
+The displacement move is the price leg that breaks the swing high or swing low.
+
+For first implementation:
+    - The displacement direction is bullish if price breaks a swing high.
+    - The displacement direction is bearish if price breaks a swing low.
+    - The valid POI must appear within the candles leading into or including the swing break.
+
+Open issue:
+    The exact start of the displacement leg is not fully formalized.
+
+Recommended first approximation:
+    For a bullish break, define the displacement leg as the candles from the most recent swing low before the break up to the candle that breaks the swing high.
+    For a bearish break, define the displacement leg as the candles from the most recent swing high before the break down to the candle that breaks the swing low.
+
+This should be tested and visually validated against chart examples.
+
+================================================================================
+5. FINAL POI DEFINITION
+================================================================================
+
+5.1 Important Clarification
+
+The strategy POI is NOT:
+    - only a standard ICT FVG,
+    - only a close-to-open gap,
+    - only the wick-to-wick imbalance zone.
+
+The strategy POI requires BOTH:
+    1. A classic ICT wick-to-wick FVG.
+    2. A close-to-next-open gap in the same direction.
+
+Once both conditions are true, the full range of the middle candle becomes the POI.
+
+5.2 Candle Indexing
+
+Let the candidate middle candle be candle i.
+
+Then:
+    Candle i-1 = candle before the candidate POI candle.
+    Candle i   = candidate POI candle / middle candle.
+    Candle i+1 = candle after the candidate POI candle.
+
+For candle i:
+
+    O[i] = open of candle i
+    H[i] = high of candle i
+    L[i] = low of candle i
+    C[i] = close of candle i
+
+For the next candle:
+
+    O[i+1] = open of candle i+1
+    H[i+1] = high of candle i+1
+    L[i+1] = low of candle i+1
+
+For the previous candle:
+
+    H[i-1] = high of candle i-1
+    L[i-1] = low of candle i-1
+
+5.3 Bullish POI Formula
+
+A bullish POI candle exists when BOTH conditions are true:
+
+Condition 1 — Classic bullish ICT FVG:
+
+    L[i+1] > H[i-1]
+
+This means the low of the candle after the POI candle is above the high of the candle before the POI candle.
+
+Condition 2 — Bullish close-to-next-open gap:
+
+    O[i+1] > C[i]
+
+This means the next candle opens above the close of the POI candle.
+
+Therefore, candle i is a bullish POI candle if:
+
+    L[i+1] > H[i-1]
+    AND
+    O[i+1] > C[i]
+
+The bullish POI zone is:
+
+    POI_high = H[i]
+    POI_low  = L[i]
+    POI_mid  = (H[i] + L[i]) / 2
+
+5.4 Bearish POI Formula
+
+A bearish POI candle exists when BOTH conditions are true:
+
+Condition 1 — Classic bearish ICT FVG:
+
+    H[i+1] < L[i-1]
+
+This means the high of the candle after the POI candle is below the low of the candle before the POI candle.
+
+Condition 2 — Bearish close-to-next-open gap:
+
+    O[i+1] < C[i]
+
+This means the next candle opens below the close of the POI candle.
+
+Therefore, candle i is a bearish POI candle if:
+
+    H[i+1] < L[i-1]
+    AND
+    O[i+1] < C[i]
+
+The bearish POI zone is:
+
+    POI_high = H[i]
+    POI_low  = L[i]
+    POI_mid  = (H[i] + L[i]) / 2
+
+5.5 Gap Size and Tick Size
+
+Gold futures tick size:
+    tick_size = 0.10
+
+Close-to-open gap in ticks:
+
+    gap_ticks = (O[i+1] - C[i]) / tick_size
+
+Bullish:
+    gap_ticks > 0
+
+Bearish:
+    gap_ticks < 0
+
+Recommended first implementation:
+    Require at least 1 tick of close-to-next-open gap.
+
+    Bullish:
+        gap_ticks >= 1
+
+    Bearish:
+        gap_ticks <= -1
+
+But this is a parameter and should be tested:
+    min_gap_ticks = 1, 2, 3, etc.
+
+5.6 FVG Size
+
+Bullish FVG size:
+
+    fvg_size = L[i+1] - H[i-1]
+
+Bearish FVG size:
+
+    fvg_size = L[i-1] - H[i+1]
+
+In ticks:
+
+    fvg_size_ticks = fvg_size / tick_size
+
+Recommended:
+    Record fvg_size_ticks for every POI.
+    Do not over-filter at first.
+    Later test whether larger/smaller FVGs perform differently.
+
+5.7 POI Size
+
+POI size:
+
+    poi_size = H[i] - L[i]
+    poi_size_ticks = poi_size / tick_size
+
+This matters because POI size affects stop distance and entry quality.
+
+================================================================================
+6. POI VALIDITY AND EXPIRY
+================================================================================
+
+6.1 Validity Requirements
+
+A POI is valid only if:
+
+    1. It forms between 1:00am and 12:00pm NY.
+    2. It is the middle candle of a valid 3-candle ICT FVG.
+    3. It also has a close-to-next-open gap in the same direction.
+    4. The FVG/gap direction matches the swing-break displacement direction.
+    5. It is inside the swing-breaking displacement move.
+    6. It forms on the current trading day.
+    7. It has not expired, been invalidated, or already been used depending on the test rules.
+    8. It is not created during known no-trade conditions such as major news or rollover danger if those exclusions are active.
+
+6.2 Same-Day Expiry
+
+All POIs expire at the end of the trading day.
+
+Recommended initial expiry:
+    - Expire all active POIs at 12:00pm NY after the trade window ends.
+    - Alternatively, clear at NY midnight before the next POI search window.
+
+Clarification needed:
+    Should a POI created at 11:50am still be valid only until 12:00pm, or should it be ignored due to insufficient time left?
+
+6.3 First-Touch vs Multi-Touch
+
+Recommended first version:
+    - Trade/analyze first retest only.
+    - After the first touch, mark the POI as touched/used.
+    - Do not generate repeated entries from the same POI in the first research version.
+
+Later test:
+    - Compare first touch vs second touch vs multiple touches.
+
+================================================================================
+7. POI RETEST / TOUCH DEFINITION
+================================================================================
+
+A retest occurs when a later candle’s price range intersects the POI zone.
+
+For any later candle j after POI candle i:
+
+    retest = H[j] >= POI_low AND L[j] <= POI_high
+
+This means the candle overlaps the POI zone.
+
+For a bullish POI retest:
+    Price is usually retracing downward into the bullish POI.
+
+For a bearish POI retest:
+    Price is usually retracing upward into the bearish POI.
+
+Entry variants should be tested separately:
+
+    A. Boundary touch entry:
+        Entry when price first touches the nearest POI boundary.
+
+    B. 50% POI entry:
+        Entry when price reaches POI_mid.
+
+    C. Distal edge entry:
+        Long: entry near POI_low.
+        Short: entry near POI_high.
+
+================================================================================
+8. EXECUTION WINDOWS AND USE OF EARLIER POIS
+================================================================================
+
+The POI detection window and trade execution window are different.
+
+POIs can form:
+    1:00am-12:00pm NY.
+
+Trades can execute:
+    3:00am-6:00am NY.
+    7:00am-12:00pm NY.
+
+Therefore:
+    - A POI created at 2:00am can be traded during London or NY if retested during the execution window.
+    - A POI created during London may be traded later in NY.
+    - A POI created before NY is still valid in NY if same-day and unexpired.
+
+The agent must not restrict POI detection only to execution windows.
+
+================================================================================
+9. TRADE DIRECTION LOGIC
+================================================================================
+
+This part is not fully locked and should be handled as a research dimension.
+
+9.1 Default Direction
+
+For first systematic testing:
+
+    Bullish POI:
+        Default continuation trade = long.
+
+    Bearish POI:
+        Default continuation trade = short.
+
+9.2 Reversal Logic
+
+The user also wants to explore POI use for reversals.
+
+This should not be mixed with continuation trades unless explicitly labeled.
+
+Recommended:
+    Create separate trade labels:
+        - continuation_long
+        - continuation_short
+        - reversal_long
+        - reversal_short
+
+Potential reversal examples:
+    - A bearish POI may act as a short continuation zone.
+    - But depending on context, a POI area may also be used for reversal/mean-reversion if confluence supports it.
+
+Open issue:
+    Need clearer definition of when a POI is used for reversal versus continuation.
+
+Recommended research solution:
+    Generate candidate POI retests first.
+    Label outcomes in both directions:
+        - forward return if traded long,
+        - forward return if traded short,
+        - MAE/MFE for both directions.
+    Then use confluence features to determine whether certain contexts favor continuation or reversal.
+
+================================================================================
+10. STOP-LOSS LOGIC
+================================================================================
+
+Current discretionary rule:
+    - Stop goes above/below the POI.
+    - Or above/below the candle before/after the POI.
+    - Maximum stop = 100 ticks.
+    - Minimum stop = 25 ticks.
+
+10.1 Recommended First Stop Model
+
+Use POI distal edge stop.
+
+For long:
+    stop = POI_low - stop_buffer
+
+For short:
+    stop = POI_high + stop_buffer
+
+Recommended buffer:
+    stop_buffer_ticks = 1 to 3 ticks, to be tested.
+
+Stop distance:
+
+    long_stop_ticks = (entry_price - stop_price) / tick_size
+    short_stop_ticks = (stop_price - entry_price) / tick_size
+
+Reject trade if:
+
+    stop_ticks < 25
+    or
+    stop_ticks > 100
+
+10.2 Stop Variants to Test Later
+
+    A. POI distal edge stop.
+    B. Adjacent candle stop.
+    C. Swing structure stop.
+    D. Fixed tick stop.
+    E. ATR/range-adjusted stop.
+
+================================================================================
+11. TARGET / EXIT LOGIC
+================================================================================
+
+Current rough target:
+    - 5R, but not final.
+
+Recommended first research targets:
+
+    - 1R
+    - 2R
+    - 3R
+    - 4R
+    - 5R
+
+Every candidate trade should record:
+    - whether 1R was hit before stop,
+    - whether 2R was hit before stop,
+    - whether 3R was hit before stop,
+    - whether 4R was hit before stop,
+    - whether 5R was hit before stop,
+    - maximum favorable excursion,
+    - maximum adverse excursion,
+    - time to target,
+    - time to stop,
+    - session-end result.
+
+Forced exit:
+    - All trades flat by 12:00pm NY.
+    - No overnight positions.
+
+================================================================================
+12. CONFLUENCE / FEATURE ENGINEERING LAYER
+================================================================================
+
+This is where the strategy becomes quantitative.
+
+The POI creates candidate trades. The confluence engine decides which candidates are higher quality.
+
+Potential features:
+
+12.1 VWAP Features
+
+    - price_vs_vwap at POI creation
+    - price_vs_vwap at retest
+    - distance_from_vwap_ticks
+    - distance_from_vwap_bps
+    - vwap_slope
+    - vwap reclaim/rejection
+    - POI location relative to VWAP
+    - retest occurring above/below VWAP
+
+Example hypotheses:
+    - Long continuation POIs perform better above VWAP.
+    - Short continuation POIs perform better below VWAP.
+    - Reversal POIs may perform better when price is extended far from VWAP.
+
+12.2 Session Features
+
+    - session label: pre-London, London, pre-NY, NY
+    - time of day
+    - minutes since London start
+    - minutes since NY start
+    - whether POI formed before session but retested during session
+    - whether retest happens in high-volume window
+
+12.3 Volume Features
+
+    - current volume percentile
+    - rolling volume percentile
+    - volume at POI candle
+    - volume during displacement move
+    - volume at retest
+    - retest volume relative to POI volume
+
+12.4 Volatility Features
+
+    - ATR / rolling range
+    - realized volatility
+    - bar range percentile
+    - session range so far
+    - distance moved from session open
+    - volatility regime label
+
+12.5 Market Structure Features
+
+    - swing size
+    - distance from broken swing
+    - number of candles from swing break to POI
+    - number of candles from POI creation to retest
+    - whether market is making higher highs/lows or lower highs/lows
+    - local trend direction
+    - structural compression/expansion
+
+12.6 POI Quality Features
+
+    - fvg_size_ticks
+    - close_open_gap_ticks
+    - poi_size_ticks
+    - candle body percentage
+    - wick ratios
+    - displacement strength
+    - POI candle range percentile
+    - whether POI candle is in direction of displacement
+    - whether multiple POIs cluster near same zone
+
+12.7 Extension / Exhaustion Features
+
+    - distance from VWAP
+    - distance from session open
+    - distance from session high/low
+    - move size before retest
+    - number of consecutive candles in one direction
+    - directional efficiency
+    - whether price already made a large session move
+
+12.8 Chop / Consolidation Features
+
+    - directional efficiency
+    - range compression
+    - overlapping candle ratio
+    - alternating candle ratio
+    - wick-to-body ratio
+    - rolling realized volatility vs rolling range
+
+================================================================================
+13. NO-TRADE CONDITIONS
+================================================================================
+
+The system should avoid:
+
+    - rollover danger periods,
+    - major news windows,
+    - unclear POIs,
+    - stop too wide,
+    - stop too tight,
+    - low-quality sessions,
+    - excessive chop,
+    - very low volume,
+    - already overextended moves,
+    - trades outside execution windows.
+
+Important:
+    Some filters should not be hard-coded too early. They should be recorded as features first, then tested.
+
+================================================================================
+14. DATASET OUTPUTS NEEDED BEFORE BACKTESTING
+================================================================================
+
+The agent should build the following research tables before final backtest rules:
+
+14.1 poi_table
+
+One row per valid POI.
+
+Columns:
+    - date
+    - timestamp
+    - session_at_creation
+    - symbol/contract
+    - direction: bullish/bearish
+    - candle index
+    - O/H/L/C of candle i
+    - previous candle H/L
+    - next candle O/H/L
+    - fvg_size_ticks
+    - close_open_gap_ticks
+    - poi_high
+    - poi_low
+    - poi_mid
+    - poi_size_ticks
+    - related swing high/low
+    - swing break timestamp
+    - displacement metrics
+    - active/unexpired/expired status
+
+14.2 retest_table
+
+One row per POI retest.
+
+Columns:
+    - POI id
+    - retest timestamp
+    - retest session
+    - retest price
+    - entry variant
+    - entry price
+    - stop price
+    - stop ticks
+    - valid stop flag
+    - time from POI creation to retest
+    - candles from POI creation to retest
+    - whether first touch or later touch
+    - continuation/reversal labels
+    - VWAP/session/volume/volatility/confluence features
+
+14.3 candidate_trade_table
+
+One row per candidate trade and entry/exit variant.
+
+Columns:
+    - trade direction
+    - entry variant
+    - stop model
+    - target model
+    - 1R result
+    - 2R result
+    - 3R result
+    - 4R result
+    - 5R result
+    - MAE
+    - MFE
+    - time to stop/target
+    - session-end PnL
+    - confluence features
+
+================================================================================
+15. RESEARCH ROADMAP
+================================================================================
+
+Recommended order:
+
+Step 1:
+    Implement clean active/front-month GC and MGC continuous series.
+
+Step 2:
+    Tag New York sessions and trading days.
+
+Step 3:
+    Implement swing high/low detection.
+
+Step 4:
+    Implement swing break detection.
+
+Step 5:
+    Implement POI detection using BOTH:
+        - classic wick-to-wick ICT FVG,
+        - close-to-next-open gap.
+
+Step 6:
+    Validate POIs visually on sample days.
+
+Step 7:
+    Implement same-day POI expiry.
+
+Step 8:
+    Detect POI retests.
+
+Step 9:
+    Build candidate trade table.
+
+Step 10:
+    Engineer confluence features.
+
+Step 11:
+    Analyze feature relationships before building final rules.
+
+Step 12:
+    Only then run formal backtests.
+
+================================================================================
+16. CRITICAL QUESTIONS BEFORE IMPLEMENTATION
+================================================================================
+
+These must be answered or set as research parameters before final code.
+
+1. Swing definition:
+    Should we start with 3-bar, 5-bar, or another swing definition?
+
+2. Swing break:
+    Should a wick break count, or must the candle close beyond the swing?
+
+3. Displacement leg:
+    Is the displacement leg from the opposite swing to the swing break?
+    Example: bullish break = most recent swing low to break of swing high.
+
+4. Minimum close-open gap:
+    Should the close-to-next-open gap require at least 1 tick?
+    Or should any positive/negative difference count?
+
+5. Minimum wick-to-wick FVG size:
+    Should classic FVG require at least 1 tick?
+
+6. POI expiry:
+    Should POIs expire at 12:00pm NY, at end of NY calendar day, or when a new trading day starts?
+
+7. First touch:
+    Do we only care about first retest, or can the same POI generate multiple trades?
+
+8. Reversal definition:
+    What exactly tells you a POI is being used for reversal instead of continuation?
+
+9. Stop model:
+    Is the main stop always beyond the POI, or sometimes beyond adjacent candle?
+    Which one should be default?
+
+10. Risk per trade:
+    What dollar risk should the system use for a $50,000 account?
+
+11. News filter:
+    Which exact news events should be excluded and what is the before/after buffer?
+
+12. Max trades:
+    Is there a max number of trades per day/session?
+
+13. GC/MGC mapping:
+    Should first backtest use GC-only execution, or immediately signal on GC and execute on MGC?
+
+================================================================================
+17. AGENT INSTRUCTION
+================================================================================
+
+The AI agent should be instructed as follows:
+
+Do not implement a generic ICT FVG strategy. Do not implement a generic indicator strategy. The strategy is a GC/MGC 1-minute intraday POI-retest research model. GC is used for signal generation and MGC is intended for execution. POIs may be created from 1:00am to 12:00pm New York time, while trades may only execute during London 3:00am-6:00am NY and New York 7:00am-12:00pm NY. POIs are valid only for the same trading day. A valid POI is the middle candle of a 3-candle sequence where BOTH a classic ICT wick-to-wick FVG and a close-to-next-open gap exist in the same direction. Once valid, the full high-to-low range of the middle candle becomes the POI zone. The POI retest creates a candidate trade, not an automatic trade. The research objective is to engineer and test confluence features such as VWAP, volume, volatility, session context, market structure, chop, and extension to determine which POI retests have the strongest edge.
+
+================================================================================
+18. CURRENT STATUS
+================================================================================
+
+The POI definition is now clear enough for a first formal implementation draft.
+
+The broader trading model is not fully finalized, but this is acceptable because the proper research approach is to generate POI candidates first and then test confluence features.
+
+The most important next step is to lock the swing definition, swing-break definition, first-touch/multi-touch rule, and POI expiry boundary.
+
+================================================================================
+19. USER CLARIFICATIONS / LOCKED RESEARCH DECISIONS — APPENDIX V0.2A
+================================================================================
+
+This appendix records the user’s clarifications after reviewing the V0.2 strategy specification.
+
+These notes should be treated as the latest guidance and should supersede any earlier “unclear” notes in Section 16 where they conflict.
+
+19.1 Swing Definition
+
+User clarification:
+    - There is no fixed discretionary swing number.
+    - The system should not assume one single swing definition.
+
+Implementation decision:
+    - Treat swing definition as a research parameter.
+    - Test multiple swing definitions.
+
+Recommended swing variants:
+    - 3-bar swing high/low.
+    - 5-bar swing high/low.
+    - 7-bar swing high/low.
+    - Optional later: adaptive swing definition based on volatility or minimum tick distance.
+
+Research output:
+    For each swing-definition variant, record:
+        - number of swing highs/lows detected,
+        - number of swing breaks,
+        - number of valid POIs,
+        - number of POI retests,
+        - candidate trade count,
+        - expectancy by entry/stop/target variant,
+        - whether the variant over-generates noisy POIs.
+
+Important:
+    The agent must not hard-code only one swing definition as final truth. The first goal is sensitivity analysis.
+
+--------------------------------------------------------------------------------
+
+19.2 Swing Break Rule
+
+User clarification:
+    - Wick break and close break are both acceptable.
+    - Both should be tested.
+
+Implementation decision:
+    - Build two swing-break modes.
+
+Mode A — Wick Break:
+    Bullish swing break:
+        H[j] > swing_high
+
+    Bearish swing break:
+        L[j] < swing_low
+
+Mode B — Close Break:
+    Bullish swing break:
+        C[j] > swing_high
+
+    Bearish swing break:
+        C[j] < swing_low
+
+Research output:
+    Compare wick-break vs close-break results across:
+        - POI count,
+        - retest count,
+        - false-positive frequency,
+        - continuation outcome,
+        - reversal outcome,
+        - expectancy,
+        - drawdown,
+        - trade frequency,
+        - session-specific behavior.
+
+Important:
+    Wick breaks will likely create more candidates.
+    Close breaks will likely be stricter and may reduce noise.
+    Neither should be assumed superior before testing.
+
+--------------------------------------------------------------------------------
+
+19.3 POI Expiry Boundary
+
+User clarification:
+    - POIs expire after 12:00pm New York time.
+    - The next day starts fresh.
+    - NY session can use levels marked earlier the same day, including around 2:00am NY.
+
+Implementation decision:
+    - POI detection window remains 1:00am-12:00pm NY.
+    - Execution windows remain:
+        London: 3:00am-6:00am NY.
+        New York: 7:00am-12:00pm NY.
+    - All active POIs expire at 12:00pm NY.
+    - No POI carries past 12:00pm NY.
+    - No POI carries into the next trading day.
+
+Formal rule:
+    A POI created at time t is eligible only if:
+        1:00am <= t <= 12:00pm NY
+        and
+        same NY calendar date
+        and
+        current time <= 12:00pm NY
+        and
+        POI has not been invalidated by the chosen test rule.
+
+Example:
+    A POI created at 2:00am NY can be used during:
+        - London window,
+        - New York window,
+    as long as the retest happens before 12:00pm NY.
+
+Important implementation note:
+    If a POI is created very close to 12:00pm NY, it still expires at 12:00pm NY.
+    Later research can test whether to require minimum remaining time before expiry.
+
+--------------------------------------------------------------------------------
+
+19.4 First Touch vs Multiple Touches
+
+User clarification:
+    - Multiple touches are allowed.
+    - One touch is okay, but if price retests the POI again, that is also acceptable.
+
+Implementation decision:
+    - Do not permanently disable a POI after first touch by default.
+    - Track touch count for each POI.
+    - Allow the same POI to generate multiple retest events before expiry.
+    - Each retest should be recorded separately in the retest table.
+
+Required fields:
+    - poi_id
+    - retest_number
+    - first_touch_flag
+    - touch_timestamp
+    - touch_session
+    - time_since_poi_creation
+    - time_since_previous_touch
+    - whether price fully crossed the POI
+    - whether prior touch already hit a theoretical target/stop under a given test variant
+
+Research output:
+    Compare:
+        - first touch only,
+        - second touch only,
+        - third-or-later touch,
+        - all touches,
+        - first touch vs later touches by session and confluence.
+
+Important:
+    Multiple touches must be handled carefully to avoid overlapping trade assumptions.
+    If a trade from the first touch is still open, the system should not open a second overlapping trade on the same POI unless a specific pyramiding/re-entry rule is later defined.
+
+Recommended first rule:
+    - Record all touches.
+    - For trade simulation, avoid overlapping trades from the same POI unless explicitly testing re-entry logic.
+
+--------------------------------------------------------------------------------
+
+19.5 Reversal Logic
+
+User clarification:
+    - Reversal vs continuation depends on future feature engineering and added confluences.
+    - The reversal logic should not be hard-coded yet.
+
+Implementation decision:
+    - Treat reversal/continuation as a research classification problem.
+    - The base POI retest only creates a candidate event.
+    - Do not assume all bullish POIs must only be long or all bearish POIs must only be short.
+    - For each candidate retest, calculate forward outcomes in both directions where appropriate.
+
+Recommended labeling approach:
+    For each POI retest, record:
+        - continuation direction outcome,
+        - opposite/reversal direction outcome,
+        - MAE/MFE for continuation,
+        - MAE/MFE for reversal,
+        - R-multiple outcomes for both directions if stop logic can be defined,
+        - confluence features at retest.
+
+Potential confluence categories that may later decide reversal vs continuation:
+    - VWAP position and distance,
+    - VWAP slope,
+    - price extension from VWAP,
+    - session high/low proximity,
+    - session range extension,
+    - volume exhaustion,
+    - volatility regime,
+    - market structure context,
+    - directional efficiency,
+    - prior trend strength,
+    - distance from broken swing,
+    - POI location relative to day/session open,
+    - whether price swept a meaningful level before retest.
+
+Important:
+    Reversal logic should be discovered through feature analysis, not invented prematurely.
+
+--------------------------------------------------------------------------------
+
+19.6 Stop-Loss Model
+
+User clarification:
+    - Stop placement is tricky.
+    - Both POI-based stops and adjacent-candle stops should be tested.
+
+Implementation decision:
+    - Implement multiple stop models as research variants.
+
+Stop Model A — POI Distal Edge Stop:
+    Long:
+        stop = POI_low - buffer
+
+    Short:
+        stop = POI_high + buffer
+
+Stop Model B — Adjacent Candle Stop:
+    This requires careful indexing around the POI candle.
+
+    Candidate variants:
+        B1. Previous-candle reference:
+            For long: stop below L[i-1]
+            For short: stop above H[i-1]
+
+        B2. Next-candle reference:
+            For long: stop below L[i+1]
+            For short: stop above H[i+1]
+
+        B3. Most conservative adjacent reference:
+            For long: stop below min(L[i-1], L[i], L[i+1])
+            For short: stop above max(H[i-1], H[i], H[i+1])
+
+        B4. Tightest adjacent reference:
+            For long: stop below the nearest structurally logical adjacent low.
+            For short: stop above the nearest structurally logical adjacent high.
+
+Recommended first implementation:
+    - Test POI distal edge stop.
+    - Test conservative adjacent-candle stop.
+    - Keep tighter discretionary adjacent variants for later after visual validation.
+
+Stop constraints:
+    - Minimum stop distance: 25 ticks.
+    - Maximum stop distance: 100 ticks.
+    - Reject trades outside this range.
+
+Important:
+    Stop model must be part of the experimental grid.
+    Do not choose one final stop model before testing.
+
+--------------------------------------------------------------------------------
+
+19.7 Risk Per Trade
+
+User clarification:
+    - Base risk per trade: 0.5% of account.
+    - Maximum risk per trade: 1.0% of account.
+    - Account size: $50,000.
+
+Implementation decision:
+    Base risk:
+        account_equity = 50,000
+        risk_pct = 0.005
+        risk_dollars = 250
+
+    Maximum risk:
+        max_risk_pct = 0.01
+        max_risk_dollars = 500
+
+For MGC:
+    Approximate tick value:
+        $1 per tick per MGC contract
+
+Position sizing:
+    contracts = floor(risk_dollars / (stop_ticks * tick_value_per_contract))
+
+For 0.5% risk:
+    contracts = floor(250 / stop_ticks)
+
+For 1.0% max risk:
+    contracts = floor(500 / stop_ticks)
+
+Risk constraints:
+    - If stop_ticks < 25 or stop_ticks > 100, reject the trade.
+    - If calculated contracts < 1, reject the trade.
+    - If risk exceeds 1.0%, reject or cap position size.
+
+Research output:
+    Record performance under:
+        - fixed 0.5% risk,
+        - capped maximum 1.0% risk,
+        - 1 contract baseline,
+        - possible fixed-contract sensitivity test.
+
+Important:
+    Since GC is the analysis instrument and MGC is the intended execution instrument, final realistic sizing should be based on MGC tick value.
+
+--------------------------------------------------------------------------------
+
+19.8 News Filter
+
+User clarification:
+    - Avoid “red folder” high-impact news.
+    - For now, news filtering may be excluded to avoid complexity because collecting 5 years of historical news events is non-trivial.
+
+Implementation decision:
+    - Do not block progress waiting for historical news data.
+    - Initial implementation can exclude the news filter.
+    - Add a placeholder column for future news filtering.
+
+Recommended fields:
+    - is_red_folder_news_window = False by default for now.
+    - news_event_name = None by default.
+    - minutes_to_news = NaN by default.
+    - minutes_since_news = NaN by default.
+
+Research note:
+    The absence of a news filter means some trades may occur during high-impact macro events.
+    This should be disclosed in the backtest limitations.
+
+Future news events to consider:
+    - CPI
+    - PPI
+    - NFP
+    - FOMC
+    - Fed Chair speeches
+    - PCE
+    - GDP
+    - unemployment claims
+    - major Treasury/yield events if relevant
+
+Possible future buffer:
+    - no new trades 15-30 minutes before red-folder news,
+    - no new trades 15-30 minutes after red-folder news,
+    but this should be implemented only after a reliable historical calendar is available.
+
+--------------------------------------------------------------------------------
+
+19.9 Updated Implementation Stance
+
+The first implementation should not attempt to find the final alpha immediately.
+
+The correct sequence is now:
+
+    1. Build active GC/MGC front-month series.
+    2. Convert and tag timestamps in New York time.
+    3. Detect swings using multiple swing definitions.
+    4. Detect swing breaks using both wick-break and close-break modes.
+    5. Detect valid POIs using BOTH:
+        - classic wick-to-wick FVG,
+        - close-to-next-open gap.
+    6. Enforce POI creation window: 1:00am-12:00pm NY.
+    7. Enforce POI expiry at 12:00pm NY.
+    8. Detect all same-day POI touches/retests, including multiple touches.
+    9. Build POI/retest/candidate-trade tables.
+    10. Test entry variants:
+        - boundary touch,
+        - 50% POI,
+        - distal edge.
+    11. Test stop variants:
+        - POI distal edge,
+        - adjacent candle / conservative adjacent candle.
+    12. Test target variants:
+        - 1R, 2R, 3R, 4R, 5R.
+    13. Engineer confluence features:
+        - VWAP,
+        - volume,
+        - volatility,
+        - session,
+        - market structure,
+        - chop,
+        - extension,
+        - POI quality.
+    14. Analyze which confluence combinations improve expectancy.
+    15. Only then finalize execution rules.
+
+--------------------------------------------------------------------------------
+
+19.10 Updated Agent Instruction
+
+The agent should now be instructed:
+
+The unresolved items from Section 16 have been clarified as research parameters. Do not hard-code a single swing definition. Test multiple swing definitions such as 3-bar, 5-bar, and 7-bar swings. Test both wick-break and close-break swing-break rules. POIs must expire at 12:00pm New York time and must not carry into the next day. Multiple POI touches are allowed and should be recorded as separate retest events, but overlapping trade assumptions must be controlled. Reversal versus continuation should not be hard-coded; it should be studied through confluence and feature engineering. Stop logic should test both POI-based stops and adjacent-candle stops. Risk should be modeled at 0.5% base risk on a $50,000 account, with 1.0% maximum risk. Historical red-folder news filtering can be excluded from the first implementation, but placeholder fields should be included for future event filtering.
+
+================================================================================
+20. REMAINING QUESTIONS AFTER USER CLARIFICATION
+================================================================================
+
+Only a few important questions remain:
+
+1. Adjacent-candle stop:
+    When you say stop can go above/below the candle before/after the POI, which reference do you most commonly mean?
+    - candle before the middle POI candle,
+    - candle after the middle POI candle,
+    - or whichever side gives the logical invalidation?
+
+2. Multiple touches and open trades:
+    If first touch triggers a trade and that trade is still open, should a second touch of the same POI be ignored until the first trade is closed?
+
+3. POI invalidation:
+    Does a POI become invalid if price completely trades through the full POI zone before reacting?
+    Or can it still be valid after being pierced?
+
+4. Minimum FVG/gap size:
+    Should both the classic FVG and close-open gap require at least 1 tick?
+    Current recommendation is yes, but this should be confirmed.
+
+5. Maximum number of trades:
+    Should there be a maximum number of trades per day or per session?
+    Example:
+        - max 1 London trade,
+        - max 2 NY trades,
+        - stop after daily loss limit.
+
+END OF APPENDIX V0.2A
