@@ -1259,8 +1259,8 @@ Trusted cleaned market data:                 COMPLETE
 Active-contract and rollover construction:   COMPLETE
 Broad market EDA:                            COMPLETE
 POI research branch:                         SEPARATE — DO NOT LOAD
-Independent statistical observation frame:   NOT STARTED
-Independent forward labels:                  NOT STARTED
+Independent statistical observation frame:   COMPLETE
+Independent forward labels:                  COMPLETE
 Independent baseline behaviour:              NOT STARTED
 Independent feature engineering:             NOT STARTED
 Independent feature evaluation:              NOT STARTED
@@ -1271,9 +1271,7 @@ POI integration research:                    FUTURE PHASE
 The correct next action is:
 
 ```text
-Build Sections 0.0-5.0 of statistical_feature_research.ipynb,
-validate the independent eligible-observation and label framework,
-save the resulting tables, and only then begin feature engineering.
+Section 5.0 — Establish Baseline Behaviour
 ```
 
 ---
@@ -1288,6 +1286,59 @@ The trusted GC source contains **1,759,671** rows. The validated frame contains 
 
 Decision-entry pairs must be strictly consecutive by one minute and remain within the same product, selected symbol/active contract, instrument identifier, continuous segment, and New York trading date. Both bars must pass `tradable_research_flag`; saved roll-window and liquidity controls are also checked explicitly. The exclusion funnel is sequential and fully reconciles to the GC source count.
 
-The output is saved to `data/processed/statistical_research/eligible_observations_gc.parquet` and remains excluded from Git. Save/reload checks confirmed row and column preservation, UTC and New York timezone metadata, unique observation IDs and decision-entry pairs, complete saved fields, and absence of all quarantined forward columns. Synthetic boundary cases for session opens/closes, contract changes, missing minutes, and date crossings passed. No schema fallback was required because `symbol`, `active_symbol`, `instrument_id`, and `continuous_segment_id` were available. Fixed-horizon availability and all price outcomes remain intentionally uncomputed.
+The output is saved to `data/processed/statistical_research/eligible_observations_gc.parquet` and remains excluded from Git. Save/reload checks confirmed row and column preservation, UTC and New York timezone metadata, unique observation IDs and decision-entry pairs, complete saved fields, and absence of all quarantined forward columns. Synthetic boundary cases for session opens/closes, contract changes, missing minutes, and date crossings passed. No schema fallback was required because `symbol`, `active_symbol`, `instrument_id`, and `continuous_segment_id` were available. Fixed-horizon availability and price outcomes were intentionally outside the Section 3 gate and are now completed in Section 4 below.
 
-**Next section:** Section 4 — Construct Forward Outcome Labels.
+**Next section:** Section 5.0 — Establish Baseline Behaviour.
+
+---
+
+## Section 4 — Forward Outcome Label Completion
+
+**Status:** COMPLETE — `SECTION 4 STATUS: READY`
+
+Section 4 preserves all **586,530** validated GC observations and produces a **586,530 × 169** forward-label table. The locked horizons are **5, 15, 30, 60, 120, and 180 minutes**. Decision information ends with completed bar `t`; entry is the open of bar `t+1`; an `h`-minute path contains exactly `h` consecutive one-minute bars beginning with the entry bar. The final source bar starts at `entry + (h - 1) minutes`, its close supplies the exit price, and the saved economic exit timestamp is `entry + h minutes`. Fixed horizons are never shortened.
+
+All **1,759,671** GC open, high, low, and close values passed the **0.10** GC tick grid at a strict `1e-8`-tick floating tolerance, with zero off-grid values. Tick outcomes are saved as nullable 32-bit integers; one-based first-extreme times are nullable 16-bit integers. ATR-normalized outcomes use only `rolling_atr_20m` from decision bar `t`, saved as `decision_atr_20m`. ATR normalization is available for **586,382** observations (**99.9748%**); the remaining **148** retain valid raw labels when their paths are valid, while ATR outcomes and expansion labels are null.
+
+Realized volatility is the unannualized total path measure `sqrt(sum(r_i²)) × 10,000` basis points. Its first component is `log(entry-bar close / entry open)` and later components are consecutive path-close log returns. No decision-close-to-entry-open return is included.
+
+Expansion uses one frozen 80th-percentile threshold per horizon, fitted only on label-available Development observations with valid decision ATR and applied unchanged to every partition. The thresholds and Development fitting counts are:
+
+| Horizon (minutes) | Threshold (decision ATR) | Development rows |
+|---:|---:|---:|
+| 5 | 3.111111 | 306,161 |
+| 15 | 5.557772 | 306,108 |
+| 30 | 8.000000 | 305,979 |
+| 60 | 11.797753 | 305,603 |
+| 120 | 17.413793 | 304,370 |
+| 180 | 22.409639 | 302,774 |
+
+Availability is weakly non-increasing and preserves every observation:
+
+| Horizon (minutes) | Available | Unavailable | Availability rate |
+|---:|---:|---:|---:|
+| 5 | 586,468 | 62 | 99.9894% |
+| 15 | 586,296 | 234 | 99.9601% |
+| 30 | 585,958 | 572 | 99.9025% |
+| 60 | 585,033 | 1,497 | 99.7448% |
+| 120 | 582,471 | 4,059 | 99.3080% |
+| 180 | 579,166 | 7,364 | 98.7445% |
+
+The observed production unavailability reason at every horizon is `missing_or_nonconsecutive_minute`; synthetic tests also validate the full deterministic reason priority for insufficient rows, contract/instrument changes, segment changes, New York date changes, tradability/roll/liquidity failures, exact and breached 15:30 boundaries, and invalid prices. The executed notebook passed **20/20 synthetic tests**, **174/174 production checks**, **12/12 fixed-seed London/New York path reconstructions**, and **13/13 independent save/reload checks**. The saved schemas retain Arrow dtypes, dictionary meanings, null semantics, identifier order, and UTC/New York timezone metadata. The trusted `research_bars` dataframe was not mutated, existing legacy forward columns remained quarantined, and no Final-test values influenced threshold fitting.
+
+Saved generated artifacts (excluded from Git):
+
+```text
+data/processed/statistical_research/forward_labels_gc.parquet
+data/processed/statistical_research/forward_label_expansion_thresholds_gc.parquet
+```
+
+Reusable implementation and automated tests:
+
+```text
+src/statistical_research/__init__.py
+src/statistical_research/labels.py
+tests/test_statistical_research_labels.py
+```
+
+No POI-derived information, R-multiple labels, stops, targets, cost thresholds, continuation/reversal labels, or trade simulations were introduced. Section 5 remains unstarted.
