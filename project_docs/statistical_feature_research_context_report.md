@@ -1262,7 +1262,7 @@ POI research branch:                         SEPARATE — DO NOT LOAD
 Independent statistical observation frame:   COMPLETE
 Independent forward labels:                  COMPLETE
 Independent baseline behaviour:              COMPLETE
-Independent feature engineering:             NOT STARTED
+Independent feature engineering:             COMPLETE
 Independent feature evaluation:              NOT STARTED
 Independent statistical backtest:            NOT STARTED
 POI integration research:                    FUTURE PHASE
@@ -1271,7 +1271,7 @@ POI integration research:                    FUTURE PHASE
 The correct next action is:
 
 ```text
-Section 6.0 — Feature Engineering Framework
+Section 7.0 — Univariate Feature Evaluation
 ```
 
 ---
@@ -1349,7 +1349,7 @@ No POI-derived information, R-multiple labels, stops, targets, continuation/reve
 
 **Status:** COMPLETE — `SECTION 5 STATUS: READY`
 
-The executed notebook now completes the exact sequence `5.0 Establish Baseline Behaviour`, `5.1 Baseline Scope, Metrics, and Comparison Rules`, `5.2 Unconditional Forward Outcome Distributions`, `5.3 Baseline Excursion, Range, and Volatility Behaviour`, `5.4 Forward Outcomes by Session`, `5.5 Forward Outcomes by Time of Day and Day of Week`, `5.6 Directional Symmetry and Tail Asymmetry`, `5.7 Year and Research-Partition Stability`, `5.8 Economic Significance and Transaction-Cost Thresholds`, `5.9 Baseline Validation and Save Outputs`, and `5.10 Baseline Summary and Benchmark Definition`. Section 6 was not started.
+The Section 5 milestone completed the exact sequence `5.0 Establish Baseline Behaviour`, `5.1 Baseline Scope, Metrics, and Comparison Rules`, `5.2 Unconditional Forward Outcome Distributions`, `5.3 Baseline Excursion, Range, and Volatility Behaviour`, `5.4 Forward Outcomes by Session`, `5.5 Forward Outcomes by Time of Day and Day of Week`, `5.6 Directional Symmetry and Tail Asymmetry`, `5.7 Year and Research-Partition Stability`, `5.8 Economic Significance and Transaction-Cost Thresholds`, `5.9 Baseline Validation and Save Outputs`, and `5.10 Baseline Summary and Benchmark Definition`. Section 6 was outside that milestone and is now complete below.
 
 The sole primary input is `data/processed/statistical_research/forward_labels_gc.parquet` (**586,530 × 169**). Population counts remain **219,938 London**, **366,592 New York**, **306,230 Development**, **118,076 Validation**, and **162,224 Final test**. Horizon availability remains **586,468 / 586,296 / 585,958 / 585,033 / 582,471 / 579,166** at 5/15/30/60/120/180 minutes, respectively.
 
@@ -1387,4 +1387,85 @@ scripts/update_statistical_section5_notebook.py
 
 Git commit information: this milestone is committed directly on `main` with message `Complete statistical baseline behaviour research`; the exact verified hash and `origin/main` push result are recorded in Git history and the final implementation handoff.
 
-**Exact next approved section:** Section 6.0 — Feature Engineering Framework.
+**Next section at the Section 5 milestone:** Section 6.0 — Feature Engineering Framework.
+
+---
+
+## Section 6 — Feature Engineering Framework Completion
+
+**Status:** COMPLETE — `SECTION 6 STATUS: READY`
+
+Section 6 now implements the exact reader sequence `6.0 Feature Engineering Framework` through `6.15 Save Outputs, Section Summary, and Completion Gate`. It does not start Section 7 or perform feature ranking, feature/outcome correlations, quantile outcome analysis, predictive modelling, label-based selection, strategy construction, PnL estimation, or backtesting.
+
+The final GC feature matrix is **586,530 × 97**: **12 join/audit metadata columns** followed by **85 registry-authoritative predictors**. The predictor set contains **79 core** and **6 experimental** features; exactly **80 are numeric**, with three nullable booleans and two categorical context fields. Population order and counts remain **219,938 London**, **366,592 New York**, **306,230 Development**, **118,076 Validation**, and **162,224 Final test**. Matrix memory is **213.40 MiB** after optimization versus an estimated **414.21 MiB** unoptimized representation; estimated peak working memory is **634.05 MiB**.
+
+Feature-family counts are:
+
+| Family | Count |
+|---|---:|
+| Price, return, and momentum | 16 |
+| Volatility and range state | 13 |
+| Candle geometry | 10 |
+| Volume and activity | 10 |
+| VWAP and session state | 10 |
+| Trend and persistence | 11 |
+| Session, clock, and calendar | 9 |
+| Experimental hypotheses | 6 |
+
+The experimental features and frozen rationales are:
+
+- `directional_energy_balance_15_exp` — emphasizes high-energy completed returns and measures whether recent movement energy was directionally coherent.
+- `wick_pressure_balance_10_exp` — aggregates repeated upper/lower-tail rejection as an OHLCV proxy; it is not order flow or measured liquidity.
+- `compression_age_exp` — distinguishes fresh compression from a prolonged stagnant regime using predefined volatility and ATR-ratio thresholds.
+- `vwap_elasticity_30_exp` — estimates the completed historical return response to lagged research-day VWAP distance using 30 causal pairs.
+- `liquidity_vacuum_score_exp` — tests whether an edge-closing range bar on relatively light activity proxies for low resistance; it is not market depth or actual liquidity.
+- `pullback_tension_5_30_exp` — isolates a short completed counter-move inside a broader 30-minute displacement without exhaustive interactions.
+
+Standing principle:
+
+> The statistical research branch combines a disciplined, interpretable feature foundation with a small number of explicitly marked experimental hypotheses. Experimental features are identified with an asterisk in reader-facing documentation, include a written rationale, and are evaluated under exactly the same statistical and out-of-sample standards as conventional features.
+
+Construction uses the full **1,759,671-row** trusted GC history before direct decision-bar mapping. Legacy saved features are not copied blindly. The approved source namespace contains only raw OHLCV, timestamps, product/contract/instrument/segment identifiers, and tradability/roll/liquidity controls. Continuity resets on non-one-minute timestamps, product or selected-contract changes, instrument changes, continuous-segment changes, and invalid tradability/roll/liquidity boundaries. Fixed windows require complete history and retain nulls after warm-up, gaps, resets, zero denominators, or invalid regression variation. Research-day state resets at 01:00 New York, London execution state at 03:00, and New York execution state at 07:00. The first eligible entry at an execution-session open honestly has null execution-session state because decision bar `t` precedes the anchor bar.
+
+The time-of-day volume reference has **32** session/15-minute groups and is fitted only on Development. Development application is leave-one-New-York-trading-date-out using count/sum/squared-sum subtraction; Validation and Final test apply frozen full-Development parameters. Validation or Final-test volume cannot change the saved reference table. Partial 2021 and partial 2026 contribute only observed dates, with no annual reweighting.
+
+Final-test governance remains strict. Frozen Final-test feature values are saved, but inspection is limited to schema, row count, null/finite rates, dtypes, and transformation integrity. No Final-test feature distribution or feature-to-outcome relationship informed a definition, threshold, inclusion, or removal. The feature builder has no label-table argument, no outcome or POI column entered its namespace, and entry-bar OHLCV is excluded by the future-mutation test.
+
+Validation results:
+
+- **14/14** new synthetic feature tests passed.
+- **38/38** combined statistical-research feature, label, and baseline tests passed.
+- **37/37** critical production, manual, diagnostic, and save/reload gates passed.
+- **40/40** fixed-seed manual reconstructions passed across five timing/boundary cases and all eight feature families.
+- No infinity, exact duplicate, constant, near-constant, invalid-range, extreme, or excessive-missingness feature was found.
+- Maximum all-sample feature missingness is **0.966873%**; maximum Development missingness is **1.396989%**, explained by continuity resets, zero denominators, or complete-window requirements.
+- The fresh `.venv-1` notebook execution completed **51/51 code cells** sequentially with zero error outputs and recorded `C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv-1\Scripts\python.exe` as the active interpreter. Full-notebook runtime was **488.4 seconds**; the Section 6 block took **49.25 seconds**, including a **34.26-second** feature build.
+
+Saved generated artifacts (Parquet files remain excluded from Git):
+
+```text
+data/processed/statistical_research/feature_matrix_gc.parquet
+data/processed/statistical_research/feature_registry_gc.parquet
+data/processed/statistical_research/feature_validation_gc.parquet
+data/processed/statistical_research/feature_diagnostics_gc.parquet
+data/processed/statistical_research/feature_reference_parameters_gc.parquet
+
+reports/statistical_research/tables/section6/feature_registry_gc.csv
+reports/statistical_research/tables/section6/feature_diagnostics_gc.csv
+reports/statistical_research/tables/section6/section6_manual_feature_audit.csv
+reports/statistical_research/summaries/section6_feature_engineering_summary.md
+```
+
+Reusable implementation and tests:
+
+```text
+src/statistical_research/feature_registry.py
+src/statistical_research/feature_engineering.py
+src/statistical_research/feature_validation.py
+tests/test_statistical_research_features.py
+scripts/update_statistical_section6_notebook.py
+```
+
+No feature has yet been shown to possess predictive value. Section 6 establishes only a valid candidate feature matrix.
+
+**Exact next approved section:** Section 7.0 — Univariate Feature Evaluation.

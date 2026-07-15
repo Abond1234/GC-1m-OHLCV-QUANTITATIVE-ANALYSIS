@@ -19,6 +19,29 @@ from .baselines import (
     save_baseline_outputs,
     summarize_outcomes,
 )
+from .feature_registry import (
+    CORE_FEATURE_NAMES,
+    EXPERIMENTAL_FEATURE_NAMES,
+    FEATURE_NAMES,
+    FEATURE_SPECS,
+    FeatureSpec,
+    feature_registry_frame,
+    validate_registry,
+)
+from .feature_engineering import (
+    FEATURE_SOURCE_COLUMNS,
+    METADATA_COLUMNS,
+    FeatureBuildResult,
+    build_continuity_run_id,
+    build_feature_matrix,
+)
+from .feature_validation import (
+    FeatureSaveResult,
+    build_manual_feature_audit,
+    compute_feature_diagnostics,
+    save_feature_outputs,
+    validate_feature_matrix,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -36,4 +59,21 @@ __all__ = [
     "build_baseline_outputs",
     "save_baseline_outputs",
     "summarize_outcomes",
+    "CORE_FEATURE_NAMES",
+    "EXPERIMENTAL_FEATURE_NAMES",
+    "FEATURE_NAMES",
+    "FEATURE_SPECS",
+    "FeatureSpec",
+    "feature_registry_frame",
+    "validate_registry",
+    "FEATURE_SOURCE_COLUMNS",
+    "METADATA_COLUMNS",
+    "FeatureBuildResult",
+    "build_continuity_run_id",
+    "build_feature_matrix",
+    "FeatureSaveResult",
+    "build_manual_feature_audit",
+    "compute_feature_diagnostics",
+    "save_feature_outputs",
+    "validate_feature_matrix",
 ]
