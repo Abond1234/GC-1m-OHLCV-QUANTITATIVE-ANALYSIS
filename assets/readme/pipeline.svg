@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="420" viewBox="0 0 1200 420"
+     role="img" aria-labelledby="pipeline-title pipeline-desc">
+  <title id="pipeline-title">Research Pipeline Architecture</title>
+  <desc id="pipeline-desc">Dual-branch research pipeline: shared market data feeds both the POI-based strategy branch and the independent statistical research branch, converging at integration.</desc>
+
+  <defs>
+    <linearGradient id="goldBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#C9A84C"/>
+      <stop offset="100%" stop-color="#9E7B2A"/>
+    </linearGradient>
+    <linearGradient id="greenBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3a7a5a"/>
+      <stop offset="100%" stop-color="#2a5a40"/>
+    </linearGradient>
+    <linearGradient id="blueBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4a6a8a"/>
+      <stop offset="100%" stop-color="#2a4a6a"/>
+    </linearGradient>
+    <marker id="arrowGold" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#C9A84C" opacity="0.7"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#3a7a5a" opacity="0.7"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#4a6a8a" opacity="0.7"/>
+    </marker>
+    <marker id="arrowMuted" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#5a5a5a" opacity="0.7"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="420" rx="16" fill="#0a0d0f"/>
+  <!-- grid -->
+  <line x1="56" y1="100" x2="1144" y2="100" stroke="#141618" stroke-width="1"/>
+  <line x1="56" y1="200" x2="1144" y2="200" stroke="#141618" stroke-width="1"/>
+  <line x1="56" y1="300" x2="1144" y2="300" stroke="#141618" stroke-width="1"/>
+
+  <!-- Section label -->
+  <text x="56" y="36" font-family="ui-monospace, SFMono-Regular, monospace" font-size="10" fill="#5a5a5a" letter-spacing="1.5">RESEARCH PIPELINE — DUAL-BRANCH ARCHITECTURE</text>
+  <rect x="56" y="44" width="1088" height="1" fill="#1e2225"/>
+
+  <!-- ── SHARED DATA SOURCE (centre-top) ── -->
+  <g transform="translate(460 60)">
+    <rect x="0" y="0" width="280" height="56" rx="8" fill="#111518" stroke="#2a2d30" stroke-width="1"/>
+    <rect x="0" y="0" width="6" height="56" rx="3" fill="url(#goldBar)"/>
+    <text x="20" y="20" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#C9A84C" letter-spacing="1">SHARED MARKET DATA</text>
+    <text x="20" y="37" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13" font-weight="600" fill="#e0d8c8">research_bars_gc_mgc_1m.parquet</text>
+    <text x="20" y="52" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#5a5a5a">3,487,656 rows  ·  GC + MGC  ·  1-min OHLCV</text>
+  </g>
+
+  <!-- Arrow from data to POI branch -->
+  <path d="M 530 116 L 280 170" stroke="#C9A84C" stroke-width="1.2" fill="none" marker-end="url(#arrowGold)" stroke-dasharray="5 3" opacity="0.6"/>
+  <!-- Arrow from data to statistical branch -->
+  <path d="M 670 116 L 920 170" stroke="#3a7a5a" stroke-width="1.2" fill="none" marker-end="url(#arrowGreen)" stroke-dasharray="5 3" opacity="0.6"/>
+
+  <!-- ── LEFT BRANCH — POI Strategy ── -->
+  <g transform="translate(56 170)">
+    <!-- Branch header -->
+    <rect x="0" y="0" width="430" height="30" rx="6" fill="#141a14"/>
+    <text x="14" y="20" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a9a6a" letter-spacing="1.2">BRANCH A  ·  POI-BASED STRATEGY</text>
+
+    <!-- Step 1 -->
+    <rect x="0" y="42" width="200" height="50" rx="6" fill="#0e1410" stroke="#2a3a2a" stroke-width="1"/>
+    <rect x="0" y="42" width="4" height="50" rx="2" fill="#3a7a5a"/>
+    <text x="14" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c8d8c0">POI Detection</text>
+    <text x="14" y="75" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a5a4a">Swing break + FVG filter</text>
+    <text x="14" y="87" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a5a4a">poi_signal_features.py</text>
+
+    <!-- Arrow -->
+    <line x1="204" y1="67" x2="224" y2="67" stroke="#2a4a2a" stroke-width="1.2" marker-end="url(#arrowGreen)"/>
+
+    <!-- Step 2 -->
+    <rect x="228" y="42" width="200" height="50" rx="6" fill="#0e1410" stroke="#2a3a2a" stroke-width="1"/>
+    <rect x="228" y="42" width="4" height="50" rx="2" fill="#3a7a5a"/>
+    <text x="242" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c8d8c0">POI Refinement</text>
+    <text x="242" y="75" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a5a4a">Geometry + selection score</text>
+    <text x="242" y="87" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a5a4a">poi_selection_refinement.py</text>
+
+    <!-- Step 3 row 2 -->
+    <rect x="0" y="110" width="200" height="50" rx="6" fill="#0e1410" stroke="#2a3a2a" stroke-width="1"/>
+    <rect x="0" y="110" width="4" height="50" rx="2" fill="#C9A84C"/>
+    <text x="14" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c8d8c0">Event Study</text>
+    <text x="14" y="143" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#6a5a3a">Candidate-trade dataset</text>
+    <text x="14" y="155" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#6a5a3a">poi_event_study.py</text>
+
+    <!-- Arrow step2→step3 -->
+    <line x1="314" y1="92" x2="100" y2="110" stroke="#2a4a2a" stroke-width="1" marker-end="url(#arrowMuted)" opacity="0.5"/>
+
+    <!-- Step 4 -->
+    <rect x="228" y="110" width="200" height="50" rx="6" fill="#0e1410" stroke="#2a3a2a" stroke-width="1"/>
+    <rect x="228" y="110" width="4" height="50" rx="2" fill="#C9A84C"/>
+    <text x="242" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c8d8c0">Context Features</text>
+    <text x="242" y="143" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#6a5a3a">Decision-time feature set</text>
+    <text x="242" y="155" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#6a5a3a">poi_context_features.py</text>
+
+    <!-- arrow step3→step4 -->
+    <line x1="204" y1="135" x2="224" y2="135" stroke="#2a4a2a" stroke-width="1.2" marker-end="url(#arrowGold)"/>
+  </g>
+
+  <!-- ── RIGHT BRANCH — Statistical Research ── -->
+  <g transform="translate(714 170)">
+    <!-- Branch header -->
+    <rect x="0" y="0" width="430" height="30" rx="6" fill="#141a14"/>
+    <text x="14" y="20" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#7a7adf" letter-spacing="1.2">BRANCH B  ·  INDEPENDENT STATISTICAL RESEARCH</text>
+
+    <!-- Step 1 -->
+    <rect x="0" y="42" width="200" height="50" rx="6" fill="#0e0e18" stroke="#2a2a3a" stroke-width="1"/>
+    <rect x="0" y="42" width="4" height="50" rx="2" fill="#4a6a8a"/>
+    <text x="14" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c0c8d8">Forward Labels</text>
+    <text x="14" y="75" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">MFE / MAE / vol / direction</text>
+    <text x="14" y="87" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">labels.py</text>
+
+    <!-- Arrow -->
+    <line x1="204" y1="67" x2="224" y2="67" stroke="#2a2a4a" stroke-width="1.2" marker-end="url(#arrowBlue)"/>
+
+    <!-- Step 2 -->
+    <rect x="228" y="42" width="200" height="50" rx="6" fill="#0e0e18" stroke="#2a2a3a" stroke-width="1"/>
+    <rect x="228" y="42" width="4" height="50" rx="2" fill="#4a6a8a"/>
+    <text x="242" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c0c8d8">Feature Registry</text>
+    <text x="242" y="75" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">OHLCV momentum + vol</text>
+    <text x="242" y="87" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">feature_registry.py</text>
+
+    <!-- Step 3 row 2 -->
+    <rect x="0" y="110" width="200" height="50" rx="6" fill="#0e0e18" stroke="#2a2a3a" stroke-width="1"/>
+    <rect x="0" y="110" width="4" height="50" rx="2" fill="#5a5a9a"/>
+    <text x="14" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c0c8d8">Feature Engineering</text>
+    <text x="14" y="143" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">Lookahead-free matrix</text>
+    <text x="14" y="155" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">feature_engineering.py</text>
+
+    <!-- arrow step2→step3 -->
+    <line x1="314" y1="92" x2="100" y2="110" stroke="#2a2a4a" stroke-width="1" marker-end="url(#arrowMuted)" opacity="0.5"/>
+
+    <!-- Step 4 -->
+    <rect x="228" y="110" width="200" height="50" rx="6" fill="#0e0e18" stroke="#2a2a3a" stroke-width="1"/>
+    <rect x="228" y="110" width="4" height="50" rx="2" fill="#5a5a9a"/>
+    <text x="242" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#c0c8d8">Bootstrap Baselines</text>
+    <text x="242" y="143" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">Random-entry benchmark</text>
+    <text x="242" y="155" font-family="ui-monospace, SFMono-Regular, monospace" font-size="9" fill="#4a4a6a">baselines.py</text>
+
+    <!-- arrow step3→step4 -->
+    <line x1="204" y1="135" x2="224" y2="135" stroke="#2a2a4a" stroke-width="1.2" marker-end="url(#arrowBlue)"/>
+  </g>
+
+  <!-- ── CONVERGENCE — Integration Phase ── -->
+  <!-- Arrows from both branches converging down -->
+  <path d="M 370 360 L 560 390" stroke="#C9A84C" stroke-width="1.2" fill="none" marker-end="url(#arrowGold)" stroke-dasharray="5 3" opacity="0.5"/>
+  <path d="M 928 360 L 700 390" stroke="#4a6a8a" stroke-width="1.2" fill="none" marker-end="url(#arrowBlue)" stroke-dasharray="5 3" opacity="0.5"/>
+
+  <g transform="translate(502 390)">
+    <rect x="0" y="0" width="196" height="22" rx="6" fill="#141414" stroke="#2a2a2a" stroke-width="1"/>
+    <text x="14" y="15" font-family="ui-monospace, SFMono-Regular, monospace" font-size="10" fill="#5a5a5a" letter-spacing="0.8">→ Integration Phase (future)</text>
+  </g>
+
+</svg>
