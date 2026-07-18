@@ -1,291 +1,462 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%"
-       alt="Quant Project 1 — CME Gold Futures Research and Strategy Pipeline">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Quant Project 1 — CME Gold Futures quantitative research">
 </p>
 
 <p align="center">
-  <a href="#-research-branches">Research Branches</a> ·
-  <a href="#-architecture">Architecture</a> ·
-  <a href="#-quick-start">Quick Start</a> ·
-  <a href="#-testing">Testing</a> ·
-  <a href="#-research-standards">Research Standards</a>
+  <a href="#project-status">Project status</a> ·
+  <a href="#research-architecture">Research architecture</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#running-the-project">Running the project</a> ·
+  <a href="#research-governance">Research governance</a>
 </p>
 
----
+# Quant Project 1
 
-## What This Is
+Quant Project 1 is a systematic intraday research codebase for CME Gold Futures (GC) and Micro Gold Futures (MGC) using Databento one-minute OHLCV data. It converts a discretionary Point of Interest (POI) concept into testable rules while developing a second, deliberately independent statistical-feature research branch.
 
-**Quant Project 1** is a professional-grade quantitative research pipeline for **CME Gold Futures (GC) and Micro Gold Futures (MGC)**.
+This repository is a research environment, not a live trading system. It does not currently contain an approved strategy, production execution, position sizing, transaction-cost modelling, or a completed sequential backtest.
 
-It is not a trading bot. It is a rigorous, multi-stage research codebase designed to:
+> **Current decision:** the refined True POI definition and Section 7 context study are complete, but no candidate has been approved for Section 8 backtesting. The independent statistical branch has a validated feature matrix; its next step is univariate feature evaluation.
 
-1. Detect and refine **Points of Interest (POIs)** from intraday swing-breaking displacement moves.
-2. Build a **candidate-trade database** with quantitative confluence features for each POI retest.
-3. Develop a **fully independent statistical signal system** from raw OHLCV data — without any POI information — to find relationships that survive out-of-sample scrutiny.
-4. Lay the groundwork for an **integration phase** where both branches are merged into a complete, backtestable systematic strategy.
+## Project at a glance
 
-The primary research timeframe is **1-minute OHLCV bars** over a dataset of **3,487,656 rows** (1,759,671 GC + 1,727,985 MGC), sourced via [Databento](https://databento.com).
-
----
-
-## 🔬 Research Branches
-
-<p align="center">
-  <img src="./assets/readme/pipeline.svg" width="100%"
-       alt="Dual-branch architecture: POI strategy pipeline and independent statistical research pipeline converging at integration">
-</p>
-
-### Branch A — POI-Based Strategy
-
-The POI branch converts a discretionary intraday gold strategy into a systematic, rule-based research process. A valid **Point of Interest (POI)** requires:
-
-- A classic **wick-to-wick ICT Fair Value Gap (FVG)** across three consecutive candles.
-- A **close-to-next-open gap** in the same displacement direction.
-
-When both conditions hold, the **full high-to-low range of the middle candle** becomes the tradable zone. POIs are valid only on the trading day they are created (reset at midnight New York time).
-
-**Execution windows:**
-
-| Window | New York Time |
+| Item | Current scope |
 |---|---|
-| London | 03:00 – 06:00 |
-| New York | 07:00 – 12:00 |
+| Markets | CME Gold Futures (GC) and Micro Gold Futures (MGC) |
+| Signal-research instrument | GC active/front-month continuous series |
+| Intended later execution instrument | MGC; GC-to-MGC execution mapping is not implemented |
+| Source | Databento GLBX.MDP3, one-minute OHLCV bars |
+| Source period | 24 May 2021 to 24 May 2026; eligible statistical observations end 22 May 2026 |
+| Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
+| Business timezone | `America/New_York`; UTC timestamps remain immutable join keys |
+| Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
+| Automated tests | 94 tests across 9 modules |
+| Repository state | Research only; no Section 8 candidate approved |
 
-**POI creation window:** 01:00 – 12:00 NY. Same-day POIs created at 02:00 are valid for the 07:00 New York window.
+## Project status
 
-The research pipeline for this branch runs in five stages:
+### Shared foundation
 
-```
-1. POI detection (swing break + FVG scan)          →  poi_signal_features.py
-2. POI selection & geometry refinement             →  poi_selection_refinement.py
-3. Retest identification & event study             →  poi_event_study.py
-4. First-passage & excursion analysis              →  poi_first_passage.py
-5. Decision-time context feature engineering       →  poi_context_features.py
-```
+| Phase | Status | Main result |
+|---|---|---|
+| Data acquisition and validation | Complete | Databento DBN was validated and converted to Parquet |
+| Exploratory data analysis | Complete | Contract, liquidity, session, volatility, return, and microstructure research completed |
+| Active-contract construction | Complete | Liquidity-based GC/MGC contract schedule and continuous research table created |
+| Strategy formalization | Complete | Sessions, POI formation, retest, entry, stop, exit, and invalidation concepts formalized |
 
-Trade types under research: **continuation**, **reversal**, and **pullback** retests — treated as separate classifications, not pooled.
+The active-contract selector compares the daily volume winner, five-day rolling-volume winner, and previously selected contract. It requires persistence and liquidity dominance before a normal roll, with a separate decisive same-day switch rule. The result is the trusted `research_bars_gc_mgc_1m.parquet` table used by both research branches.
 
----
+### Branch A — True POI research
 
-### Branch B — Independent Statistical Research
+| Milestone | Status |
+|---|---|
+| Baseline POI engine | Complete |
+| Structural swing validation | Complete |
+| Section 6C refined POI definition and downstream tables | Complete and frozen |
+| Section 7R refined event study | Complete; retained as research history |
+| Section 7 True POI context, matched controls, first passage, and candidate policies | Complete |
+| Section 8 sequential backtest | Not started |
+| Candidate approved for Section 8 | **None** |
 
-This branch deliberately ignores all POI information. Its mandate:
+The current Section 7 population contains:
 
-> Identify stable and economically meaningful relationships between information available at time *t* and future intraday GC price behaviour, without using POI information.
+- 7,433 unique True POIs.
+- 179,036 unique True POI/retest opportunities.
+- 358,072 paired continuation/reversal outcome rows.
+- 264 registered decision-time `feat_*` fields.
+- 882 New York trading dates.
 
-The research pipeline for this branch:
+`S7P02_NY_BEAR_CONT` is the only policy retained as `RESEARCH_ONLY`. It produced positive mean R in Development, Validation, and Final test, but median and lower-quartile outcomes remained -1R and the result was runner-dependent. It is not approved for backtesting or trading.
 
-```
-1. Forward label construction                      →  labels.py
-2. Feature specification & registry               →  feature_registry.py
-3. Lookahead-free feature matrix engineering      →  feature_engineering.py
-4. Feature validation & diagnostics               →  feature_validation.py
-5. Random-entry bootstrap baselines               →  baselines.py
-```
+### Branch B — independent statistical research
 
-**Forward label targets investigated:**
+| Milestone | Status |
+|---|---|
+| Eligible GC observation frame | Complete |
+| Leakage-free fixed-horizon labels | Complete |
+| Unconditional/session/time/year baseline behaviour | Complete |
+| Controlled feature engineering and registry | Complete |
+| Section 7 univariate feature evaluation | **Next — not started** |
+| Independent statistical backtest | Not started |
+| POI integration | Future phase |
 
-- Signed 1-minute direction
-- Future movement magnitude (5m, 15m, 30m, 60m horizons)
-- Maximum Favourable Excursion (MFE)
-- Maximum Adverse Excursion (MAE)
-- Volatility expansion
-- Continuation vs. reversal classification
+The statistical branch currently contains:
 
-Only after independent features and rules are frozen will they be compared or combined with Branch A results.
+- 586,530 eligible completed-bar decisions: 219,938 London and 366,592 New York.
+- 169-column label output at 5, 15, 30, 60, 120, and 180-minute horizons.
+- A 586,530 × 97 feature matrix with 12 audit/join fields and 85 predictors.
+- 79 core predictors and 6 explicitly marked experimental hypotheses.
+- 37/37 critical feature-production gates passed.
 
----
+No statistical feature has yet been shown to possess predictive value. Section 6 proves construction integrity, causality, registry alignment, and numerical validity only.
 
-## 🏗 Architecture
+## Research architecture
 
-```
+<p align="center">
+  <img src="./assets/readme/pipeline.svg" width="100%" alt="Independent POI and statistical research branches">
+</p>
+
+### Branch A: discretionary POI to systematic research
+
+A valid refined POI begins with a three-candle formation inside a swing-breaking displacement:
+
+1. A classic wick-to-wick Fair Value Gap (FVG) must exist.
+2. A same-direction close-to-next-open gap must also exist.
+3. The FVG must be at least three GC ticks under the frozen default.
+4. The confirmation candle must preserve the directionally valid geometry.
+5. Standard and expanded cases use their exact Section 6C zone geometry.
+6. Duplicate swing-window and break-mode variants are collapsed into one underlying formation.
+
+The reader-facing name **True POI** means the unique refined market formation after variant deduplication. “True” does not mean profitable, validated, or guaranteed to react.
+
+The branch then builds same-day retests, decision-time context, matched non-POI controls, continuation/reversal counterfactuals, stop/target first-passage results, pre-specified interactions, and frozen candidate-policy results.
+
+Primary implementation:
+
+~~~text
+src/features/poi_signal_features.py
+    Baseline POI, retest, candidate, signal, and structural tables
+
+src/features/poi_selection_refinement.py
+    Authoritative Section 6C formation rules and True POI identities
+
+src/features/poi_context_features.py
+    Formation, displacement, approach, touch, and market-context features
+
+src/features/poi_first_passage.py
+    Ordered entry/stop/target/time-exit path evaluation
+
+src/research/poi_context_event_study.py
+    Matched controls, feature studies, interactions, stop/target studies,
+    and candidate policy decisions
+~~~
+
+The older `poi_event_study.py` and `poi_event_study_refined.py` paths remain for historical reproducibility. They do not supersede the completed True POI context study.
+
+### Branch B: independent statistical discovery
+
+This branch must not load POI identifiers, tables, geometry, rankings, or directional conclusions. It uses only the trusted GC bar history and the controls needed to preserve contract, segment, rollover, liquidity, and session integrity.
+
+Its causal convention is:
+
+~~~text
+information cutoff       completed decision bar t
+theoretical entry        open of bar t+1
+forward path begins      bar t+1
+fixed horizons           5, 15, 30, 60, 120, 180 minutes
+~~~
+
+Primary implementation:
+
+~~~text
+src/statistical_research/labels.py
+    Fixed-horizon returns, excursions, ranges, volatility, and classes
+
+src/statistical_research/baselines.py
+    Descriptive baseline tables and New York-date block-bootstrap uncertainty
+
+src/statistical_research/feature_registry.py
+    Authoritative definitions and metadata for all 85 predictors
+
+src/statistical_research/feature_engineering.py
+    Causal, continuity-aware, memory-conscious feature construction
+
+src/statistical_research/feature_validation.py
+    Leakage, boundary, numerical, diagnostics, manual-audit, and reload gates
+~~~
+
+Branch B will remain independent until feature evaluation, selection, and its own research rules are frozen.
+
+## Locked time and execution rules
+
+| Rule | New York time |
+|---|---|
+| POI search window | 01:00–12:00 |
+| London entry window | [03:00, 06:00) |
+| New York entry window | [07:00, 12:00) |
+| No-entry gap | 06:00–07:00 |
+| New entries stop / True POIs expire | 12:00 |
+| Mandatory exit for existing positions | 15:30 |
+| Overnight positions | Not allowed |
+
+All session and calendar rules use timezone-aware New York timestamps. Forward paths may not cross New York dates, contracts, continuous segments, invalid rollover boundaries, missing one-minute bars, or the 15:30 forced exit.
+
+## Current research findings
+
+These are research observations, not trading claims:
+
+- True POI retests were modestly better 60-minute expansion locations than state-matched non-POI controls, but the difference was small relative to the common market state.
+- Broad continuation shorts were the strongest directional True POI family. A True POI touch is still not an automatic short.
+- Broad reversal effects did not survive the final test or ordered execution analysis.
+- One-minute OHLCV cannot determine intrabar stop/target order. The leading policies are materially sensitive to conservative, excluded, and optimistic ambiguity treatment.
+- In the independent baseline, movement and realized volatility grew approximately with the square root of horizon over the tested grid.
+- New York outcomes exhibited materially larger average ranges than London outcomes.
+- Signed-return centers were small relative to dispersion, and no weekday filter was approved.
+- The completed statistical feature matrix is a candidate inventory, not evidence of prediction.
+
+For exact estimates, sample sizes, and qualification language, use the context reports linked under [Authoritative project documentation](#authoritative-project-documentation).
+
+## Repository layout
+
+~~~text
 project-1/
-│
-├── src/
-│   ├── features/                     # Branch A — POI strategy modules
-│   │   ├── poi_signal_features.py    # FVG detection, swing-break detection
-│   │   ├── poi_selection_refinement.py  # Section 6c geometry scoring
-│   │   ├── poi_event_study.py        # Candidate-trade event study
-│   │   ├── poi_event_study_refined.py
-│   │   ├── poi_first_passage.py      # MFE / MAE first-passage analysis
-│   │   ├── poi_context_features.py   # Decision-time feature engineering
-│   │   ├── poi_selection_refinement.py
-│   │   └── poi_refinement_visuals.py
-│   │
-│   ├── statistical_research/         # Branch B — independent statistical pipeline
-│   │   ├── labels.py                 # Forward label construction (no leakage)
-│   │   ├── feature_registry.py       # Feature spec catalogue
-│   │   ├── feature_engineering.py    # Lookahead-free feature matrix
-│   │   ├── feature_validation.py     # Diagnostics & audit
-│   │   └── baselines.py              # Random-entry bootstrap baselines
-│   │
-│   └── research/
-│       └── poi_context_event_study.py  # Cross-branch context study
-│
+├── assets/readme/                 README visual assets
 ├── notebooks/exploration/
-│   ├── exp1.ipynb                    # Main POI research notebook
-│   ├── exp1 appendix.ipynb
-│   └── statistical_feature_research.ipynb  # Branch B notebook
-│
-├── scripts/
-│   ├── run_section6c_refinement.py   # POI refinement runner
-│   ├── run_section7_event_study.py   # Event study runner
-│   ├── run_section7_poi_context_research.py
-│   └── update_statistical_section*.py  # Notebook update scripts
-│
-├── tests/                            # Full unit test suite (9 modules)
-│   ├── test_poi_signal_features.py
-│   ├── test_poi_selection_refinement.py
-│   ├── test_poi_event_study.py
-│   ├── test_poi_context_features.py
-│   ├── test_poi_first_passage.py
-│   ├── test_poi_context_event_study.py
-│   ├── test_statistical_research_baselines.py
-│   ├── test_statistical_research_features.py
-│   └── test_statistical_research_labels.py
-│
-└── project_docs/                     # Strategy specs and context reports
-    ├── gc_mgc_poi_strategy_spec_v0_2*.txt
-    ├── Quant Project 1 — Context Report*.md
-    ├── statistical_feature_research_context_report.md
-    └── Section 4 Follow-up Report*.md
-```
+│   ├── exp1.ipynb                 Main POI notebook; Sections 1–7
+│   ├── exp1 appendix.ipynb        Superseded prototype event-study archive
+│   └── statistical_feature_research.ipynb
+│                                   Independent statistical notebook; Sections 1–6
+├── project_docs/                  Strategy specification and project handoffs
+├── reports/statistical_research/
+│   └── summaries/                 Tracked baseline and feature summaries
+├── scripts/                       Full-run and notebook-maintenance utilities
+├── src/
+│   ├── features/                  POI construction, refinement, context, and paths
+│   ├── research/                  True POI research pipeline
+│   └── statistical_research/      Independent labels, baselines, and features
+├── tests/                         94 synthetic and unit tests
+└── .gitignore                     Excludes data, environments, logs, and outputs
+~~~
 
----
+## Getting started
 
-## ⚡ Quick Start
+### 1. Obtain repository access
 
-### Prerequisites
+The repository is private. After the project owner adds you as a collaborator:
 
-```
-Python 3.11+
-numpy · pandas · scipy · statsmodels
-matplotlib · seaborn · pyarrow
-databento · jupyter
-```
+~~~powershell
+git clone git@github.com:Abond1234/project-1.git
+Set-Location project-1
+~~~
 
-### Installation
+HTTPS cloning also works if your GitHub credentials are configured:
 
-```bash
-# Clone the repository
+~~~powershell
 git clone https://github.com/Abond1234/project-1.git
-cd project-1
+Set-Location project-1
+~~~
 
-# Create and activate virtual environment
+### 2. Create a Python environment
+
+Python 3.13 or newer is recommended. The executed primary notebooks currently record Python 3.14.5.
+
+~~~powershell
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install numpy pandas scipy pyarrow matplotlib seaborn databento jupyter nbformat psutil
+~~~
 
-# Install dependencies
-pip install -r requirements.txt
-```
+On macOS or Linux, activate with `source .venv/bin/activate`.
 
-### Run the test suite
+There is no committed dependency lock file or `requirements.txt` yet. The explicit install command above covers imports used by the current source, scripts, and notebooks; contributors should not claim bit-for-bit environment reproducibility until a dependency manifest is added.
 
-```bash
-pytest
-```
+### 3. Obtain the research data
 
-All 9 test modules cover POI formation geometry, retest identification, first-passage analysis, context feature availability, label leakage checks, feature matrix validation, and bootstrap baselines.
+Raw market data, processed Parquet tables, figures, and large generated reports are intentionally excluded from Git. A clone is sufficient for reading the code and running the unit tests, but not for executing the research notebooks or full pipelines.
 
-### Open the research notebooks
+Ask the project owner for an authorized artifact handoff or rebuild the data from your own authorized Databento source. Preserve these paths:
 
-```bash
+~~~text
+data/
+├── raw/databento/
+│   └── glbx-mdp3-20210524-20260524.ohlcv-1m.dbn
+└── processed/
+    ├── research_bars_gc_mgc_1m.parquet
+    ├── section6c_refined_signal_frame_gc.parquet
+    └── statistical_research/
+        ├── eligible_observations_gc.parquet
+        ├── forward_labels_gc.parquet
+        └── feature_matrix_gc.parquet
+~~~
+
+The raw DBN is needed only when rebuilding from ingestion. The trusted combined research table is the common starting point for current research. Later-stage artifacts are needed only if you want to resume from those completed milestones instead of rebuilding them.
+
+Never commit licensed market data, generated Parquet/CSV output, local virtual environments, credentials, or notebook backup files.
+
+### 4. Run the tests
+
+From the repository root:
+
+~~~powershell
+python -m unittest discover -s tests -v
+~~~
+
+Current verified result:
+
+~~~text
+Ran 94 tests
+OK
+~~~
+
+The suite uses Python’s standard `unittest` runner; `pytest` is not required.
+
+## Running the project
+
+### Research notebooks
+
+~~~powershell
 jupyter notebook notebooks/exploration/exp1.ipynb
 jupyter notebook notebooks/exploration/statistical_feature_research.ipynb
-```
+~~~
 
-> **Note:** The notebooks require the processed dataset at `data/processed/research_bars_gc_mgc_1m.parquet`. This file is not committed to the repository. It is produced by the data cleaning and active-contract construction pipeline described in Section 4 of the context report.
+- `exp1.ipynb` is the authoritative POI reader flow. Sections 1–5 cover data, EDA, the research dataset, and strategy formalization; Section 6 contains the frozen refined POI engine; Section 7 contains the completed True POI context research.
+- `statistical_feature_research.ipynb` is the independent reader flow through completed Section 6 feature engineering.
+- `exp1 appendix.ipynb` is a legacy prototype archive, not the current source of conclusions.
 
----
+Both primary notebooks are checked in with every code cell executed and no saved error outputs. Full execution requires the ignored data artifacts and substantially more time and memory than the unit tests.
 
-## ✅ Testing
+### POI pipeline scripts
 
-The test suite rigorously verifies the research pipeline's correctness:
+Run scripts from the repository root:
 
-| Module | What it covers |
-|---|---|
-| `test_poi_signal_features.py` | FVG geometry (wick/close modes), swing detection, variant correctness |
-| `test_poi_selection_refinement.py` | Section 6c geometry scoring, validation, final POI selection |
-| `test_poi_event_study.py` | Retest identification, candidate table construction, structural annotation |
-| `test_poi_context_features.py` | Decision-time feature availability gating, zero-denominator safety, deduplication |
-| `test_poi_first_passage.py` | MFE/MAE first-passage analysis, excursion tracking |
-| `test_poi_context_event_study.py` | Cross-branch context study integrity |
-| `test_statistical_research_labels.py` | Forward label lookahead checks, tick-grid validation |
-| `test_statistical_research_features.py` | Feature matrix construction, continuity run IDs, NaN handling |
-| `test_statistical_research_baselines.py` | Bootstrap random-entry baseline reproducibility |
+| Command | Purpose | Status |
+|---|---|---|
+| `python scripts/run_section6c_refinement.py` | Rebuild refined POIs, retests, candidates, validation, and visual audits | Current Section 6 definition |
+| `python scripts/run_section7r_event_study.py` | Reproduce the refined event-study baseline | Historical bridge to current Section 7 |
+| `python scripts/run_section7_poi_context_research.py` | Rebuild True POI context, labels, matched controls, interactions, first passage, and candidate policies | Current authoritative Section 7 |
+| `python scripts/run_section7_event_study.py` | Reproduce the original structural event study | Legacy only |
 
----
+The current Section 7 runner accepts `--start-date`, `--end-date`, and `--skip-stop-target` for scoped diagnostic runs. A full production run has previously required roughly 4 GB peak resident memory. Treat these scripts as research pipelines, not lightweight examples.
 
-## 📐 Research Standards
+The `update_*_notebook.py` and `reorganize_exp1_sections.py` scripts intentionally rewrite notebook structure. They are maintenance/migration utilities and should be run only when the corresponding notebook edit is part of an approved change.
 
-This codebase is built to **professional quantitative research standards**. Every module is held to these requirements:
+### Statistical pipeline
 
-### Correctness first
+The current statistical workflow is notebook-driven:
 
-Priority order: **Correctness → Statistical validity → Computational efficiency → Memory efficiency → Scalability → Readability**.
+1. Load `data/processed/research_bars_gc_mgc_1m.parquet`.
+2. Validate the GC-only eligible observation frame.
+3. Build fixed-horizon labels without shortening unavailable paths.
+4. Build and save baseline behaviour tables.
+5. Build all 85 registered features on the full causal GC history.
+6. Map completed decision-bar features to the eligible frame.
+7. Run production validation, diagnostics, manual reconstruction, and save/reload gates.
 
-Working code alone is insufficient if a materially better implementation exists.
+Do not start Section 7 feature evaluation by changing frozen Section 6 definitions in response to Final-test behaviour.
 
-### No lookahead leakage
+## Generated artifacts
 
-All features are validated against strict availability timestamps. The feature engineering pipeline tracks formation, pre-touch, and touch-close availability separately. Features that require information not yet available at entry time are flagged and gated by the `validate_entry_feature_availability` system.
+Generated artifacts are excluded from Git and should be rebuilt or transferred separately.
 
-### Independence boundary
+### Main shared table
 
-Branch B must not inherit directional bias from Branch A. All POI-derived tables, identifiers, geometry fields, and rankings are explicitly excluded from the statistical research pipeline. POI information may only enter after the independent statistical system is completely frozen.
-
-### Performance for scale
-
-Designed for datasets with **5–20 million rows**:
-- Vectorized NumPy/Pandas operations throughout.
-- No row-wise Python loops over bars.
-- Reusable computed arrays; no repeated full-table scans.
-- Memory-efficient intermediate representations.
-
-### Reproducibility
-
-All random operations use fixed seeds (`BASELINE_RANDOM_SEED`). Parquet outputs are deterministic. Continuous segment IDs track data continuity across contract rolls.
-
----
-
-## 📊 Instruments
-
-| Property | Value |
-|---|---|
-| Signal instrument | GC — CME Gold Futures (front-month active contract) |
-| Execution instrument | MGC — CME Micro Gold Futures (front-month active contract) |
-| Active contract selection | Liquidity-based rolling rule (5-day volume window) |
-| Primary research timeframe | 1-minute OHLCV bars |
-| Data source | Databento |
-| Dataset size | 3,487,656 bars (GC: 1,759,671 · MGC: 1,727,985) |
-| Research period | Multi-year intraday history |
-
----
-
-## 📁 Data
-
-The project uses a processed dataset, not raw exchange data:
-
-```
+~~~text
 data/processed/research_bars_gc_mgc_1m.parquet
-```
+~~~
 
-This dataset is produced by the Section 4 data pipeline, which performs:
+This table contains the selected active contract, UTC/New York timestamps, product and contract identity, continuous-segment identity, tradability and rollover controls, and reusable bar fields.
 
-- Multi-contract GC/MGC bar ingestion from Databento
-- Liquidity-based active contract selection (rolling 5-day volume rule)
-- Contract roll continuity tracking
-- New York session timestamp fields
-- Tradability and roll-window flags
-- Core derived bar fields (ATR, realized vol, relative volume, log returns)
+### Current POI artifacts
 
-> The raw data and processed parquet files are **not included** in this repository.
+~~~text
+data/processed/section6c_refined_poi_table_gc.parquet
+data/processed/section6c_refined_retest_table_gc.parquet
+data/processed/section6c_refined_candidate_trade_table_gc.parquet
+data/processed/section6c_refined_signal_frame_gc.parquet
 
----
+data/processed/section7_true_poi_context_frame_gc.parquet
+data/processed/section7_true_poi_outcome_labels_gc.parquet
+data/processed/section7_true_poi_feature_study_summary_gc.parquet
+data/processed/section7_true_poi_interaction_summary_gc.parquet
+data/processed/section7_true_poi_stop_target_summary_gc.parquet
+data/processed/section7_true_poi_candidate_ranking_gc.parquet
+data/processed/section7_true_poi_backtest_candidate_registry_gc.parquet
+data/processed/section7_true_poi_location_quality_summary_gc.parquet
+~~~
 
-## 📄 License
+### Current statistical artifacts
 
-This is a private research repository. All rights reserved.
+~~~text
+data/processed/statistical_research/eligible_observations_gc.parquet
+data/processed/statistical_research/forward_labels_gc.parquet
+data/processed/statistical_research/baseline_summary_gc.parquet
+data/processed/statistical_research/baseline_cost_thresholds_gc.parquet
+data/processed/statistical_research/feature_matrix_gc.parquet
+data/processed/statistical_research/feature_registry_gc.parquet
+data/processed/statistical_research/feature_validation_gc.parquet
+data/processed/statistical_research/feature_diagnostics_gc.parquet
+data/processed/statistical_research/feature_reference_parameters_gc.parquet
+~~~
+
+Tracked summaries under `reports/statistical_research/summaries/` provide a lightweight view of completed statistical milestones without distributing the underlying data.
+
+## Test coverage
+
+| Test module | Tests | Main contract |
+|---|---:|---|
+| `test_poi_selection_refinement.py` | 29 | Exact FVG/gap geometry, tick safety, thresholds, lineage, and non-destructive saves |
+| `test_poi_first_passage.py` | 10 | Entry, stop/target order, ambiguity, forced exits, contract/segment boundaries |
+| `test_poi_event_study.py` | 7 | Horizon handling, canonical populations, summaries, and visual-audit outputs |
+| `test_poi_context_features.py` | 6 | Availability timing, True POI identity, deduplication, and entry-model gating |
+| `test_poi_context_event_study.py` | 2 | Direction mapping and Development-bin reuse |
+| `test_poi_signal_features.py` | 2 | Baseline POI construction and structural annotation |
+| `test_statistical_research_labels.py` | 20 | Fixed paths, availability reasons, tick grid, outcomes, and Development-only thresholds |
+| `test_statistical_research_features.py` | 14 | Causality, resets, references, registry, dtypes, and diagnostics |
+| `test_statistical_research_baselines.py` | 4 | Availability-aware aggregation, cost hurdles, date counts, and bootstrap reproducibility |
+| **Total** | **94** | |
+
+## Research governance
+
+### No-lookahead contract
+
+- Decision features end at completed bar `t`.
+- Entry-bar OHLCV belongs to the future for next-bar entry research.
+- Touch-close features may be used only with a next-bar confirmation entry, never a same-bar boundary entry.
+- Fixed-horizon labels start at bar `t+1` and are marked unavailable rather than shortened.
+- Development-fitted thresholds, bins, and time-of-day references are reused unchanged out of sample.
+
+### Chronological governance
+
+- **Development:** through 31 December 2023.
+- **Validation:** calendar year 2024.
+- **Final test:** 1 January 2025 through 22 May 2026.
+
+The Final test has already had limited descriptive exposure in the completed baseline and candidate-policy work. It must not be described as completely unseen, and later definitions must not be tuned to those exposed values.
+
+### Statistical interpretation
+
+- Overlapping minute observations are correlated event rows, not independent trades.
+- MFE is not realized profit, MAE is not realized loss, and range is not a tradable return.
+- Raw swing/break variants are correlated representations; headline True POI estimates use deduplicated formations and retests.
+- Date-block bootstrap intervals use New York trading dates as the dependence unit.
+- A positive subgroup mean is insufficient without sample size, date coverage, Development-to-Validation consistency, tail behaviour, friction-aware magnitude, and interpretability.
+
+### Current implementation boundaries
+
+- One-minute OHLCV cannot resolve intrabar event order.
+- OHLCV volume is not aggressor flow, queue state, or market depth.
+- Event-level first-passage results are not a sequential portfolio backtest.
+- Re-entry, overlapping-position sequencing, costs, slippage, commissions, sizing, and capital constraints remain unimplemented.
+- GC-to-MGC signal/execution mapping remains a later validation phase.
+- Final-test rows are disproportionately concentrated in 2025–2026 for the True POI population.
+
+## Authoritative project documentation
+
+Read these in order when joining the project:
+
+1. [POI project context and milestone history](<project_docs/Quant Project 1 — Context Report 23-06-2026.md>) — the final “Authoritative” sections override older progress entries retained for traceability.
+2. [Independent statistical research context](project_docs/statistical_feature_research_context_report.md) — complete research contract and current Branch B handoff.
+3. [GC/MGC POI strategy specification](project_docs/gc_mgc_poi_strategy_spec_v0_2_appended_v0_2A.txt) — discretionary-to-systematic strategy source specification.
+4. [Section 4 research-dataset report](<project_docs/Section 4 Follow-up Report - Research Dataset Outputs.md>) — active-contract construction and trusted table details.
+5. [Section 5 baseline summary](reports/statistical_research/summaries/section5_baseline_summary.md) and [Section 6 feature summary](reports/statistical_research/summaries/section6_feature_engineering_summary.md) — concise tracked statistical results.
+
+## Contributor workflow
+
+For collaborative work:
+
+1. Pull the latest `main` before starting.
+2. Use a short-lived branch for a coherent research or engineering milestone.
+3. Keep changes scoped; never use `git add -A` in a mixed working tree.
+4. Run the 94-test suite and any relevant full-run validation.
+5. Review notebook outputs, schemas, row counts, null behaviour, and research conclusions.
+6. Update the relevant context report when a milestone changes project state.
+7. Open a pull request with the research question, definitions, artifacts, checks, and limitations.
+
+Do not commit raw/processed market data, generated figures and tables, virtual environments, caches, secrets, API keys, or local logs. The `.gitignore` is part of the project’s data-governance boundary.
+
+## License and data notice
+
+No open-source license is currently included. This is a private research repository; do not redistribute its code or data without the project owner’s approval. Databento market data is not included and must be accessed under the contributor’s or project’s authorized data arrangement.
+
+Nothing in this repository is investment advice or an instruction to trade.
