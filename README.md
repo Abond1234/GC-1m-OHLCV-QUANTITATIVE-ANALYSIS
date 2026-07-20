@@ -105,10 +105,13 @@ Branch B standalone research is closed with a defensible rejection, and both of 
 | FR-09 GC-to-MGC transfer validation | Complete — **G5_PROVISIONAL_FAIL: tick-precise entry transfer is not safe** |
 | FR-10 versioned prop-firm rules engine | Complete — policy layer, evaluation simulator, bootstrap economics estimator |
 | FR-11 Rithmic paper integration | Not started — requires credentials and approved platform access |
+| Phase 5 shadow-mode forward-test harness | Complete — scaffolding ready; nothing runs because no strategy is approved |
 
 FR-09 measured the 179,036 True POI decision bars against synchronized MGC minutes: coverage and liquidity are excellent (100 percent decision-bar synchronization, median 274 contracts per minute, median basis one tick), but the GC first-contact price trades on MGC in the same minute only 80 percent of the time — stable across all five years. Any future MGC execution mapping therefore needs an MGC-native entry treatment whose cost is measured with real order telemetry, not assumed from bars. Details: `reports/execution/mgc_transfer_validation_summary.md`.
 
 FR-10 provides the prop-firm constraint layer the PRD requires: policies (profit target, daily loss, static/trailing/EOD-trailing drawdown with optional initial-balance cap, consistency share, minimum/maximum days, internal risk buffers) are versioned configuration with effective dates, never strategy code; a deterministic evaluation simulator produces day-by-day ledgers and breach detail; a seeded bootstrap estimates pass probability, breach probabilities, and days-to-pass for any supplied daily P&L distribution. The bundled policies are illustrative templates — real firm terms must be re-verified before use. No strategy claim is attached: the research program has not approved a strategy to feed it.
+
+The Phase 5 shadow-mode harness (`src/execution/shadow_mode.py`) implements the PRD's first forward-test stage as testable infrastructure: a tamper-evident SHA-256 hash-chained decision log, a declared stale-data guard, configuration fingerprinting, and a theoretical-fill reconciler using the same entry-realism rule as the research backtests. `project_docs/forward_test_plan.md` freezes the stage ladder, exit criteria, and the pre-declared sample gate (60 trading days / 100 simulated trades minimum). The preconditions are stated honestly: an approved strategy (none exists — the S7P02 family is archived), Rithmic credentials (FR-11), and a verified prop-firm rule set.
 
 ## Research architecture
 
