@@ -81,7 +81,7 @@ The current Section 7 population contains:
 | Section 9 multivariate research | Complete |
 | Section 10 signal construction | Complete |
 | Section 11 independent sequential backtest | Complete — **standalone system rejected** |
-| Section 12 POI integration research | **Next — not started** |
+| Section 12 hybrid integration (gate-filter form) | Complete — **no confirmed incremental value** |
 
 The statistical branch currently contains:
 
