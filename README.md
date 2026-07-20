@@ -251,7 +251,7 @@ python -m pip install numpy pandas scipy pyarrow matplotlib seaborn databento ju
 
 On macOS or Linux, activate with `source .venv/bin/activate`.
 
-There is no committed dependency lock file or `requirements.txt` yet. The explicit install command above covers imports used by the current source, scripts, and notebooks; contributors should not claim bit-for-bit environment reproducibility until a dependency manifest is added.
+Alternatively install from the committed manifests: `python -m pip install -r requirements.txt` for top-level dependencies, or `python -m pip install -r requirements.lock.txt` to reproduce the exact frozen environment used to execute the committed notebooks and tests.
 
 ### 3. Obtain the research data
 
