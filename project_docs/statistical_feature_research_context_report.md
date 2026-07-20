@@ -1266,7 +1266,7 @@ Independent feature engineering:             COMPLETE
 Independent univariate feature evaluation:   COMPLETE
 Redundancy and incremental information:      COMPLETE
 Multivariate research:                       COMPLETE
-Statistical signal construction:             NOT STARTED
+Statistical signal construction:             COMPLETE
 Independent statistical backtest:            NOT STARTED
 POI integration research:                    FUTURE PHASE
 ```
@@ -1274,7 +1274,7 @@ POI integration research:                    FUTURE PHASE
 The correct next action is:
 
 ```text
-Section 10.0 — Statistical Signal Construction
+Section 11.0 — Independent Sequential Backtest
 ```
 
 ---
@@ -1557,4 +1557,14 @@ The Final test remains locked. **Exact next section:** Section 9.0 — Multivari
 Section 9 benchmarks the frozen 15-feature expansion set against the anchor `atr_20` alone. Inputs and outcomes enter as per-date cross-sectional rank z-scores; models are fitted per session; ridge strength is selected by expanding-window walk-forward inside Development only (year folds with a one-trading-date embargo); Validation is touched once per model. Rules were frozen in `Section9Config` (seed 20260722). Tree models are deferred by contract until linear benchmarks earn them.
 
 Result: the model advances in three of four session/horizon cells (Validation IC improvement over the anchor of +0.045 London 60m, +0.081 New York 60m, +0.088 New York 180m, all with bootstrap intervals above zero); London 180m improves by only +0.008 and is recorded as anchor-sufficient. Logistic AUCs reach 0.80 to 0.93 on Validation and always exceed the anchor. Calibration is rank-correct except New York 60m, which overstates upper probability deciles and requires recalibration before any sizing use. Verification: 9/9 structural checks, 12/12 synthetic tests (including the anchor-only overfitting guard), full suite green. Implementation: `src/statistical_research/multivariate.py`, `tests/test_statistical_research_multivariate.py`, `scripts/update_statistical_section9_notebook.py`. Tracked record: `reports/statistical_research/summaries/section9_multivariate_summary.md`.
+
+---
+
+## Section 10 — Statistical Signal Construction Completion
+
+**Status:** COMPLETE — `SECTION 10 STATUS: READY`
+
+Because Section 7 approved no directional feature, Section 10 formalizes benchmark directions (long, short) with the only evidence-based component available: an opportunity gate from the Section 9 frozen per-session 60-minute ridge model at its Development 80th percentile. Stops are 1.5 x decision ATR clamped to 10-100 ticks, targets 2R, holding capped at 120 minutes, one R per trade; session, noon, and 15:30 rules are inherited. Rules frozen in `Section10Config` (seed 20260723).
+
+Result: 419,063 candidates (85,365 gate-passing); Development gate rates 19.98/19.99 percent against the declared 20 percent; median stop 10.6 ticks with the 46 percent minimum-clamp rate recorded. Verification: 7/7 structural checks, 8/8 synthetic tests (including proof that mutating Validation data leaves the frozen gate threshold unchanged). Implementation: `src/statistical_research/signal_construction.py`, `tests/test_statistical_research_signals.py`, `scripts/update_statistical_section10_notebook.py`. Tracked record: `reports/statistical_research/summaries/section10_signal_construction_summary.md`.
 
