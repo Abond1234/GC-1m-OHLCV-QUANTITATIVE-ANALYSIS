@@ -72,6 +72,16 @@ from .multivariate import (
     load_expansion_labels,
     save_multivariate_outputs,
 )
+from .signal_construction import (
+    DIRECTION_VARIANTS,
+    GATE_VARIANTS,
+    SECTION10_RANDOM_SEED,
+    Section10Config,
+    SignalBuildResult,
+    build_signal_candidates,
+    load_entry_fields,
+    save_signal_outputs,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -130,4 +140,12 @@ __all__ = [
     "build_multivariate_benchmarks",
     "load_expansion_labels",
     "save_multivariate_outputs",
+    "DIRECTION_VARIANTS",
+    "GATE_VARIANTS",
+    "SECTION10_RANDOM_SEED",
+    "Section10Config",
+    "SignalBuildResult",
+    "build_signal_candidates",
+    "load_entry_fields",
+    "save_signal_outputs",
 ]
