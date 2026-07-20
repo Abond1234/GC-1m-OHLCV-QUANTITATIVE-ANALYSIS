@@ -57,6 +57,13 @@ from .feature_evaluation import (
     load_forward_labels_for_evaluation,
     save_evaluation_outputs,
 )
+from .feature_redundancy import (
+    SECTION8_RANDOM_SEED,
+    RedundancyBuildResult,
+    Section8Config,
+    build_redundancy_analysis,
+    save_redundancy_outputs,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -104,4 +111,9 @@ __all__ = [
     "evaluated_feature_names",
     "load_forward_labels_for_evaluation",
     "save_evaluation_outputs",
+    "SECTION8_RANDOM_SEED",
+    "RedundancyBuildResult",
+    "Section8Config",
+    "build_redundancy_analysis",
+    "save_redundancy_outputs",
 ]
