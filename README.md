@@ -324,7 +324,7 @@ Run scripts from the repository root:
 | `python scripts/run_section7_poi_context_research.py` | Rebuild True POI context, labels, matched controls, interactions, first passage, and candidate policies | Current authoritative Section 7 |
 | `python scripts/run_section7_event_study.py` | Reproduce the original structural event study | Legacy only |
 
-The current Section 7 runner accepts `--start-date`, `--end-date`, and `--skip-stop-target` for scoped diagnostic runs. A full production run has previously required roughly 4 GB peak resident memory. Treat these scripts as research pipelines, not lightweight examples.
+The current Section 7 runner accepts `--start-date`, `--end-date`, `--skip-stop-target`, and `--force-chunks` for scoped or diagnostic runs. Memory handling is adaptive: the runner measures machine memory at start and runs single-pass when the estimated peak (about 4 GB for the full population) fits, or falls back to chronological whole-day chunked processing otherwise, so the full pipeline completes on 8 GB machines. Chunked output is verified value-identical to single-pass. Machines with 16 GB or more normally run every stage single-pass. Treat these scripts as research pipelines, not lightweight examples.
 
 The `update_*_notebook.py` and `reorganize_exp1_sections.py` scripts intentionally rewrite notebook structure. They are maintenance/migration utilities and should be run only when the corresponding notebook edit is part of an approved change.
 

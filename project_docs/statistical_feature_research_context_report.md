@@ -3,7 +3,7 @@
 > **Primary notebook**
 >
 > ```text
-> C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\notebooks\exploration\statistical_feature_research.ipynb
+> notebooks/exploration/statistical_feature_research.ipynb
 > ```
 >
 > **Purpose of this document**
@@ -132,11 +132,7 @@ POI information may be introduced only in the later integration phase, after the
 
 # 4. Project Location and Environment
 
-Project root:
-
-```text
-C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1
-```
+Project root: the repository clone location. All paths are repository-relative; nothing may depend on one contributor's machine layout.
 
 Notebook:
 
@@ -150,11 +146,7 @@ Virtual environment:
 .venv-1
 ```
 
-Active interpreter:
-
-```text
-C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv-1\Scripts\python.exe
-```
+Active interpreter: `.venv-1/Scripts/python.exe` (Windows) or `.venv-1/bin/python` (POSIX) inside the repository. Install dependencies from `requirements.txt`; `requirements.lock.txt` pins the exact executed environment.
 
 Existing core packages include:
 
@@ -162,7 +154,6 @@ Existing core packages include:
 numpy
 pandas
 scipy
-statsmodels
 matplotlib
 seaborn
 pyarrow

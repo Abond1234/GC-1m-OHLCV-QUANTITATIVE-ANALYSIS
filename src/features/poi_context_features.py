@@ -942,3 +942,47 @@ def _require_columns(frame: pd.DataFrame, required: Iterable[str], name: str) ->
     missing = sorted(set(required).difference(frame.columns))
     if missing:
         raise KeyError(f"{name} is missing required columns: {missing}")
+
+
+def refit_development_volatility_bucket(
+    context: pd.DataFrame, config: PoiContextConfig | None = None
+) -> pd.DataFrame:
+    """Refit the development-fitted volatility bucket on a full context frame.
+
+    Chunked pipeline runs build the context frame in chronological pieces, so
+    the development-quantile thresholds inside each piece see only that
+    piece's events.  Applying this refit to the concatenated frame reproduces
+    exactly the thresholds and bucket labels a single-pass build produces.
+    """
+
+    cfg = config or PoiContextConfig()
+    out = context
+    dev_mask = pd.to_datetime(out["trade_date_ny"]) <= pd.Timestamp(cfg.development_end)
+    fit_values = pd.to_numeric(
+        out.loc[dev_mask, "feat_realized_volatility_60m"], errors="coerce"
+    ).dropna()
+    if fit_values.empty:
+        fit_values = pd.to_numeric(out["feat_realized_volatility_60m"], errors="coerce").dropna()
+    thresholds = (
+        np.asarray(fit_values.quantile([0.25, 0.75, 0.90]).to_numpy(), dtype="float64")
+        if not fit_values.empty
+        else np.asarray([0.0, 0.0, 0.0], dtype="float64")
+    )
+    vol_values = out["feat_realized_volatility_60m"].to_numpy("float64")
+    out["feat_volatility_percentile_devfit_bucket"] = pd.Categorical(
+        np.select(
+            [
+                vol_values <= thresholds[0],
+                vol_values <= thresholds[1],
+                vol_values <= thresholds[2],
+            ],
+            ["low", "normal", "high"],
+            default="extreme",
+        ),
+        categories=["low", "normal", "high", "extreme"],
+        ordered=True,
+    )
+    out["diag_volatility_devfit_q25"] = thresholds[0]
+    out["diag_volatility_devfit_q75"] = thresholds[1]
+    out["diag_volatility_devfit_q90"] = thresholds[2]
+    return out
