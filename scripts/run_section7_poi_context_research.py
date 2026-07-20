@@ -171,13 +171,14 @@ def _save_figures(
             feature_summary["research_partition"].eq("validation")
         ].copy()
         effects = validation.groupby("feature_name")["mean_r"].agg(lambda s: s.max() - s.min()).nlargest(15)
-        fig, ax = plt.subplots(figsize=(10, 6))
-        effects.sort_values().plot.barh(ax=ax, color="#3A6EA5")
-        ax.set_title("Validation spread across locked development bins")
-        ax.set_xlabel("Max minus min mean 60m R")
-        fig.tight_layout()
-        fig.savefig(output_dir / "feature_validation_effect_spread.png", dpi=150)
-        plt.close(fig)
+        if not effects.empty:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            effects.sort_values().plot.barh(ax=ax, color="#3A6EA5")
+            ax.set_title("Validation spread across locked development bins")
+            ax.set_xlabel("Max minus min mean 60m R")
+            fig.tight_layout()
+            fig.savefig(output_dir / "feature_validation_effect_spread.png", dpi=150)
+            plt.close(fig)
     if not interaction_summary.empty:
         data = interaction_summary.query("research_partition == 'validation' and condition_met == True")
         if not data.empty:
