@@ -82,6 +82,14 @@ from .signal_construction import (
     load_entry_fields,
     save_signal_outputs,
 )
+from .sequential_backtest import (
+    SECTION11_RANDOM_SEED,
+    BacktestBuildResult,
+    Section11Config,
+    load_backtest_bars,
+    run_sequential_backtest,
+    save_backtest_outputs,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -148,4 +156,10 @@ __all__ = [
     "build_signal_candidates",
     "load_entry_fields",
     "save_signal_outputs",
+    "SECTION11_RANDOM_SEED",
+    "BacktestBuildResult",
+    "Section11Config",
+    "load_backtest_bars",
+    "run_sequential_backtest",
+    "save_backtest_outputs",
 ]
