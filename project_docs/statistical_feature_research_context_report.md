@@ -11,6 +11,8 @@
 > This is the dedicated handoff document for the independent statistical-feature research branch of Quant Project 1. It contains only the project context, completed work, rules, and research standards needed for this notebook.
 >
 > The agent should use this document as its primary context. It should not need to read the full `exp1.ipynb` context report unless an exact historical implementation detail is genuinely required.
+>
+> **How to read this document:** sections 1-26 are the frozen research contract and standards; section 27 holds the current state plus per-section completion entries appended chronologically. "Next section" statements inside completion entries are the declarations frozen at each milestone and are retained as history - every declared step was subsequently executed, through Section 12B.
 
 ---
 
