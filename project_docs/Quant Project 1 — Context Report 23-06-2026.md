@@ -4685,3 +4685,19 @@ GC-to-MGC execution mapping, costs, sizing, portfolio state, and Section 8 remai
 ```
 
 ---
+
+# Authoritative Branch B Update — Section 7 Univariate Feature Evaluation Complete — 2026-07-20
+
+This entry updates the independent statistical branch status without altering any POI-branch statement above.
+
+```text
+Branch B Section 7 (univariate feature evaluation): COMPLETE — SECTION 7 STATUS: READY
+Evaluation partitions: Development + Validation only; all 162,224 Final-test rows excluded at frame construction.
+Result: 0 ADVANCE_DIRECTIONAL, 55 ADVANCE_EXPANSION, 28 WEAK_UNSTABLE, 0 NO_EVIDENCE across 83 evaluated predictors.
+No univariate feature produced an advancement-grade signed-return relationship; volatility/opportunity
+forecasting structure is strong and Validation-confirmed.
+Next Branch B step: Section 8.0 — Redundancy and Incremental Information.
+Branch A status unchanged: no Section 8 POI backtest candidate approved.
+```
+
+Full details, criteria, caveats, and artifact paths: `project_docs/statistical_feature_research_context_report.md` (Section 7 completion entry) and `reports/statistical_research/summaries/section7_univariate_evaluation_summary.md`.

@@ -1263,7 +1263,8 @@ Independent statistical observation frame:   COMPLETE
 Independent forward labels:                  COMPLETE
 Independent baseline behaviour:              COMPLETE
 Independent feature engineering:             COMPLETE
-Independent feature evaluation:              NOT STARTED
+Independent univariate feature evaluation:   COMPLETE
+Redundancy and incremental information:      NOT STARTED
 Independent statistical backtest:            NOT STARTED
 POI integration research:                    FUTURE PHASE
 ```
@@ -1271,7 +1272,7 @@ POI integration research:                    FUTURE PHASE
 The correct next action is:
 
 ```text
-Section 7.0 — Univariate Feature Evaluation
+Section 8.0 — Redundancy and Incremental Information
 ```
 
 ---
@@ -1469,3 +1470,54 @@ scripts/update_statistical_section6_notebook.py
 No feature has yet been shown to possess predictive value. Section 6 establishes only a valid candidate feature matrix.
 
 **Exact next approved section:** Section 7.0 — Univariate Feature Evaluation.
+
+---
+
+## Section 7 — Univariate Feature Evaluation Completion
+
+**Status:** COMPLETE — `SECTION 7 STATUS: READY`
+
+Section 7 implements the reader sequence `7.0 Univariate Feature Evaluation` through `7.10 Section 7 Summary and Completion Gate`. It screens all **83** evaluable registered predictors (80 numeric, 3 boolean) against two outcome families — `direction` (signed `forward_return_{h}_atr`) and `expansion` (unsigned `future_range_{h}_atr`) — across all six frozen horizons, both execution sessions, and the Development/Validation partitions. The two categorical context predictors are excluded with recorded reasons: `entry_session` is a stratification dimension of the screen itself, and Section 5 approved no weekday filter.
+
+Governance is unchanged and enforced mechanically. The evaluation frame contains **419,393** observations (302,774 Development, 116,619 Validation; 157,527 London, 261,866 New York; 884 trading dates); all **162,224 Final-test rows are excluded at frame construction**, and passing a frame containing Final-test rows to the evaluator raises an error. 4,913 Development/Validation rows lacking any horizon label or ATR normalization were dropped so an identical sample supports every horizon. Quintile buckets are fitted per session on Development only and applied unchanged to Validation. The evidence unit is the per-New-York-trading-date cross-sectional Spearman IC with date-block bootstrap intervals (seed 20260720, 2,000 replicates). Benjamini–Hochberg q-values exist only on the Development screen, within outcome-family × session families of 498 related tests.
+
+Shortlist criteria were frozen in `Section7Config` before results were computed: Development q ≤ 0.10; ≥ 400 Development and ≥ 150 Validation trading dates; ≥ 10,000 Development and ≥ 4,000 Validation observations; Validation sign agreement with ≥ 25% IC retention; |Development bucket monotonicity| ≥ 0.8; and, for the direction family only, a ≥ 2-tick top-minus-bottom quintile spread in both partitions.
+
+Headline result:
+
+```text
+ADVANCE_DIRECTIONAL:  0 features
+ADVANCE_EXPANSION:   55 features
+WEAK_UNSTABLE:       28 features
+NO_EVIDENCE:          0 features
+Shortlist cells:    358 of 1,992 confirmation cells
+```
+
+No univariate OHLCV/state feature produced an advancement-grade signed-return relationship — consistent with the Section 5 baseline. Expansion (opportunity/volatility) structure is strong and Validation-confirmed: leading volatility-state and session-clock features reach |daily IC| ≈ 0.61–0.76 with Development→Validation retention near or above 1.0 and monotone quintile structure (e.g. `atr_20` vs 180-minute ATR-relative future range: Dev −0.734 / Val −0.763 in New York). Recorded caveats: the expansion outcome is ATR-normalized, so negative volatility-feature ICs reflect volatility mean-reversion plus the normalization denominator; the session-clock features are mutually redundant by construction; expansion advancement is opportunity forecasting, not a trading edge.
+
+Validation: **12/12** structural checks passed; **18/18** new synthetic engine tests passed (planted-signal detection, BH noise rejection, Development-only bin fitting, bootstrap determinism, hand-checked BH q-values, Final-test rejection, session confinement, economic-gate blocking); the full project suite is **112/112**. The screen runs in ≈ 125 seconds with ≈ 1.4 GB peak working memory.
+
+Reusable implementation and tests:
+
+```text
+src/statistical_research/feature_evaluation.py
+tests/test_statistical_research_feature_evaluation.py
+scripts/update_statistical_section7_notebook.py
+```
+
+Saved generated artifacts (excluded from Git):
+
+```text
+data/processed/statistical_research/univariate_results_gc.parquet
+data/processed/statistical_research/univariate_bucket_summary_gc.parquet
+data/processed/statistical_research/feature_stability_gc.parquet
+data/processed/statistical_research/candidate_feature_shortlist_gc.parquet
+```
+
+Generated shortlist/verdict CSVs under `reports/statistical_research/tables/section7/` also remain excluded from Git per the global CSV rule. The tracked record of the milestone is:
+
+```text
+reports/statistical_research/summaries/section7_univariate_evaluation_summary.md
+```
+
+The Final test remains locked. **Exact next section:** Section 8.0 — Redundancy and Incremental Information (cluster the 55 expansion advancers, select interpretable representatives, test incremental value, freeze the candidate set).
