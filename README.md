@@ -16,7 +16,7 @@ Quant Project 1 is a systematic intraday research codebase for CME Gold Futures 
 
 This repository is a research environment, not a live trading system. It does not currently contain an approved strategy, production execution, position sizing, transaction-cost modelling, or a completed sequential backtest.
 
-> **Current decision:** the refined True POI definition and Section 7 context study are complete, but no candidate has been approved for Section 8 backtesting. The independent statistical branch has completed univariate evaluation and redundancy reduction on Development+Validation only: no feature advanced for direction, and a frozen 15-feature expansion set (anchor `atr_20`) is now the authorized input for Section 9 multivariate research.
+> **Current decision:** the refined True POI definition and Section 7 context study are complete, but no candidate has been approved for Section 8 POI backtesting. The independent statistical branch has completed its full standalone arc (Sections 7–11) on Development+Validation only: no directional edge exists, opportunity forecasting is validated, and the standalone statistical system is rejected by its own sequential backtest. The next research phase is Section 12 hybrid integration, combining POI direction candidates with the frozen statistical opportunity models.
 
 ## Project at a glance
 
@@ -78,9 +78,10 @@ The current Section 7 population contains:
 | Controlled feature engineering and registry | Complete |
 | Section 7 univariate feature evaluation | Complete |
 | Section 8 redundancy and incremental information | Complete |
-| Section 9 multivariate research | **Next — not started** |
-| Independent statistical backtest | Not started |
-| POI integration | Future phase |
+| Section 9 multivariate research | Complete |
+| Section 10 signal construction | Complete |
+| Section 11 independent sequential backtest | Complete — **standalone system rejected** |
+| Section 12 POI integration research | **Next — not started** |
 
 The statistical branch currently contains:
 
@@ -91,8 +92,10 @@ The statistical branch currently contains:
 - 37/37 critical feature-production gates passed.
 - A completed univariate screen over 83 predictors on Development+Validation only (Final test locked): **0 features advanced for direction; 55 advanced for expansion/opportunity forecasting**; 28 were weak/unstable. Criteria were frozen before computation; results use per-date rank ICs, date-block bootstrap intervals, and Benjamini–Hochberg control.
 - A completed redundancy and incremental-information reduction: the 55 advancers collapse into 30 Development-fitted clusters, and anchor-partial-IC testing freezes a **15-feature expansion set** (anchor `atr_20` + 14 confirmed-incremental representatives). The frozen directional set is explicitly empty.
+- Completed multivariate benchmarks: the 15-feature ridge model beats the anchor in 3 of 4 session/horizon cells on Validation (IC improvements up to +0.088 with bootstrap intervals above zero); logistic AUCs reach 0.80–0.93. New York 60m probabilities are miscalibrated and flagged for recalibration before sizing use.
+- A completed sequential backtest of the honest candidate family (benchmark directions, frozen opportunity gate, declared costs): **all four variants rejected** across 86,353 simulated trades. The standalone statistical system has no directional edge.
 
-No feature has demonstrated a directional trading edge. The frozen 15-feature expansion set is the authorized input for Section 9 multivariate research toward sizing/regime/no-trade rules.
+Branch B standalone research is closed with a defensible rejection. Its validated assets — the frozen expansion feature set and per-session opportunity models — carry forward to Section 12 hybrid integration research, where POI events supply direction candidates and the statistical models supply opportunity quality, sizing context, and no-trade filters.
 
 ## Research architecture
 

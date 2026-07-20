@@ -4714,3 +4714,17 @@ Branch A status unchanged: no Section 8 POI backtest candidate approved.
 ```
 
 Details: `project_docs/statistical_feature_research_context_report.md` (Section 8 completion entry) and `reports/statistical_research/summaries/section8_redundancy_summary.md`.
+
+# Authoritative Branch B Update — Sections 9-11 Complete; Standalone Statistical System Rejected — 2026-07-20
+
+```text
+Section 9 (multivariate benchmarks):    COMPLETE — model beats anchor in 3 of 4 cells; NY 60m calibration flagged.
+Section 10 (signal construction):       COMPLETE — benchmark directions + frozen opportunity gate; rules frozen first.
+Section 11 (sequential backtest):       COMPLETE — 86,353 trades, all four variants REJECTED under base costs.
+Decision: the standalone Branch B statistical system has no directional edge and is REJECTED.
+Validated assets that carry forward: the frozen 15-feature expansion set and per-session opportunity models.
+Next: Section 12 integration research — POI direction candidates filtered/sized by statistical opportunity models.
+Branch A status unchanged: no POI Section 8 backtest candidate approved. Final test locked throughout.
+```
+
+Details: the Section 9-11 completion entries in `project_docs/statistical_feature_research_context_report.md` and the section summaries under `reports/statistical_research/summaries/`.
