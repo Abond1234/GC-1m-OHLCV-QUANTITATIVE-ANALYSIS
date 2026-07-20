@@ -732,11 +732,6 @@ def _render_summary(
     dev_summary = diagnostics.loc[diagnostics["analysis_type"].eq("Development_feature_summary")]
     highest_missing = dev_summary.sort_values("missing_rate", ascending=False).head(8)
     experimental = registry.loc[registry["is_experimental"].astype(bool)]
-    total_seconds = float(
-        build_result.build_timings.loc[
-            build_result.build_timings["stage"].eq("total"), "seconds"
-        ].iloc[0]
-    )
     critical = validation.loc[validation["critical"]]
     lines = [
         "# Section 6 Feature Engineering Summary",
@@ -749,7 +744,6 @@ def _render_summary(
         f"- Numeric predictors: **{int(registry['output_dtype'].isin(['float32', 'Int16', 'Int8']).sum())}**",
         f"- Critical validation checks passed: **{int(critical['passed'].sum())}/{len(critical)}**",
         f"- Automated feature tests: **{test_details}**",
-        f"- Feature-build runtime: **{total_seconds:,.2f} seconds**",
         f"- Estimated unoptimized matrix memory: **{build_result.estimated_unoptimized_memory_bytes / 2**20:,.2f} MiB**",
         f"- Optimized matrix memory: **{build_result.optimized_memory_bytes / 2**20:,.2f} MiB**",
         f"- Estimated peak working memory: **{build_result.estimated_peak_working_memory_bytes / 2**20:,.2f} MiB**",
@@ -803,6 +797,9 @@ def _render_summary(
             "**No feature has yet been shown to possess predictive value.** Section 6 establishes only a valid candidate feature matrix.",
             "",
             "**Exact next section:** Section 7.0 — Univariate Feature Evaluation",
+            "",
+            "*Follow-up (2026-07-20): executed as declared - see "
+            "`section7_univariate_evaluation_summary.md`.*",
             "",
             "SECTION 6 STATUS: READY" if ready else "SECTION 6 STATUS: NOT READY",
             "",
