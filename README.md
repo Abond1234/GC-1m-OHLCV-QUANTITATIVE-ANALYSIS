@@ -24,7 +24,7 @@ This repository is a research environment, not a live trading system. It does no
 |---|---|
 | Markets | CME Gold Futures (GC) and Micro Gold Futures (MGC) |
 | Signal-research instrument | GC active/front-month continuous series |
-| Intended later execution instrument | MGC; GC-to-MGC execution mapping is not implemented |
+| Intended later execution instrument | MGC; transfer validated (FR-09): synchronization excellent, tick-precise entry transfer fails provisionally |
 | Source | Databento GLBX.MDP3, one-minute OHLCV bars |
 | Source period | 24 May 2021 to 24 May 2026; eligible statistical observations end 22 May 2026 |
 | Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
@@ -97,6 +97,18 @@ The statistical branch currently contains:
 - A completed sequential backtest of the honest candidate family (benchmark directions, frozen opportunity gate, declared costs): **all four variants rejected** across 86,353 simulated trades. The standalone statistical system has no directional edge.
 
 Branch B standalone research is closed with a defensible rejection, and both of its carry-forward integration forms have now been tested to completion against Branch A's POI events: the gate-filter form (Section 12) adds no confirmed incremental value, and the conditioning forms (Section 12B: quintile-based sizing, exit-horizon selection, bottom-quintile suppression) all fail Validation under the pre-declared contract. The opportunity model demonstrably forecasts movement magnitude, but no tested use of that forecast survives out-of-sample criteria at realistic costs.
+
+### Execution layer — PRD Phase 4
+
+| Milestone | Status |
+|---|---|
+| FR-09 GC-to-MGC transfer validation | Complete — **G5_PROVISIONAL_FAIL: tick-precise entry transfer is not safe** |
+| FR-10 versioned prop-firm rules engine | Complete — policy layer, evaluation simulator, bootstrap economics estimator |
+| FR-11 Rithmic paper integration | Not started — requires credentials and approved platform access |
+
+FR-09 measured the 179,036 True POI decision bars against synchronized MGC minutes: coverage and liquidity are excellent (100 percent decision-bar synchronization, median 274 contracts per minute, median basis one tick), but the GC first-contact price trades on MGC in the same minute only 80 percent of the time — stable across all five years. Any future MGC execution mapping therefore needs an MGC-native entry treatment whose cost is measured with real order telemetry, not assumed from bars. Details: `reports/execution/mgc_transfer_validation_summary.md`.
+
+FR-10 provides the prop-firm constraint layer the PRD requires: policies (profit target, daily loss, static/trailing/EOD-trailing drawdown with optional initial-balance cap, consistency share, minimum/maximum days, internal risk buffers) are versioned configuration with effective dates, never strategy code; a deterministic evaluation simulator produces day-by-day ledgers and breach detail; a seeded bootstrap estimates pass probability, breach probabilities, and days-to-pass for any supplied daily P&L distribution. The bundled policies are illustrative templates — real firm terms must be re-verified before use. No strategy claim is attached: the research program has not approved a strategy to feed it.
 
 ## Research architecture
 
