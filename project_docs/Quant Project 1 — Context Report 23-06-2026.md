@@ -2,6 +2,8 @@
 
 > **Purpose:**
 > This document serves as the authoritative project context for future AI sessions. Any AI assistant reading this file should assume all completed sections are already done and continue from the current project state unless instructed otherwise.
+>
+> **How to read this document:** it is an append-only chronicle ordered by milestone. Each entry was accurate when written, so status tables in early entries (for example "Backtesting: Not Started") are historical records, not the current state. The current state is always the final "Authoritative Update" entries at the end of this file, together with `README.md`. Nothing in the body is rewritten after the fact; corrections and closures arrive as new entries.
 
 ---
 

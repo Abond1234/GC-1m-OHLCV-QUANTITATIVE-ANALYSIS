@@ -34,3 +34,9 @@ Option 2 first, then Option 1: run Section 12B, then backtest whichever version 
 - [ ] Option 2 authorized (Section 12B first)
 - [ ] Option 3 declined permanently
 - Signature/date:
+
+---
+
+## Resolution addendum (2026-07-20)
+
+Both evidence paths this memo weighed have now been executed through the merged record: the Section 8 sequential backtest ran (PR #16) and returned **SEQUENTIAL_REJECTED at base costs**, and the frozen Section 12B contract ran (PR #18) with **NO_ADVANCE on all three hypotheses**. Under the linkage clause in `project_docs/section12b_research_contract.md`, Option 3 therefore applies: **the S7P02 family is archived** with the complete evidence chain (`reports/statistical_research/summaries/section8_poi_sequential_backtest_summary.md`, `reports/statistical_research/summaries/section12b_opportunity_conditioning_summary.md`). Formal sign-off on this record remains with the project owner; the checkboxes above are left for that signature.

@@ -30,4 +30,6 @@ Section 7 approved no directional feature, so Section 10 does not invent a direc
 
 Section 11.0 - Independent Sequential Backtest of this candidate family under declared costs.
 
+*Follow-up (2026-07-20): executed as declared - see `section11_sequential_backtest_summary.md`.*
+
 SECTION 10 STATUS: READY

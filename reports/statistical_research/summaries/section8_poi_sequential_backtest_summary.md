@@ -30,4 +30,6 @@ The frozen S7P02 policy (its registry row states "Section 8 must sequence") exec
 
 `section8_poi_trade_log_gc.parquet`, `section8_poi_performance_gc.parquet`, `section8_poi_yearly_performance_gc.parquet`.
 
+*Follow-up (2026-07-20): Section 12B returned NO_ADVANCE on all three hypotheses; Option 3 is applied and the S7P02 family is archived - see `section12b_opportunity_conditioning_summary.md`.*
+
 SECTION 8 POI BACKTEST STATUS: READY

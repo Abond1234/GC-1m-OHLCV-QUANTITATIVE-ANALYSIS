@@ -30,7 +30,7 @@ This repository is a research environment, not a live trading system. It does no
 | Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
 | Business timezone | `America/New_York`; UTC timestamps remain immutable join keys |
 | Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
-| Automated tests | 198 tests across 19 modules |
+| Automated tests | 224 tests across 22 modules |
 | Repository state | Research complete for Phase 2; no strategy approved; S7P02 family archived |
 
 ## Project status

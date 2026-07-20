@@ -40,4 +40,6 @@ The advancement margin (0.02 minimum improvement with the bootstrap interval of 
 
 Section 10.0 - Statistical Signal Construction: formalize the candidate family the evidence supports (benchmark directions gated by the frozen opportunity model) for the Section 11 sequential test.
 
+*Follow-up (2026-07-20): executed as declared - see `section10_signal_construction_summary.md`.*
+
 SECTION 9 STATUS: READY

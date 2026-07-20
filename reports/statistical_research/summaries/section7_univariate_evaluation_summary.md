@@ -59,4 +59,6 @@ This summary is the tracked record of the milestone.
 
 **Section 8.0 — Redundancy and Incremental Information**: correlation/clustering of the 55 expansion advancers, interpretable representatives per family, incremental-value tests, then a frozen candidate set. The Final test remains locked until that shortlist freeze.
 
+*Follow-up (2026-07-20): executed as declared - see `section8_redundancy_summary.md`.*
+
 SECTION 7 STATUS: READY

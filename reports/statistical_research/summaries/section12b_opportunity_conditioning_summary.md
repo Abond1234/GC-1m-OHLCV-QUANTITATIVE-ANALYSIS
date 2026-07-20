@@ -31,6 +31,6 @@ Per `project_docs/section8_authorization_memo.md`: Option 1 already returned SEQ
 
 ## Saved outputs (excluded from Git)
 
-`section12b_h1_sizing_results_gc.parquet`, `section12b_h1_sizing_effects_gc.parquet`, `section12b_h2_exit_mapping_gc.parquet`, `section12b_h2_exit_results_gc.parquet`, `section12b_h3_suppression_results_gc.parquet`, `section12b_verdicts_gc.parquet`, `section12b_final_test_report_gc.parquet`; tracked CSVs under `reports/statistical_research/tables/section12b/`.
+`section12b_h1_sizing_results_gc.parquet`, `section12b_h1_sizing_effects_gc.parquet`, `section12b_h2_exit_mapping_gc.parquet`, `section12b_h2_exit_results_gc.parquet`, `section12b_h3_suppression_results_gc.parquet`, `section12b_verdicts_gc.parquet`, `section12b_final_test_report_gc.parquet`; summary CSVs under `reports/statistical_research/tables/section12b/` (regenerated with the run and excluded from Git by the global CSV rule; this document is the tracked record).
 
 SECTION 12B STATUS: READY
