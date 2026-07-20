@@ -1,0 +1,12 @@
+# Top-level project dependencies (see requirements.lock.txt for the exact
+# frozen environment used to execute the committed notebooks and tests).
+numpy
+pandas
+scipy
+pyarrow
+matplotlib
+seaborn
+databento
+jupyter
+nbformat
+psutil

@@ -42,6 +42,21 @@ from .feature_validation import (
     save_feature_outputs,
     validate_feature_matrix,
 )
+from .feature_evaluation import (
+    EVALUATION_PARTITIONS,
+    EVALUATION_SESSIONS,
+    EXCLUDED_CATEGORICAL_FEATURES,
+    OUTCOME_FAMILY_ATR_TEMPLATES,
+    SECTION7_RANDOM_SEED,
+    EvaluationBuildResult,
+    Section7Config,
+    benjamini_hochberg_q_values,
+    build_evaluation_frame,
+    build_univariate_evaluation,
+    evaluated_feature_names,
+    load_forward_labels_for_evaluation,
+    save_evaluation_outputs,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -76,4 +91,17 @@ __all__ = [
     "compute_feature_diagnostics",
     "save_feature_outputs",
     "validate_feature_matrix",
+    "EVALUATION_PARTITIONS",
+    "EVALUATION_SESSIONS",
+    "EXCLUDED_CATEGORICAL_FEATURES",
+    "OUTCOME_FAMILY_ATR_TEMPLATES",
+    "SECTION7_RANDOM_SEED",
+    "EvaluationBuildResult",
+    "Section7Config",
+    "benjamini_hochberg_q_values",
+    "build_evaluation_frame",
+    "build_univariate_evaluation",
+    "evaluated_feature_names",
+    "load_forward_labels_for_evaluation",
+    "save_evaluation_outputs",
 ]

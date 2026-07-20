@@ -16,7 +16,7 @@ Quant Project 1 is a systematic intraday research codebase for CME Gold Futures 
 
 This repository is a research environment, not a live trading system. It does not currently contain an approved strategy, production execution, position sizing, transaction-cost modelling, or a completed sequential backtest.
 
-> **Current decision:** the refined True POI definition and Section 7 context study are complete, but no candidate has been approved for Section 8 backtesting. The independent statistical branch has a validated feature matrix; its next step is univariate feature evaluation.
+> **Current decision:** the refined True POI definition and Section 7 context study are complete, but no candidate has been approved for Section 8 backtesting. The independent statistical branch has completed its univariate feature evaluation on Development+Validation only: no feature advanced for direction, 55 advanced for expansion/opportunity forecasting, and its next step is redundancy and incremental-information research.
 
 ## Project at a glance
 
@@ -76,7 +76,8 @@ The current Section 7 population contains:
 | Leakage-free fixed-horizon labels | Complete |
 | Unconditional/session/time/year baseline behaviour | Complete |
 | Controlled feature engineering and registry | Complete |
-| Section 7 univariate feature evaluation | **Next — not started** |
+| Section 7 univariate feature evaluation | Complete |
+| Section 8 redundancy and incremental information | **Next — not started** |
 | Independent statistical backtest | Not started |
 | POI integration | Future phase |
 
@@ -87,8 +88,9 @@ The statistical branch currently contains:
 - A 586,530 × 97 feature matrix with 12 audit/join fields and 85 predictors.
 - 79 core predictors and 6 explicitly marked experimental hypotheses.
 - 37/37 critical feature-production gates passed.
+- A completed univariate screen over 83 predictors on Development+Validation only (Final test locked): **0 features advanced for direction; 55 advanced for expansion/opportunity forecasting**; 28 were weak/unstable. Criteria were frozen before computation; results use per-date rank ICs, date-block bootstrap intervals, and Benjamini–Hochberg control.
 
-No statistical feature has yet been shown to possess predictive value. Section 6 proves construction integrity, causality, registry alignment, and numerical validity only.
+No feature has demonstrated a directional trading edge. The expansion advancers are candidate inputs for sizing/regime/no-trade research, pending Section 8 redundancy reduction and incremental-value tests.
 
 ## Research architecture
 
@@ -249,7 +251,7 @@ python -m pip install numpy pandas scipy pyarrow matplotlib seaborn databento ju
 
 On macOS or Linux, activate with `source .venv/bin/activate`.
 
-There is no committed dependency lock file or `requirements.txt` yet. The explicit install command above covers imports used by the current source, scripts, and notebooks; contributors should not claim bit-for-bit environment reproducibility until a dependency manifest is added.
+Alternatively install from the committed manifests: `python -m pip install -r requirements.txt` for top-level dependencies, or `python -m pip install -r requirements.lock.txt` to reproduce the exact frozen environment used to execute the committed notebooks and tests.
 
 ### 3. Obtain the research data
 
