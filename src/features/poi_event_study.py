@@ -137,9 +137,7 @@ SECTION7_BAR_REQUIRED_COLUMNS = [
     "roll_window_flag",
 ]
 
-SECTION7_VISUAL_AUDIT_BAR_COLUMNS = list(
-    dict.fromkeys(SECTION7_BAR_REQUIRED_COLUMNS + ["open"])
-)
+SECTION7_VISUAL_AUDIT_BAR_COLUMNS = list(dict.fromkeys(SECTION7_BAR_REQUIRED_COLUMNS + ["open"]))
 
 SECTION7_VISUAL_AUDIT_SIGNAL_COLUMNS = list(
     dict.fromkeys(
@@ -307,9 +305,7 @@ def build_section7_event_study(
             )
 
     event_study_summary = (
-        pd.concat(summary_frames, ignore_index=True)
-        if summary_frames
-        else pd.DataFrame()
+        pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
     )
     horizon_quality = pd.DataFrame.from_records(horizon_quality_records)
     candidate_signal_ranking = rank_section7_candidate_groups(event_study_summary, cfg)
@@ -434,8 +430,7 @@ def prepare_section7_signal_frame(
     out = signal_frame.loc[:, selected_cols].copy()
 
     out["entry_hour_bucket"] = (
-        out["retest_minute_ny"].floordiv(60).astype("int16").astype(str).str.zfill(2)
-        + ":00"
+        out["retest_minute_ny"].floordiv(60).astype("int16").astype(str).str.zfill(2) + ":00"
     )
     out["touch_order_bucket"] = np.where(
         out["first_touch_flag"].astype(bool),
@@ -553,15 +548,15 @@ def prepare_section7_signal_frame(
     )
     out["trend_alignment"] = _trade_alignment(
         trade_side=out["trade_side"],
-        bullish_condition=out.get("retest_trend_bias_20_50", pd.Series("neutral", index=out.index)).eq(
-            "bullish"
-        ),
-        bearish_condition=out.get("retest_trend_bias_20_50", pd.Series("neutral", index=out.index)).eq(
-            "bearish"
-        ),
-        neutral_condition=out.get("retest_trend_bias_20_50", pd.Series("neutral", index=out.index)).eq(
-            "neutral"
-        ),
+        bullish_condition=out.get(
+            "retest_trend_bias_20_50", pd.Series("neutral", index=out.index)
+        ).eq("bullish"),
+        bearish_condition=out.get(
+            "retest_trend_bias_20_50", pd.Series("neutral", index=out.index)
+        ).eq("bearish"),
+        neutral_condition=out.get(
+            "retest_trend_bias_20_50", pd.Series("neutral", index=out.index)
+        ).eq("neutral"),
     )
     vwap_distance = out.get("retest_distance_from_vwap_ticks", pd.Series(np.nan, index=out.index))
     out["vwap_alignment"] = _trade_alignment(
@@ -660,16 +655,10 @@ def build_bar_horizon_path_features(
         target_locs = np.searchsorted(ts_ns, target_ns, side="left")
         target_inside = target_locs < len(segment)
         exact_target = np.zeros(start_locs.size, dtype=bool)
-        exact_target[target_inside] = ts_ns[target_locs[target_inside]] == target_ns[
-            target_inside
-        ]
+        exact_target[target_inside] = ts_ns[target_locs[target_inside]] == target_ns[target_inside]
 
         fixed_within_forced_exit = minute[start_locs] + horizon_minutes <= cfg.forced_exit_minute_ny
-        fixed_local_valid = (
-            fixed_within_forced_exit
-            & exact_target
-            & (target_locs > start_locs)
-        )
+        fixed_local_valid = fixed_within_forced_exit & exact_target & (target_locs > start_locs)
 
         capped_uses_forced_exit = minute[start_locs] + horizon_minutes > cfg.forced_exit_minute_ny
         capped_local_valid = np.where(
@@ -795,16 +784,22 @@ def build_signal_horizon_metrics(
             entry[idx] - exit_close[idx],
         )
         forward_r[idx] = forward_points[idx] / risk[idx]
-        mfe_r[idx] = np.where(
-            long_side[idx],
-            max_high[idx] - entry[idx],
-            entry[idx] - min_low[idx],
-        ) / risk[idx]
-        mae_r[idx] = np.where(
-            long_side[idx],
-            entry[idx] - min_low[idx],
-            max_high[idx] - entry[idx],
-        ) / risk[idx]
+        mfe_r[idx] = (
+            np.where(
+                long_side[idx],
+                max_high[idx] - entry[idx],
+                entry[idx] - min_low[idx],
+            )
+            / risk[idx]
+        )
+        mae_r[idx] = (
+            np.where(
+                long_side[idx],
+                entry[idx] - min_low[idx],
+                max_high[idx] - entry[idx],
+            )
+            / risk[idx]
+        )
 
     data: dict[str, Any] = {
         "valid": valid,
@@ -866,7 +861,9 @@ def summarize_section7_groups(
 
     cfg = config or Section7Config()
     frames: list[pd.DataFrame] = []
-    analysis = pd.concat([signal_base.reset_index(drop=True), metrics.reset_index(drop=True)], axis=1)
+    analysis = pd.concat(
+        [signal_base.reset_index(drop=True), metrics.reset_index(drop=True)], axis=1
+    )
     analysis["forward_r_abs"] = analysis["forward_r"].abs()
 
     for spec in group_specs:
@@ -967,12 +964,12 @@ def rank_section7_candidate_groups(
         sample_weight = 1.0
     else:
         sample_weight = np.log1p(ranking["median_valid_count"]) / np.log1p(max_sample)
-    ranking["horizon_consistency_rate"] = (
-        ranking["positive_mean_horizons"] / ranking["valid_horizon_count"].replace(0, np.nan)
-    )
-    ranking["median_consistency_rate"] = (
-        ranking["positive_median_horizons"] / ranking["valid_horizon_count"].replace(0, np.nan)
-    )
+    ranking["horizon_consistency_rate"] = ranking["positive_mean_horizons"] / ranking[
+        "valid_horizon_count"
+    ].replace(0, np.nan)
+    ranking["median_consistency_rate"] = ranking["positive_median_horizons"] / ranking[
+        "valid_horizon_count"
+    ].replace(0, np.nan)
     ranking["rank_score"] = (
         ranking["mean_horizon_score"]
         * sample_weight
@@ -1189,10 +1186,9 @@ def plot_section7_visual_audit_event(
         raise IndexError(f"retest_bar_id {retest_bar_id} is outside the bar frame.")
 
     event_bar = bars.iloc[retest_bar_id]
-    same_context = (
-        bars["trade_date_ny"].eq(event_bar["trade_date_ny"])
-        & bars["continuous_segment_id"].eq(event_bar["continuous_segment_id"])
-    )
+    same_context = bars["trade_date_ny"].eq(event_bar["trade_date_ny"]) & bars[
+        "continuous_segment_id"
+    ].eq(event_bar["continuous_segment_id"])
     window = bars.loc[
         same_context
         & bars["bar_id"].between(
@@ -1217,6 +1213,7 @@ def plot_section7_visual_audit_event(
         window["high"].to_numpy("float64"),
         window["low"].to_numpy("float64"),
         window["close"].to_numpy("float64"),
+        strict=False,
     ):
         color = up_color if close >= open_ else down_color
         ax.vlines(x_val, low, high, color=color, linewidth=0.9, alpha=0.85)
@@ -1314,9 +1311,7 @@ def plot_section7_visual_audit_event(
 
     forward_r = event[forward_r_column] if forward_r_column in event.index else np.nan
     structural_status = (
-        "structural"
-        if bool(event.get("structural_swing_break_flag", False))
-        else "local-only"
+        "structural" if bool(event.get("structural_swing_break_flag", False)) else "local-only"
     )
     title = (
         f"{event['execution_window_label']} | {event['trade_side']} | "
@@ -1353,7 +1348,7 @@ def plot_section7_visual_audit_event(
     ax.set_xlim(x.min() - candle_width, x.max() + candle_width)
 
     handles, labels = ax.get_legend_handles_labels()
-    deduped = dict(zip(labels, handles))
+    deduped = dict(zip(labels, handles, strict=False))
     ax.legend(
         deduped.values(),
         deduped.keys(),
@@ -1530,10 +1525,9 @@ def plot_section7_poi_selection_audit_event(
         confirm_bar_id = poi_bar_id
 
     poi_bar = bars.iloc[poi_bar_id]
-    same_context = (
-        bars["trade_date_ny"].eq(poi_bar["trade_date_ny"])
-        & bars["continuous_segment_id"].eq(poi_bar["continuous_segment_id"])
-    )
+    same_context = bars["trade_date_ny"].eq(poi_bar["trade_date_ny"]) & bars[
+        "continuous_segment_id"
+    ].eq(poi_bar["continuous_segment_id"])
     left_bar = max(0, confirm_bar_id - context_bars_before)
     right_bar = confirm_bar_id + context_bars_after
     left_bar = min(left_bar, poi_bar_id)
@@ -1562,6 +1556,7 @@ def plot_section7_poi_selection_audit_event(
         window["high"].to_numpy("float64"),
         window["low"].to_numpy("float64"),
         window["close"].to_numpy("float64"),
+        strict=False,
     ):
         color = up_color if close >= open_ else down_color
         ax.vlines(x_val, low, high, color=color, linewidth=0.9, alpha=0.88)
@@ -1624,9 +1619,7 @@ def plot_section7_poi_selection_audit_event(
     structural_status = "structural" if structural_flag else "local-only"
     structural_window = event.get("structural_swing_window_broken", pd.NA)
     structural_window_text = (
-        f"sw_window={int(structural_window)}"
-        if pd.notna(structural_window)
-        else "sw_window=NA"
+        f"sw_window={int(structural_window)}" if pd.notna(structural_window) else "sw_window=NA"
     )
     poi_created_text = (
         _local_naive_timestamp(event["poi_created_ts_event_ny"]).strftime("%Y-%m-%d %H:%M")
@@ -1635,8 +1628,7 @@ def plot_section7_poi_selection_audit_event(
     )
     session = (
         str(event["execution_window_label"])
-        if "execution_window_label" in event.index
-        and pd.notna(event["execution_window_label"])
+        if "execution_window_label" in event.index and pd.notna(event["execution_window_label"])
         else "session=NA"
     )
     title = (
@@ -1712,12 +1704,12 @@ def _summarize_group_frame(
     quantiles = quantiles.reset_index()
     summary = summary.merge(quantiles, on=group_cols, how="left", validate="one_to_one")
 
-    summary["positive_r_rate"] = grouped["forward_r"].apply(
-        lambda s: s.dropna().gt(0).mean()
-    ).to_numpy()
-    summary["negative_r_rate"] = grouped["forward_r"].apply(
-        lambda s: s.dropna().lt(0).mean()
-    ).to_numpy()
+    summary["positive_r_rate"] = (
+        grouped["forward_r"].apply(lambda s: s.dropna().gt(0).mean()).to_numpy()
+    )
+    summary["negative_r_rate"] = (
+        grouped["forward_r"].apply(lambda s: s.dropna().lt(0).mean()).to_numpy()
+    )
     summary["t_stat"] = np.where(
         (summary["valid_count"] > 1) & summary["std_r"].gt(0),
         summary["mean_r"] / (summary["std_r"] / np.sqrt(summary["valid_count"])),
@@ -1907,7 +1899,9 @@ def _poi_selection_index_record(
         "sample_id": sample_id,
         "signal_id": event["signal_id"],
         "image_path": str(image_path),
-        "poi_time": event.get("poi_middle_ts_event_ny", event.get("poi_created_ts_event_ny", pd.NA)),
+        "poi_time": event.get(
+            "poi_middle_ts_event_ny", event.get("poi_created_ts_event_ny", pd.NA)
+        ),
         "poi_low": event["poi_low"],
         "poi_high": event["poi_high"],
         "direction": event["direction"],

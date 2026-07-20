@@ -71,11 +71,17 @@ def load_backtest_bars(research_bars_path: Path) -> pd.DataFrame:
     import pyarrow.parquet as pq
 
     columns = [
-        "ts_event_utc", "product", "open", "high", "low", "close",
-        "trade_date_ny", "minute_of_day_ny", "continuous_segment_id",
+        "ts_event_utc",
+        "product",
+        "open",
+        "high",
+        "low",
+        "close",
+        "trade_date_ny",
+        "minute_of_day_ny",
+        "continuous_segment_id",
     ]
-    table = pq.read_table(research_bars_path, columns=columns,
-                          filters=[("product", "==", "GC")])
+    table = pq.read_table(research_bars_path, columns=columns, filters=[("product", "==", "GC")])
     bars = table.to_pandas(ignore_metadata=True)
     bars = bars.sort_values("ts_event_utc").reset_index(drop=True)
     return bars
@@ -250,7 +256,9 @@ def run_sequential_backtest(
             values = group["net_r"].to_numpy(dtype=np.float64)
             wins = values > 0
             equity = np.cumsum(values)
-            drawdown = float(np.max(np.maximum.accumulate(equity) - equity)) if len(values) else np.nan
+            drawdown = (
+                float(np.max(np.maximum.accumulate(equity) - equity)) if len(values) else np.nan
+            )
             performance_records.append(
                 {
                     "cost_scenario": scenario,
@@ -311,9 +319,7 @@ def run_sequential_backtest(
     base_rows = performance.loc[performance["cost_scenario"].eq("base")]
     for (direction, gate), group in base_rows.groupby(variant_keys, sort=False):
         by_partition = group.set_index("research_partition")["mean_net_r"]
-        positive_everywhere = bool(
-            (by_partition.reindex(list(EVALUATION_PARTITIONS)) > 0).all()
-        )
+        positive_everywhere = bool((by_partition.reindex(list(EVALUATION_PARTITIONS)) > 0).all())
         verdict_records.append(
             {
                 "direction_variant": direction,
@@ -334,16 +340,20 @@ def run_sequential_backtest(
             trade_log.groupby(variant_keys)
             .apply(
                 lambda g: bool(
-                    (g.sort_values("entry_position")["entry_position"].to_numpy()[1:]
-                     > g.sort_values("entry_position")["exit_position"].to_numpy()[:-1]).all()
+                    (
+                        g.sort_values("entry_position")["entry_position"].to_numpy()[1:]
+                        > g.sort_values("entry_position")["exit_position"].to_numpy()[:-1]
+                    ).all()
                 ),
                 include_groups=False,
             )
             .all()
         ),
         "no_trade_crosses_forced_exit": bool(
-            (trade_log["exit_reason"].ne("forced_1530")
-             | (trade_log["holding_minutes"] <= cfg.max_holding_minutes)).all()
+            (
+                trade_log["exit_reason"].ne("forced_1530")
+                | (trade_log["holding_minutes"] <= cfg.max_holding_minutes)
+            ).all()
         ),
         "holding_within_declared_cap": bool(
             (trade_log["holding_minutes"] <= cfg.max_holding_minutes).all()
@@ -370,7 +380,9 @@ def run_sequential_backtest(
             ),
             "standalone_statistical_system_decision": (
                 "REJECTED - no variant shows positive net base-scenario expectancy in "
-                "both partitions" if system_rejected else "CANDIDATE VARIANTS EXIST - review required"
+                "both partitions"
+                if system_rejected
+                else "CANDIDATE VARIANTS EXIST - review required"
             ),
             "base_round_trip_cost_ticks": _scenario_cost_ticks(cfg, "base"),
             "pessimistic_round_trip_cost_ticks": _scenario_cost_ticks(cfg, "pessimistic"),

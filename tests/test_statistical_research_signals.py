@@ -18,7 +18,10 @@ def _make_inputs(*, seed: int = 5, shift_validation_prediction: float = 0.0):
     rows = []
     entries = []
     observation = 0
-    for partition, n_dates, start in (("Development", 60, "2022-01-03"), ("Validation", 30, "2024-01-02")):
+    for partition, n_dates, start in (
+        ("Development", 60, "2022-01-03"),
+        ("Validation", 30, "2024-01-02"),
+    ):
         for date in pd.bdate_range(start, periods=n_dates):
             for session in ("London", "New York"):
                 n = 20

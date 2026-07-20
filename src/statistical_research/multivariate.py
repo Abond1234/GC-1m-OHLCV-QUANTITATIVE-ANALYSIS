@@ -150,9 +150,7 @@ def _bootstrap_mean_ci(
     return tuple(float(v) for v in np.quantile(estimates, [alpha, 1.0 - alpha]))
 
 
-def _fit_logistic_irls(
-    x: np.ndarray, y: np.ndarray, lam: float, max_iterations: int
-) -> np.ndarray:
+def _fit_logistic_irls(x: np.ndarray, y: np.ndarray, lam: float, max_iterations: int) -> np.ndarray:
     """Ridge-stabilized logistic regression via iteratively reweighted least squares."""
 
     n, k = x.shape
@@ -337,7 +335,7 @@ def build_multivariate_benchmarks(
                 outcome_z[development],
                 selected_lambda,
             )
-            for name, value in zip(frozen_features, beta):
+            for name, value in zip(frozen_features, beta, strict=False):
                 coefficient_records.append(
                     {
                         "session": session,
@@ -356,12 +354,18 @@ def build_multivariate_benchmarks(
             difference_daily: dict[str, np.ndarray] = {}
             for partition, mask in partition_masks.items():
                 model_daily = _daily_ic_of_prediction(
-                    np.where(mask, model_prediction, np.nan), outcome_z, date_codes,
-                    n_dates, cfg.min_daily_observations,
+                    np.where(mask, model_prediction, np.nan),
+                    outcome_z,
+                    date_codes,
+                    n_dates,
+                    cfg.min_daily_observations,
                 )
                 anchor_daily = _daily_ic_of_prediction(
-                    np.where(mask, anchor_prediction, np.nan), outcome_z, date_codes,
-                    n_dates, cfg.min_daily_observations,
+                    np.where(mask, anchor_prediction, np.nan),
+                    outcome_z,
+                    date_codes,
+                    n_dates,
+                    cfg.min_daily_observations,
                 )
                 paired = model_daily - anchor_daily
                 difference_daily[partition] = paired
@@ -372,8 +376,10 @@ def build_multivariate_benchmarks(
                     + (0 if partition == "Development" else 5_000)
                 )
                 diff_low, diff_high = _bootstrap_mean_ci(
-                    paired, seed=seed,
-                    replicates=cfg.bootstrap_replicates, confidence=cfg.bootstrap_confidence,
+                    paired,
+                    seed=seed,
+                    replicates=cfg.bootstrap_replicates,
+                    confidence=cfg.bootstrap_confidence,
                 )
                 regression_records.append(
                     {
@@ -418,13 +424,16 @@ def build_multivariate_benchmarks(
             usable = complete & np.isfinite(label_values)
             y = label_values > 0.5
             logistic_beta = _fit_logistic_irls(
-                matrix[usable & development], y[usable & development],
-                cfg.logistic_ridge_lambda, cfg.logistic_max_iterations,
+                matrix[usable & development],
+                y[usable & development],
+                cfg.logistic_ridge_lambda,
+                cfg.logistic_max_iterations,
             )
             anchor_logistic_beta = _fit_logistic_irls(
                 matrix[usable & development][:, [anchor_position]],
                 y[usable & development],
-                cfg.logistic_ridge_lambda, cfg.logistic_max_iterations,
+                cfg.logistic_ridge_lambda,
+                cfg.logistic_max_iterations,
             )
             for partition, mask in partition_masks.items():
                 rows = usable & mask
@@ -491,11 +500,15 @@ def build_multivariate_benchmarks(
         )
         return bool(rho >= 0.9)
 
-    calibration_monotone = bool(
-        calibration_table.groupby(["session", "horizon_minutes"])
-        .apply(_calibration_rank_agreement, include_groups=False)
-        .all()
-    ) if len(calibration_table) else False
+    calibration_monotone = (
+        bool(
+            calibration_table.groupby(["session", "horizon_minutes"])
+            .apply(_calibration_rank_agreement, include_groups=False)
+            .all()
+        )
+        if len(calibration_table)
+        else False
+    )
 
     checks = {
         "partitions_limited_to_development_validation": observed_partitions
@@ -507,11 +520,13 @@ def build_multivariate_benchmarks(
                 ["session", "horizon_minutes", "ridge_lambda"],
             ],
             on=["session", "horizon_minutes"],
-        )["ridge_lambda"].isin(cfg.ridge_lambda_grid).all(),
-        "walk_forward_inside_development_only": bool(
-            len(walk_forward_results) > 0
+        )["ridge_lambda"]
+        .isin(cfg.ridge_lambda_grid)
+        .all(),
+        "walk_forward_inside_development_only": bool(len(walk_forward_results) > 0),
+        "embargo_applied_on_every_fold": all(
+            count >= cfg.embargo_trading_dates for count in embargo_counts
         ),
-        "embargo_applied_on_every_fold": all(count >= cfg.embargo_trading_dates for count in embargo_counts),
         "incomplete_row_fraction_below_5pct": all(f < 0.05 for f in dropped_fractions),
         "regression_cells_cover_both_partitions": set(
             regression_results["research_partition"].unique()
@@ -534,9 +549,7 @@ def build_multivariate_benchmarks(
             "sessions_x_horizons": len(verdicts),
             "model_advances": int(verdicts["verdict"].eq("MODEL_ADVANCES").sum()),
             "anchor_sufficient": int(verdicts["verdict"].eq("ANCHOR_SUFFICIENT").sum()),
-            "best_validation_ic_improvement": float(
-                verdicts["validation_ic_improvement"].max()
-            ),
+            "best_validation_ic_improvement": float(verdicts["validation_ic_improvement"].max()),
             "calibration_monotone_on_validation": calibration_monotone,
             "tree_models": "deferred - " + cfg.tree_models_deferred_reason,
         },

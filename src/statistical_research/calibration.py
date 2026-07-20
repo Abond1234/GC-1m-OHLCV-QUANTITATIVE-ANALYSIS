@@ -33,7 +33,9 @@ class IsotonicCalibration:
         )
 
 
-def _pool_adjacent_violators(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
+def _pool_adjacent_violators(
+    values: np.ndarray, weights: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Weighted isotonic regression producing a non-decreasing sequence."""
 
     means = values.astype(np.float64).copy()

@@ -22,7 +22,6 @@ from src.statistical_research.feature_evaluation import (
 )
 from src.statistical_research.labels import FORWARD_HORIZONS_MINUTES
 
-
 FAST_CONFIG = Section7Config(
     bootstrap_replicates=100,
     min_development_trading_dates=50,
@@ -83,9 +82,13 @@ def _make_evaluation_frame(
                     outcome = base_outcome + rng.normal(0.0, 0.1, n)
                     expansion = np.abs(outcome) + rng.normal(0.0, 0.1, n)
                     record[OUTCOME_FAMILY_ATR_TEMPLATES["direction"].format(h=horizon)] = outcome
-                    record[OUTCOME_FAMILY_TICK_TEMPLATES["direction"].format(h=horizon)] = outcome * tick_scale
+                    record[OUTCOME_FAMILY_TICK_TEMPLATES["direction"].format(h=horizon)] = (
+                        outcome * tick_scale
+                    )
                     record[OUTCOME_FAMILY_ATR_TEMPLATES["expansion"].format(h=horizon)] = expansion
-                    record[OUTCOME_FAMILY_TICK_TEMPLATES["expansion"].format(h=horizon)] = expansion * tick_scale
+                    record[OUTCOME_FAMILY_TICK_TEMPLATES["expansion"].format(h=horizon)] = (
+                        expansion * tick_scale
+                    )
                 rows.append(pd.DataFrame(record))
     return pd.concat(rows, ignore_index=True)
 
@@ -155,9 +158,9 @@ class EvaluationFrameTests(unittest.TestCase):
         )
         for horizon in FORWARD_HORIZONS_MINUTES:
             labels[f"label_available_{horizon}"] = True
-            for family, template in OUTCOME_FAMILY_ATR_TEMPLATES.items():
+            for _family, template in OUTCOME_FAMILY_ATR_TEMPLATES.items():
                 labels[template.format(h=horizon)] = 0.5
-            for family, template in OUTCOME_FAMILY_TICK_TEMPLATES.items():
+            for _family, template in OUTCOME_FAMILY_TICK_TEMPLATES.items():
                 labels[template.format(h=horizon)] = 12.0
         labels.loc[3, "label_available_60"] = False
         matrix = pd.DataFrame({"observation_id": ids, "alpha_feature": np.linspace(-1, 1, n)})
@@ -206,7 +209,9 @@ class UnivariateEvaluationTests(unittest.TestCase):
 
     def test_q_values_absent_outside_development(self) -> None:
         cells = self.result.cell_results
-        validation_q = cells.loc[cells["research_partition"].eq("Validation"), "development_q_value"]
+        validation_q = cells.loc[
+            cells["research_partition"].eq("Validation"), "development_q_value"
+        ]
         self.assertTrue(validation_q.isna().all())
 
     def test_monotonicity_detected_for_signal(self) -> None:

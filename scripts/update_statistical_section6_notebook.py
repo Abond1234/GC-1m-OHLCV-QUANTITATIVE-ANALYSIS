@@ -6,7 +6,6 @@ from pathlib import Path
 
 import nbformat
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_PATH = PROJECT_ROOT / "notebooks" / "exploration" / "statistical_feature_research.ipynb"
 
@@ -21,7 +20,11 @@ def code(source: str):
 
 notebook = nbformat.read(NOTEBOOK_PATH, as_version=4)
 section_6_start = next(
-    (i for i, cell in enumerate(notebook.cells) if cell.cell_type == "markdown" and cell.source.lstrip().startswith("# 6.0 ")),
+    (
+        i
+        for i, cell in enumerate(notebook.cells)
+        if cell.cell_type == "markdown" and cell.source.lstrip().startswith("# 6.0 ")
+    ),
     len(notebook.cells),
 )
 notebook.cells = notebook.cells[:section_6_start]
@@ -490,4 +493,6 @@ print("SECTION 6 STATUS: READY" if section_6_ready else "SECTION 6 STATUS: NOT R
 
 notebook.cells.extend(section_6_cells)
 nbformat.write(notebook, NOTEBOOK_PATH)
-print(f"Updated {NOTEBOOK_PATH} with {len(section_6_cells)} Section 6 cells; total={len(notebook.cells)}")
+print(
+    f"Updated {NOTEBOOK_PATH} with {len(section_6_cells)} Section 6 cells; total={len(notebook.cells)}"
+)

@@ -30,9 +30,7 @@ class IsotonicCalibrationTests(unittest.TestCase):
         overconfident = np.clip(true_probability * 1.6, 0, 1)
         calibration = fit_isotonic_calibration(overconfident, outcomes)
         recalibrated = calibration.apply(overconfident)
-        self.assertLess(
-            brier_score(recalibrated, outcomes), brier_score(overconfident, outcomes)
-        )
+        self.assertLess(brier_score(recalibrated, outcomes), brier_score(overconfident, outcomes))
 
     def test_development_only_fit_is_frozen_for_new_data(self) -> None:
         rng = np.random.default_rng(11)

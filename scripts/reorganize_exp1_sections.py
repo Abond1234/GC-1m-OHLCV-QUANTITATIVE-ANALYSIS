@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import hashlib
 import json
-from pathlib import Path
 import shutil
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import nbformat
-
 
 SECTION6_START_ID = "9a1e32cb"
 LEGACY_SECTION7_START_ID = "7e076934"
@@ -191,7 +190,9 @@ def reorganize_notebook(
     )
     section7_baseline_heading.id = "7main002"
     _clean_reader_facing_labels(refined7_findings)
-    refined7_findings.source = "## 7.3 Current Findings and Limitations\n\n" + refined7_findings.source
+    refined7_findings.source = (
+        "## 7.3 Current Findings and Limitations\n\n" + refined7_findings.source
+    )
     section7_roadmap = nbformat.v4.new_markdown_cell(
         "## 7.4 Feature-Engineering and Conditional-Signal Roadmap\n\n"
         "The next research pass will evaluate these feature groups without changing the frozen "
@@ -290,7 +291,9 @@ def reorganize_notebook(
         "cell_count_delta": len(written.cells) - original_cell_count,
         "original_code_cell_count": len(original_code),
         "final_code_cell_count": len(final_code),
-        "missing_original_cell_ids": sorted(set(original_ids) - {cell.id for cell in written.cells}),
+        "missing_original_cell_ids": sorted(
+            set(original_ids) - {cell.id for cell in written.cells}
+        ),
         "duplicate_final_cell_ids": sorted(
             cell_id
             for cell_id in {cell.id for cell in written.cells}

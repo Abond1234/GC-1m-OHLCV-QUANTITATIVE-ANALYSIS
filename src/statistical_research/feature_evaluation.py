@@ -33,7 +33,6 @@ from scipy import stats as scipy_stats
 
 from .labels import FORWARD_HORIZONS_MINUTES
 
-
 SECTION7_RANDOM_SEED = 20260720
 SECTION7_BOOTSTRAP_REPLICATES = 2_000
 SECTION7_BOOTSTRAP_CONFIDENCE = 0.95
@@ -110,7 +109,10 @@ def _label_columns_for_evaluation() -> list[str]:
     ]
     for horizon in FORWARD_HORIZONS_MINUTES:
         columns.append(f"label_available_{horizon}")
-        for template in (*OUTCOME_FAMILY_ATR_TEMPLATES.values(), *OUTCOME_FAMILY_TICK_TEMPLATES.values()):
+        for template in (
+            *OUTCOME_FAMILY_ATR_TEMPLATES.values(),
+            *OUTCOME_FAMILY_TICK_TEMPLATES.values(),
+        ):
             columns.append(template.format(h=horizon))
     return columns
 
@@ -170,7 +172,9 @@ def build_evaluation_frame(
     for horizon in FORWARD_HORIZONS_MINUTES:
         complete &= labels[f"label_available_{horizon}"].to_numpy(dtype=bool)
         for family in OUTCOME_FAMILY_ATR_TEMPLATES:
-            atr_values = labels[OUTCOME_FAMILY_ATR_TEMPLATES[family].format(h=horizon)].to_numpy(dtype=np.float64)
+            atr_values = labels[OUTCOME_FAMILY_ATR_TEMPLATES[family].format(h=horizon)].to_numpy(
+                dtype=np.float64
+            )
             complete &= np.isfinite(atr_values)
 
     keep = in_scope & complete
@@ -361,7 +365,9 @@ def build_univariate_evaluation(
     # ---- per (session, partition) daily-IC and bucket statistics ----------
     for session_index, session in enumerate(EVALUATION_SESSIONS):
         for partition_index, partition in enumerate(EVALUATION_PARTITIONS):
-            cell_mask = (session_values == session) & frame["research_partition"].eq(partition).to_numpy()
+            cell_mask = (session_values == session) & frame["research_partition"].eq(
+                partition
+            ).to_numpy()
             sub = frame.loc[cell_mask]
             if sub.empty:
                 continue
@@ -420,9 +426,9 @@ def build_univariate_evaluation(
                             "horizon_minutes": horizon,
                             "session": session,
                             "research_partition": partition,
-                            "observation_count": int(np.isfinite(
-                                sub[name].to_numpy(dtype=np.float64)
-                            ).sum()),
+                            "observation_count": int(
+                                np.isfinite(sub[name].to_numpy(dtype=np.float64)).sum()
+                            ),
                             "trading_date_count": int(ic_count[f_idx]),
                             "daily_ic_mean": float(ic_mean[f_idx]),
                             "daily_ic_std": float(ic_std[f_idx]),
@@ -497,7 +503,11 @@ def build_univariate_evaluation(
     development_rows = cell_results["research_partition"].eq("Development")
     for family in OUTCOME_FAMILY_ATR_TEMPLATES:
         for session in EVALUATION_SESSIONS:
-            screen = development_rows & cell_results["outcome_family"].eq(family) & cell_results["session"].eq(session)
+            screen = (
+                development_rows
+                & cell_results["outcome_family"].eq(family)
+                & cell_results["session"].eq(session)
+            )
             cell_results.loc[screen, "development_q_value"] = benjamini_hochberg_q_values(
                 cell_results.loc[screen, "daily_ic_p_value"].to_numpy()
             )
@@ -512,8 +522,15 @@ def build_univariate_evaluation(
         ordered = group.sort_values("bucket_index")
         record = dict(
             zip(
-                ["feature_name", "outcome_family", "horizon_minutes", "session", "research_partition"],
+                [
+                    "feature_name",
+                    "outcome_family",
+                    "horizon_minutes",
+                    "session",
+                    "research_partition",
+                ],
                 keys,
+                strict=False,
             )
         )
         record["bucket_count_observed"] = len(ordered)
@@ -526,8 +543,12 @@ def build_univariate_evaluation(
             record["bucket_monotonicity"] = np.nan
         top = ordered.iloc[-1]
         bottom = ordered.iloc[0]
-        record["top_bottom_spread_atr"] = float(top["mean_outcome_atr"] - bottom["mean_outcome_atr"])
-        record["top_bottom_spread_ticks"] = float(top["mean_outcome_ticks"] - bottom["mean_outcome_ticks"])
+        record["top_bottom_spread_atr"] = float(
+            top["mean_outcome_atr"] - bottom["mean_outcome_atr"]
+        )
+        record["top_bottom_spread_ticks"] = float(
+            top["mean_outcome_ticks"] - bottom["mean_outcome_ticks"]
+        )
         monotonicity_records.append(record)
     monotonicity = pd.DataFrame.from_records(monotonicity_records)
     cell_results = cell_results.merge(
@@ -539,8 +560,12 @@ def build_univariate_evaluation(
 
     # ---- development-versus-validation confirmation ------------------------
     key_columns = ["feature_name", "outcome_family", "horizon_minutes", "session"]
-    development = cell_results.loc[cell_results["research_partition"].eq("Development")].set_index(key_columns)
-    validation = cell_results.loc[cell_results["research_partition"].eq("Validation")].set_index(key_columns)
+    development = cell_results.loc[cell_results["research_partition"].eq("Development")].set_index(
+        key_columns
+    )
+    validation = cell_results.loc[cell_results["research_partition"].eq("Validation")].set_index(
+        key_columns
+    )
     joined = development.join(validation, lsuffix="_dev", rsuffix="_val", how="inner").reset_index()
 
     dev_ic = joined["daily_ic_mean_dev"].to_numpy()
@@ -561,9 +586,8 @@ def build_univariate_evaluation(
         & (joined["bucket_monotonicity_dev"].abs() >= cfg.min_development_bucket_monotonicity)
     )
     direction_rows = joined["outcome_family"].eq("direction")
-    economic = (
-        (joined["top_bottom_spread_ticks_dev"].abs() >= cfg.min_direction_spread_ticks)
-        & (joined["top_bottom_spread_ticks_val"].abs() >= cfg.min_direction_spread_ticks)
+    economic = (joined["top_bottom_spread_ticks_dev"].abs() >= cfg.min_direction_spread_ticks) & (
+        joined["top_bottom_spread_ticks_val"].abs() >= cfg.min_direction_spread_ticks
     )
     joined["passes_all_criteria"] = passes & (~direction_rows | economic)
     joined["is_experimental"] = joined["feature_name"].isin(experimental)
@@ -592,7 +616,8 @@ def build_univariate_evaluation(
     confirmation = joined[shortlist_columns].copy()
     shortlist = confirmation.loc[confirmation["passes_all_criteria"]].reset_index(drop=True)
     shortlist = shortlist.sort_values(
-        ["outcome_family", "daily_ic_mean_val"], key=lambda s: s.abs() if s.dtype.kind == "f" else s,
+        ["outcome_family", "daily_ic_mean_val"],
+        key=lambda s: s.abs() if s.dtype.kind == "f" else s,
         ascending=[True, False],
     ).reset_index(drop=True)
 
@@ -600,11 +625,13 @@ def build_univariate_evaluation(
     verdict_records = []
     for name in features:
         rows = confirmation.loc[confirmation["feature_name"].eq(name)]
-        direction_pass = rows.loc[rows["outcome_family"].eq("direction"), "passes_all_criteria"].any()
-        expansion_pass = rows.loc[rows["outcome_family"].eq("expansion"), "passes_all_criteria"].any()
-        dev_screen_pass = (
-            rows["development_q_value_dev"].le(cfg.max_development_q_value).any()
-        )
+        direction_pass = rows.loc[
+            rows["outcome_family"].eq("direction"), "passes_all_criteria"
+        ].any()
+        expansion_pass = rows.loc[
+            rows["outcome_family"].eq("expansion"), "passes_all_criteria"
+        ].any()
+        dev_screen_pass = rows["development_q_value_dev"].le(cfg.max_development_q_value).any()
         if direction_pass:
             verdict = "ADVANCE_DIRECTIONAL"
         elif expansion_pass:
@@ -626,20 +653,29 @@ def build_univariate_evaluation(
                 "expansion_cells_passing": int(
                     rows.loc[rows["outcome_family"].eq("expansion"), "passes_all_criteria"].sum()
                 ),
-                "best_direction_val_ic": float(
-                    best_direction["daily_ic_mean_val"].abs().max()
-                ) if len(best_direction) else np.nan,
-                "best_expansion_val_ic": float(
-                    best_expansion["daily_ic_mean_val"].abs().max()
-                ) if len(best_expansion) else np.nan,
+                "best_direction_val_ic": float(best_direction["daily_ic_mean_val"].abs().max())
+                if len(best_direction)
+                else np.nan,
+                "best_expansion_val_ic": float(best_expansion["daily_ic_mean_val"].abs().max())
+                if len(best_expansion)
+                else np.nan,
             }
         )
-    feature_verdicts = pd.DataFrame.from_records(verdict_records).sort_values(
-        ["verdict", "best_expansion_val_ic"], ascending=[True, False]
-    ).reset_index(drop=True)
+    feature_verdicts = (
+        pd.DataFrame.from_records(verdict_records)
+        .sort_values(["verdict", "best_expansion_val_ic"], ascending=[True, False])
+        .reset_index(drop=True)
+    )
 
     validation_checks = _build_validation_checks(
-        frame, cell_results, bucket_results, shortlist, confirmation, feature_verdicts, features, cfg
+        frame,
+        cell_results,
+        bucket_results,
+        shortlist,
+        confirmation,
+        feature_verdicts,
+        features,
+        cfg,
     )
 
     frame_summary = pd.Series(
@@ -649,8 +685,12 @@ def build_univariate_evaluation(
             "screen_cells": len(cell_results),
             "confirmation_cells": len(confirmation),
             "shortlist_cells": len(shortlist),
-            "advance_directional_features": int(feature_verdicts["verdict"].eq("ADVANCE_DIRECTIONAL").sum()),
-            "advance_expansion_features": int(feature_verdicts["verdict"].eq("ADVANCE_EXPANSION").sum()),
+            "advance_directional_features": int(
+                feature_verdicts["verdict"].eq("ADVANCE_DIRECTIONAL").sum()
+            ),
+            "advance_expansion_features": int(
+                feature_verdicts["verdict"].eq("ADVANCE_EXPANSION").sum()
+            ),
             "weak_unstable_features": int(feature_verdicts["verdict"].eq("WEAK_UNSTABLE").sum()),
             "no_evidence_features": int(feature_verdicts["verdict"].eq("NO_EVIDENCE").sum()),
         },
@@ -680,23 +720,29 @@ def _build_validation_checks(
     cfg: Section7Config,
 ) -> pd.DataFrame:
     horizons = tuple(FORWARD_HORIZONS_MINUTES)
-    expected_cells = len(features) * len(horizons) * len(OUTCOME_FAMILY_ATR_TEMPLATES) * len(
-        EVALUATION_SESSIONS
-    ) * len(EVALUATION_PARTITIONS)
+    expected_cells = (
+        len(features)
+        * len(horizons)
+        * len(OUTCOME_FAMILY_ATR_TEMPLATES)
+        * len(EVALUATION_SESSIONS)
+        * len(EVALUATION_PARTITIONS)
+    )
     q = cell_results["development_q_value"]
     development_rows = cell_results["research_partition"].eq("Development")
     checks = {
         "partitions_limited_to_development_validation": set(
             frame["research_partition"].astype(str).unique()
-        ) <= set(EVALUATION_PARTITIONS),
+        )
+        <= set(EVALUATION_PARTITIONS),
         "no_final_test_rows": not frame["research_partition"].astype(str).eq("Final test").any(),
-        "sessions_expected": set(frame["entry_session"].astype(str).unique()) <= set(EVALUATION_SESSIONS),
+        "sessions_expected": set(frame["entry_session"].astype(str).unique())
+        <= set(EVALUATION_SESSIONS),
         "expected_cell_count": len(cell_results) == expected_cells,
         "q_values_only_on_development": q[~development_rows].isna().all(),
         "q_values_in_unit_interval": q[development_rows].dropna().between(0.0, 1.0).all(),
-        "shortlist_is_subset_of_passing_cells": bool(
-            shortlist["passes_all_criteria"].all()
-        ) if len(shortlist) else True,
+        "shortlist_is_subset_of_passing_cells": bool(shortlist["passes_all_criteria"].all())
+        if len(shortlist)
+        else True,
         "shortlist_matches_confirmation_pass_count": len(shortlist)
         == int(confirmation["passes_all_criteria"].sum()),
         "verdict_count_matches_features": len(feature_verdicts) == len(features),

@@ -16,8 +16,9 @@ from src.statistical_research.baselines import (
 
 def _frame() -> pd.DataFrame:
     dates = pd.to_datetime(["2024-01-02", "2024-01-02", "2024-01-03", "2024-01-03"])
-    sessions = pd.Categorical(["London", "New York", "London", "New York"], categories=["London", "New York"])
-    returns = np.array([1.0, -1.0, 0.0, 3.0])
+    sessions = pd.Categorical(
+        ["London", "New York", "London", "New York"], categories=["London", "New York"]
+    )
     frame = pd.DataFrame(
         {
             "trade_date_ny": dates,
@@ -38,7 +39,9 @@ class BaselineAggregationTests(unittest.TestCase):
     def test_unconditional_metrics_respect_availability(self):
         result = summarize_outcomes(
             _frame(),
-            specs=(OutcomeSpec("forward_return_{h}_ticks", "forward_return", "forward_return_ticks"),),
+            specs=(
+                OutcomeSpec("forward_return_{h}_ticks", "forward_return", "forward_return_ticks"),
+            ),
             analysis_type="test",
             horizons=(5,),
         ).iloc[0]
@@ -53,7 +56,9 @@ class BaselineAggregationTests(unittest.TestCase):
     def test_group_counts_and_date_counts_are_explicit(self):
         result = summarize_outcomes(
             _frame(),
-            specs=(OutcomeSpec("forward_return_{h}_ticks", "forward_return", "forward_return_ticks"),),
+            specs=(
+                OutcomeSpec("forward_return_{h}_ticks", "forward_return", "forward_return_ticks"),
+            ),
             group_columns=("entry_session",),
             analysis_type="test",
             horizons=(5,),
@@ -72,7 +77,9 @@ class BaselineAggregationTests(unittest.TestCase):
         self.assertAlmostEqual(five["probability_return_above_positive_threshold"], 1 / 3)
         self.assertAlmostEqual(five["probability_return_below_negative_threshold"], 0.0)
         self.assertAlmostEqual(five["future_range_exceedance_rate"], 1.0)
-        self.assertEqual(tuple(sorted(result["cost_threshold_ticks"].unique())), COST_THRESHOLDS_TICKS)
+        self.assertEqual(
+            tuple(sorted(result["cost_threshold_ticks"].unique())), COST_THRESHOLDS_TICKS
+        )
 
     def test_date_bootstrap_is_reproducible(self):
         values = np.array([1.0, 2.0, 4.0, 8.0])

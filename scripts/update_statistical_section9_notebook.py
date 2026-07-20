@@ -6,7 +6,6 @@ from pathlib import Path
 
 import nbformat
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_PATH = PROJECT_ROOT / "notebooks" / "exploration" / "statistical_feature_research.ipynb"
 
@@ -21,7 +20,11 @@ def code(source: str):
 
 notebook = nbformat.read(NOTEBOOK_PATH, as_version=4)
 section_start = next(
-    (i for i, cell in enumerate(notebook.cells) if cell.cell_type == "markdown" and cell.source.lstrip().startswith("# 9.0 ")),
+    (
+        i
+        for i, cell in enumerate(notebook.cells)
+        if cell.cell_type == "markdown" and cell.source.lstrip().startswith("# 9.0 ")
+    ),
     len(notebook.cells),
 )
 notebook.cells = notebook.cells[:section_start]

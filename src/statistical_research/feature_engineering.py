@@ -18,11 +18,9 @@ import pandas as pd
 from .feature_registry import (
     EXPERIMENTAL_FEATURE_NAMES,
     FEATURE_NAMES,
-    FEATURE_SPECS,
     feature_registry_frame,
     validate_registry,
 )
-
 
 GC_TICK_SIZE = 0.10
 EXPECTED_OBSERVATION_ROWS = 586_530
@@ -119,7 +117,9 @@ def _as_float(values: pd.Series | np.ndarray) -> np.ndarray:
 def _safe_divide(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
     numerator = np.asarray(numerator, dtype=np.float64)
     denominator = np.asarray(denominator, dtype=np.float64)
-    result = np.full(np.broadcast_shapes(numerator.shape, denominator.shape), np.nan, dtype=np.float64)
+    result = np.full(
+        np.broadcast_shapes(numerator.shape, denominator.shape), np.nan, dtype=np.float64
+    )
     valid = np.isfinite(numerator) & np.isfinite(denominator) & (denominator != 0.0)
     np.divide(numerator, denominator, out=result, where=valid)
     result[~np.isfinite(result)] = np.nan
@@ -137,7 +137,9 @@ def _lag(values: np.ndarray, periods: int, groups: np.ndarray) -> np.ndarray:
     return result
 
 
-def _window_mask(length: int, window: int, groups: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _window_mask(
+    length: int, window: int, groups: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ends = np.arange(window - 1, length, dtype=np.int64)
     starts = ends - window + 1
     valid_group = groups[ends] == groups[starts]
@@ -184,7 +186,9 @@ def _rolling_extreme(values: np.ndarray, window: int, groups: np.ndarray, kind: 
     return result
 
 
-def _rolling_correlation(x: np.ndarray, y: np.ndarray, window: int, groups: np.ndarray) -> np.ndarray:
+def _rolling_correlation(
+    x: np.ndarray, y: np.ndarray, window: int, groups: np.ndarray
+) -> np.ndarray:
     sx = _rolling_sum(x, window, groups)
     sy = _rolling_sum(y, window, groups)
     sxx = _rolling_sum(np.asarray(x) ** 2, window, groups)
@@ -200,7 +204,9 @@ def _rolling_correlation(x: np.ndarray, y: np.ndarray, window: int, groups: np.n
     return result
 
 
-def _rolling_ols(values: np.ndarray, window: int, groups: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _rolling_ols(
+    values: np.ndarray, window: int, groups: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     values = np.asarray(values, dtype=np.float64)
     global_x = np.arange(len(values), dtype=np.float64)
     sum_y = _rolling_sum(values, window, groups)
@@ -243,7 +249,9 @@ def _signed_streak(price_change: np.ndarray, groups: np.ndarray, cap: int = 120)
     return result
 
 
-def _compression_age(condition: np.ndarray, valid: np.ndarray, groups: np.ndarray, cap: int = 60) -> np.ndarray:
+def _compression_age(
+    condition: np.ndarray, valid: np.ndarray, groups: np.ndarray, cap: int = 60
+) -> np.ndarray:
     result = np.full(len(condition), np.nan, dtype=np.float64)
     age = 0
     for i in range(len(condition)):
@@ -267,7 +275,11 @@ def _group_ids(run_id: np.ndarray, key: np.ndarray) -> np.ndarray:
 def build_continuity_run_id(bars: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Build the locked continuity run and deterministic first-boundary reason."""
 
-    timestamp_ns = pd.to_datetime(bars["ts_event_utc"], utc=True).to_numpy(dtype="datetime64[ns]").view(np.int64)
+    timestamp_ns = (
+        pd.to_datetime(bars["ts_event_utc"], utc=True)
+        .to_numpy(dtype="datetime64[ns]")
+        .view(np.int64)
+    )
     product = bars["product"].astype(str).to_numpy()
     symbol = bars["symbol"].astype(str).to_numpy()
     active_symbol = bars["active_symbol"].astype(str).to_numpy()
@@ -288,7 +300,14 @@ def build_continuity_run_id(bars: pd.DataFrame) -> tuple[np.ndarray, np.ndarray,
         same_instrument = instrument[1:] == instrument[:-1]
         same_segment = segment[1:] == segment[:-1]
         valid_boundary = valid_bar[1:] & valid_bar[:-1]
-        continuation = consecutive & same_product & same_contract & same_instrument & same_segment & valid_boundary
+        continuation = (
+            consecutive
+            & same_product
+            & same_contract
+            & same_instrument
+            & same_segment
+            & valid_boundary
+        )
         start[1:] = ~continuation
         reason[1:] = 0
         failures = (
@@ -297,7 +316,15 @@ def build_continuity_run_id(bars: pd.DataFrame) -> tuple[np.ndarray, np.ndarray,
             (consecutive & same_product & ~same_contract, 4),
             (consecutive & same_product & same_contract & ~same_instrument, 5),
             (consecutive & same_product & same_contract & same_instrument & ~same_segment, 6),
-            (consecutive & same_product & same_contract & same_instrument & same_segment & ~valid_boundary, 7),
+            (
+                consecutive
+                & same_product
+                & same_contract
+                & same_instrument
+                & same_segment
+                & ~valid_boundary,
+                7,
+            ),
         )
         for mask, code in failures:
             target = np.flatnonzero(mask & start[1:]) + 1
@@ -360,7 +387,7 @@ def _fit_time_of_day_reference(
     row_group_index = pd.MultiIndex.from_arrays([session, bin_start])
     positions = group_index.get_indexer(row_group_index)
     if (positions < 0).any():
-        missing = sorted(set(zip(session[positions < 0], bin_start[positions < 0])))
+        missing = sorted(set(zip(session[positions < 0], bin_start[positions < 0], strict=False)))
         raise ValueError(f"Eligible time-of-day groups lack Development support: {missing}")
 
     row_n = n[positions]
@@ -369,12 +396,22 @@ def _fit_time_of_day_reference(
     row_sumsq = sumsqs[positions]
 
     date_totals = (
-        dev.groupby(["entry_session", "entry_15m_bin_start_ny", "trade_date_ny"], observed=True, sort=True)
-        .agg(date_count=("log_volume", "count"), date_sum=("log_volume", "sum"), date_sumsq=("log_volume_squared", "sum"))
+        dev.groupby(
+            ["entry_session", "entry_15m_bin_start_ny", "trade_date_ny"], observed=True, sort=True
+        )
+        .agg(
+            date_count=("log_volume", "count"),
+            date_sum=("log_volume", "sum"),
+            date_sumsq=("log_volume_squared", "sum"),
+        )
         .reset_index()
     )
-    dev_row_index = pd.MultiIndex.from_arrays([session[development], bin_start[development], dates[development]])
-    date_index = pd.MultiIndex.from_frame(date_totals[["entry_session", "entry_15m_bin_start_ny", "trade_date_ny"]])
+    dev_row_index = pd.MultiIndex.from_arrays(
+        [session[development], bin_start[development], dates[development]]
+    )
+    date_index = pd.MultiIndex.from_frame(
+        date_totals[["entry_session", "entry_15m_bin_start_ny", "trade_date_ny"]]
+    )
     date_positions = date_index.get_indexer(dev_row_index)
     if (date_positions < 0).any():
         raise RuntimeError("Development leave-one-date-out aggregates failed to map.")
@@ -385,7 +422,9 @@ def _fit_time_of_day_reference(
     effective_dates = row_dates.copy()
     effective_n[development] -= date_totals["date_count"].to_numpy(dtype=np.float64)[date_positions]
     effective_sum[development] -= date_totals["date_sum"].to_numpy(dtype=np.float64)[date_positions]
-    effective_sumsq[development] -= date_totals["date_sumsq"].to_numpy(dtype=np.float64)[date_positions]
+    effective_sumsq[development] -= date_totals["date_sumsq"].to_numpy(dtype=np.float64)[
+        date_positions
+    ]
     effective_dates[development] -= 1
 
     effective_mean = _safe_divide(effective_sum, effective_n)
@@ -429,15 +468,27 @@ def build_feature_matrix(
     registry = feature_registry_frame()
     validate_registry(registry)
     missing_source = sorted(set(FEATURE_SOURCE_COLUMNS).difference(full_gc_bars.columns))
-    missing_observation = sorted(set(OBSERVATION_REQUIRED_COLUMNS).difference(eligible_observations.columns))
+    missing_observation = sorted(
+        set(OBSERVATION_REQUIRED_COLUMNS).difference(eligible_observations.columns)
+    )
     if missing_source or missing_observation:
-        raise ValueError(f"Missing feature inputs: source={missing_source}, observations={missing_observation}")
+        raise ValueError(
+            f"Missing feature inputs: source={missing_source}, observations={missing_observation}"
+        )
     supplied_source_columns = tuple(full_gc_bars.columns)
-    forbidden_supplied = [name for name in supplied_source_columns if any(token in name.lower() for token in FORBIDDEN_SOURCE_TOKENS)]
+    forbidden_supplied = [
+        name
+        for name in supplied_source_columns
+        if any(token in name.lower() for token in FORBIDDEN_SOURCE_TOKENS)
+    ]
     if forbidden_supplied:
-        raise ValueError(f"Forward/outcome/POI columns entered the feature source namespace: {forbidden_supplied}")
+        raise ValueError(
+            f"Forward/outcome/POI columns entered the feature source namespace: {forbidden_supplied}"
+        )
     if expected_rows is not None and len(eligible_observations) != expected_rows:
-        raise ValueError(f"Expected {expected_rows:,} eligible observations; received {len(eligible_observations):,}.")
+        raise ValueError(
+            f"Expected {expected_rows:,} eligible observations; received {len(eligible_observations):,}."
+        )
     if set(full_gc_bars["product"].astype(str).unique()) != {"GC"}:
         raise ValueError("Section 6 feature construction is GC-only.")
     if not eligible_observations["observation_id"].is_unique:
@@ -445,8 +496,13 @@ def build_feature_matrix(
 
     stage = perf_counter()
     bars = full_gc_bars.loc[:, FEATURE_SOURCE_COLUMNS]
-    if not bars["source_row_id"].is_monotonic_increasing or not pd.to_datetime(bars["ts_event_utc"], utc=True).is_monotonic_increasing:
-        bars = bars.sort_values(["ts_event_utc", "source_row_id"], kind="mergesort").reset_index(drop=True)
+    if (
+        not bars["source_row_id"].is_monotonic_increasing
+        or not pd.to_datetime(bars["ts_event_utc"], utc=True).is_monotonic_increasing
+    ):
+        bars = bars.sort_values(["ts_event_utc", "source_row_id"], kind="mergesort").reset_index(
+            drop=True
+        )
         sorted_input = True
     else:
         bars = bars.reset_index(drop=True)
@@ -456,13 +512,27 @@ def build_feature_matrix(
         raise ValueError("GC source_row_id must be unique.")
     requested_ids = pd.to_numeric(eligible_observations["decision_bar_id"]).to_numpy(dtype=np.int64)
     positions = np.searchsorted(source_ids, requested_ids)
-    exact = (positions < len(source_ids)) & (source_ids[np.minimum(positions, len(source_ids) - 1)] == requested_ids)
+    exact = (positions < len(source_ids)) & (
+        source_ids[np.minimum(positions, len(source_ids) - 1)] == requested_ids
+    )
     if not exact.all():
-        raise ValueError(f"Decision bars are absent from full GC history: {requested_ids[~exact][:10].tolist()}")
-    decision_timestamp_ns = pd.to_datetime(eligible_observations["decision_timestamp_utc"], utc=True).to_numpy(dtype="datetime64[ns]").view(np.int64)
-    source_timestamp_ns = pd.to_datetime(bars["ts_event_utc"], utc=True).to_numpy(dtype="datetime64[ns]").view(np.int64)
+        raise ValueError(
+            f"Decision bars are absent from full GC history: {requested_ids[~exact][:10].tolist()}"
+        )
+    decision_timestamp_ns = (
+        pd.to_datetime(eligible_observations["decision_timestamp_utc"], utc=True)
+        .to_numpy(dtype="datetime64[ns]")
+        .view(np.int64)
+    )
+    source_timestamp_ns = (
+        pd.to_datetime(bars["ts_event_utc"], utc=True)
+        .to_numpy(dtype="datetime64[ns]")
+        .view(np.int64)
+    )
     if not np.array_equal(source_timestamp_ns[positions], decision_timestamp_ns):
-        raise ValueError("Decision identifiers and decision timestamps do not map to the same trusted source bars.")
+        raise ValueError(
+            "Decision identifiers and decision timestamps do not map to the same trusted source bars."
+        )
     stage = mark("input_validation_and_mapping", stage)
 
     open_ = _as_float(bars["open"])
@@ -470,7 +540,13 @@ def build_feature_matrix(
     low = _as_float(bars["low"])
     close = _as_float(bars["close"])
     volume = _as_float(bars["volume"])
-    if not (np.isfinite(open_).all() and np.isfinite(high).all() and np.isfinite(low).all() and np.isfinite(close).all() and np.isfinite(volume).all()):
+    if not (
+        np.isfinite(open_).all()
+        and np.isfinite(high).all()
+        and np.isfinite(low).all()
+        and np.isfinite(close).all()
+        and np.isfinite(volume).all()
+    ):
         raise ValueError("Approved OHLCV inputs must be finite.")
 
     run_id, run_position, boundary_reason_code = build_continuity_run_id(bars)
@@ -484,7 +560,9 @@ def build_feature_matrix(
     body = close - open_
     upper_wick = high - np.maximum(open_, close)
     lower_wick = np.minimum(open_, close) - low
-    true_range = np.maximum.reduce([bar_range, np.abs(high - previous_close), np.abs(low - previous_close)])
+    true_range = np.maximum.reduce(
+        [bar_range, np.abs(high - previous_close), np.abs(low - previous_close)]
+    )
     first_in_run = run_position == 0
     true_range[first_in_run] = bar_range[first_in_run]
     log_volume = np.log1p(volume)
@@ -495,21 +573,29 @@ def build_feature_matrix(
     feature_arrays: dict[str, pd.Series | pd.Array | pd.Categorical | np.ndarray] = {}
 
     def put_float(name: str, full_values: np.ndarray) -> None:
-        feature_arrays[name] = np.asarray(full_values, dtype=np.float64)[positions].astype(np.float32)
+        feature_arrays[name] = np.asarray(full_values, dtype=np.float64)[positions].astype(
+            np.float32
+        )
 
     def put_bool(name: str, full_values: np.ndarray, valid: np.ndarray) -> None:
         feature_arrays[name] = pd.arrays.BooleanArray(
-            np.asarray(full_values, dtype=bool)[positions], ~np.asarray(valid, dtype=bool)[positions]
+            np.asarray(full_values, dtype=bool)[positions],
+            ~np.asarray(valid, dtype=bool)[positions],
         )
 
     def put_int(name: str, full_values: np.ndarray, dtype: str) -> None:
-        feature_arrays[name] = pd.array(np.asarray(full_values, dtype=np.float64)[positions], dtype=dtype)
+        feature_arrays[name] = pd.array(
+            np.asarray(full_values, dtype=np.float64)[positions], dtype=dtype
+        )
 
     # Shared causal rolling primitives.
     atr = {window: _rolling_mean(true_range, window, run_id) for window in (5, 20, 30, 60)}
-    realized_variance = {window: _rolling_sum(log_return**2, window, run_id) for window in (5, 15, 30, 60)}
+    realized_variance = {
+        window: _rolling_sum(log_return**2, window, run_id) for window in (5, 15, 30, 60)
+    }
     realized_volatility = {
-        window: 10_000.0 * np.sqrt(np.maximum(values, 0.0)) for window, values in realized_variance.items()
+        window: 10_000.0 * np.sqrt(np.maximum(values, 0.0))
+        for window, values in realized_variance.items()
     }
     volume_mean = {window: _rolling_mean(volume, window, run_id) for window in (5, 20, 60)}
     relative_volume_20 = _safe_divide(volume, volume_mean[20])
@@ -537,8 +623,13 @@ def build_feature_matrix(
             horizon_displacements_atr[horizon] = _safe_divide(close - lag_close, atr[20])
             put_float(f"return_{horizon}m_atr", horizon_displacements_atr[horizon])
     put_float("absolute_return_1m_atr", _safe_divide(absolute_change, atr[20]))
-    put_float("momentum_acceleration_5_15", horizon_log_returns[5] / 5.0 - horizon_log_returns[15] / 15.0)
-    put_float("momentum_acceleration_15_30", horizon_log_returns[15] / 15.0 - horizon_log_returns[30] / 30.0)
+    put_float(
+        "momentum_acceleration_5_15", horizon_log_returns[5] / 5.0 - horizon_log_returns[15] / 15.0
+    )
+    put_float(
+        "momentum_acceleration_15_30",
+        horizon_log_returns[15] / 15.0 - horizon_log_returns[30] / 30.0,
+    )
     put_int("directional_streak", _signed_streak(price_change, run_id), "Int16")
     put_float("rolling_range_position_15", _safe_divide(close - low_15, high_15 - low_15))
     put_float("rolling_range_position_60", _safe_divide(close - low_60, high_60 - low_60))
@@ -554,8 +645,14 @@ def build_feature_matrix(
     put_float("atr_ratio_20_60", _safe_divide(atr[20], atr[60]))
     for window in (5, 15, 30, 60):
         put_float(f"realized_volatility_{window}", realized_volatility[window])
-    put_float("realized_volatility_ratio_5_30", _safe_divide(realized_volatility[5], realized_volatility[30]))
-    put_float("realized_volatility_ratio_15_60", _safe_divide(realized_volatility[15], realized_volatility[60]))
+    put_float(
+        "realized_volatility_ratio_5_30",
+        _safe_divide(realized_volatility[5], realized_volatility[30]),
+    )
+    put_float(
+        "realized_volatility_ratio_15_60",
+        _safe_divide(realized_volatility[15], realized_volatility[60]),
+    )
     current_range_over_atr = _safe_divide(bar_range, atr[20])
     put_float("current_range_over_atr", current_range_over_atr)
     range_compression_5_30 = _safe_divide(atr[5], atr[30])
@@ -580,14 +677,23 @@ def build_feature_matrix(
     put_bool("outside_bar", (high >= previous_high) & (low <= previous_low), pattern_valid)
     put_float("range_relative_to_previous_bar", _safe_divide(bar_range, previous_range))
     for window, name in ((2, "two_bar_directional_balance"), (3, "three_bar_directional_balance")):
-        put_float(name, _safe_divide(_rolling_sum(price_change, window, run_id), _rolling_sum(absolute_change, window, run_id)))
+        put_float(
+            name,
+            _safe_divide(
+                _rolling_sum(price_change, window, run_id),
+                _rolling_sum(absolute_change, window, run_id),
+            ),
+        )
     stage = mark("candle_geometry", stage)
 
     # Volume and activity.  Time-of-day reference features are added after observation mapping.
     put_float("log_volume", log_volume)
     put_float("relative_volume_20", relative_volume_20)
     put_float("relative_volume_60", relative_volume_60)
-    put_float("volume_zscore_60", _safe_divide(log_volume - rolling_log_volume_mean_60, rolling_log_volume_std_60))
+    put_float(
+        "volume_zscore_60",
+        _safe_divide(log_volume - rolling_log_volume_mean_60, rolling_log_volume_std_60),
+    )
     put_float("volume_acceleration_5_20", _safe_divide(volume_mean[5], volume_mean[20]))
     put_float("volume_per_tick_range", _safe_divide(volume, bar_range / GC_TICK_SIZE))
     put_float("signed_volume_proxy", close_location_value * relative_volume_20)
@@ -598,8 +704,15 @@ def build_feature_matrix(
     timestamps_ny = pd.DatetimeIndex(pd.to_datetime(bars["ts_event_ny"]))
     research_day_key = (timestamps_ny - pd.Timedelta(hours=1)).normalize().asi8
     research_group = _group_ids(run_id, research_day_key)
-    cumulative_pv = pd.Series(price_volume).groupby(research_group, sort=False).cumsum().to_numpy(dtype=np.float64)
-    cumulative_volume = pd.Series(volume).groupby(research_group, sort=False).cumsum().to_numpy(dtype=np.float64)
+    cumulative_pv = (
+        pd.Series(price_volume)
+        .groupby(research_group, sort=False)
+        .cumsum()
+        .to_numpy(dtype=np.float64)
+    )
+    cumulative_volume = (
+        pd.Series(volume).groupby(research_group, sort=False).cumsum().to_numpy(dtype=np.float64)
+    )
     research_vwap = _safe_divide(cumulative_pv, cumulative_volume)
     research_distance_atr = _safe_divide(close - research_vwap, atr[20])
 
@@ -608,7 +721,10 @@ def build_feature_matrix(
         rolling_vwap[window] = _safe_divide(
             _rolling_sum(price_volume, window, run_id), _rolling_sum(volume, window, run_id)
         )
-        put_float(f"distance_from_rolling_vwap_{window}_atr", _safe_divide(close - rolling_vwap[window], atr[20]))
+        put_float(
+            f"distance_from_rolling_vwap_{window}_atr",
+            _safe_divide(close - rolling_vwap[window], atr[20]),
+        )
 
     put_float("distance_from_research_day_vwap_atr", research_distance_atr)
     for window in (5, 15):
@@ -624,17 +740,44 @@ def build_feature_matrix(
     execution_key = timestamps_ny.normalize().asi8 + execution_code.astype(np.int64)
     execution_group = _group_ids(run_id, execution_key)
     execution_valid = execution_code > 0
-    execution_cum_pv = pd.Series(price_volume).groupby(execution_group, sort=False).cumsum().to_numpy(dtype=np.float64)
-    execution_cum_volume = pd.Series(volume).groupby(execution_group, sort=False).cumsum().to_numpy(dtype=np.float64)
+    execution_cum_pv = (
+        pd.Series(price_volume)
+        .groupby(execution_group, sort=False)
+        .cumsum()
+        .to_numpy(dtype=np.float64)
+    )
+    execution_cum_volume = (
+        pd.Series(volume).groupby(execution_group, sort=False).cumsum().to_numpy(dtype=np.float64)
+    )
     execution_vwap = _safe_divide(execution_cum_pv, execution_cum_volume)
-    execution_open = pd.Series(open_).groupby(execution_group, sort=False).transform("first").to_numpy(dtype=np.float64, copy=True)
-    execution_high = pd.Series(high).groupby(execution_group, sort=False).cummax().to_numpy(dtype=np.float64, copy=True)
-    execution_low = pd.Series(low).groupby(execution_group, sort=False).cummin().to_numpy(dtype=np.float64, copy=True)
+    execution_open = (
+        pd.Series(open_)
+        .groupby(execution_group, sort=False)
+        .transform("first")
+        .to_numpy(dtype=np.float64, copy=True)
+    )
+    execution_high = (
+        pd.Series(high)
+        .groupby(execution_group, sort=False)
+        .cummax()
+        .to_numpy(dtype=np.float64, copy=True)
+    )
+    execution_low = (
+        pd.Series(low)
+        .groupby(execution_group, sort=False)
+        .cummin()
+        .to_numpy(dtype=np.float64, copy=True)
+    )
     for values in (execution_vwap, execution_open, execution_high, execution_low):
         values[~execution_valid] = np.nan
-    put_float("distance_from_execution_session_vwap_atr", _safe_divide(close - execution_vwap, atr[20]))
+    put_float(
+        "distance_from_execution_session_vwap_atr", _safe_divide(close - execution_vwap, atr[20])
+    )
     put_float("distance_from_session_open_atr", _safe_divide(close - execution_open, atr[20]))
-    put_float("session_range_position", _safe_divide(close - execution_low, execution_high - execution_low))
+    put_float(
+        "session_range_position",
+        _safe_divide(close - execution_low, execution_high - execution_low),
+    )
     put_float("session_range_over_atr", _safe_divide(execution_high - execution_low, atr[20]))
     stage = mark("vwap_session_state", stage)
 
@@ -653,7 +796,9 @@ def build_feature_matrix(
     direction_sign = np.sign(price_change)
     put_float("directional_persistence_15", np.abs(_rolling_sum(direction_sign, 15, run_id)) / 15.0)
     lagged_return = _lag(log_return, 1, run_id)
-    put_float("return_autocorrelation_15", _rolling_correlation(log_return, lagged_return, 14, run_id))
+    put_float(
+        "return_autocorrelation_15", _rolling_correlation(log_return, lagged_return, 14, run_id)
+    )
     sign_change = np.where(
         np.isfinite(direction_sign) & np.isfinite(_lag(direction_sign, 1, run_id)),
         (direction_sign != _lag(direction_sign, 1, run_id)).astype(float),
@@ -675,28 +820,42 @@ def build_feature_matrix(
     directional_energy = np.sign(log_return) * return_energy
     put_float(
         "directional_energy_balance_15_exp",
-        _safe_divide(_rolling_sum(directional_energy, 15, run_id), _rolling_sum(return_energy, 15, run_id)),
+        _safe_divide(
+            _rolling_sum(directional_energy, 15, run_id), _rolling_sum(return_energy, 15, run_id)
+        ),
     )
     wick_balance = np.zeros(len(bars), dtype=np.float64)
     positive_range = bar_range > 0
-    wick_balance[positive_range] = (lower_wick[positive_range] - upper_wick[positive_range]) / bar_range[positive_range]
+    wick_balance[positive_range] = (
+        lower_wick[positive_range] - upper_wick[positive_range]
+    ) / bar_range[positive_range]
     weighted_wick = wick_balance * activity_weight
     put_float(
         "wick_pressure_balance_10_exp",
-        _safe_divide(_rolling_sum(weighted_wick, 10, run_id), _rolling_sum(activity_weight, 10, run_id)),
+        _safe_divide(
+            _rolling_sum(weighted_wick, 10, run_id), _rolling_sum(activity_weight, 10, run_id)
+        ),
     )
     rv_compression = _safe_divide(realized_volatility[5], realized_volatility[30])
     atr_compression = _safe_divide(atr[5], atr[30])
     compression_valid = np.isfinite(rv_compression) & np.isfinite(atr_compression)
     compression_condition = (rv_compression < 0.70) & (atr_compression < 0.75)
-    put_int("compression_age_exp", _compression_age(compression_condition, compression_valid, run_id), "Int8")
+    put_int(
+        "compression_age_exp",
+        _compression_age(compression_condition, compression_valid, run_id),
+        "Int8",
+    )
 
     lagged_research_distance = _lag(research_distance_atr, 1, research_group)
-    elasticity = _rolling_regression_slope(lagged_research_distance, log_return * 10_000.0, 30, research_group)
+    elasticity = _rolling_regression_slope(
+        lagged_research_distance, log_return * 10_000.0, 30, research_group
+    )
     put_float("vwap_elasticity_30_exp", elasticity)
     put_float(
         "liquidity_vacuum_score_exp",
-        current_range_over_atr * np.abs(close_location_value) / np.sqrt(np.maximum(relative_volume_20, 0.25)),
+        current_range_over_atr
+        * np.abs(close_location_value)
+        / np.sqrt(np.maximum(relative_volume_20, 0.25)),
     )
     short_return = horizon_displacements_atr[5]
     broad_return = horizon_displacements_atr[30]
@@ -711,17 +870,26 @@ def build_feature_matrix(
     stage = mark("experimental_hypotheses", stage)
 
     # Known entry schedule and categorical context use t+1 only because the scheduled next minute is known at t.
-    entry_timestamp_ny = pd.DatetimeIndex(pd.to_datetime(eligible_observations["entry_timestamp_ny"]))
+    entry_timestamp_ny = pd.DatetimeIndex(
+        pd.to_datetime(eligible_observations["entry_timestamp_ny"])
+    )
     entry_minute = (entry_timestamp_ny.hour * 60 + entry_timestamp_ny.minute).astype(np.int16)
     sessions = eligible_observations["entry_session"].astype(str).to_numpy()
-    minute_from_open = np.where(sessions == "London", entry_minute - 180, entry_minute - 420).astype(np.int16)
+    minute_from_open = np.where(
+        sessions == "London", entry_minute - 180, entry_minute - 420
+    ).astype(np.int16)
     session_duration_minus_one = np.where(sessions == "London", 179.0, 299.0)
-    feature_arrays["entry_session"] = pd.Categorical(sessions, categories=list(SESSION_ORDER), ordered=True)
+    feature_arrays["entry_session"] = pd.Categorical(
+        sessions, categories=list(SESSION_ORDER), ordered=True
+    )
     feature_arrays["minute_from_execution_window_open"] = pd.array(minute_from_open, dtype="Int16")
-    feature_arrays["session_progress_fraction"] = (minute_from_open / session_duration_minus_one).astype(np.float32)
+    feature_arrays["session_progress_fraction"] = (
+        minute_from_open / session_duration_minus_one
+    ).astype(np.float32)
     feature_arrays["minutes_to_noon_entry_cutoff"] = pd.array(720 - entry_minute, dtype="Int16")
     feature_arrays["minutes_to_1530_forced_exit"] = pd.array(
-        pd.to_numeric(eligible_observations["minutes_to_forced_exit"]).to_numpy(dtype=np.int16), dtype="Int16"
+        pd.to_numeric(eligible_observations["minutes_to_forced_exit"]).to_numpy(dtype=np.int16),
+        dtype="Int16",
     )
     feature_arrays["new_york_minute_of_day"] = pd.array(entry_minute, dtype="Int16")
     angle = 2.0 * np.pi * entry_minute.astype(np.float64) / 1440.0
@@ -741,7 +909,9 @@ def build_feature_matrix(
     missing_calculated = sorted(set(FEATURE_NAMES).difference(feature_arrays))
     unexpected_calculated = sorted(set(feature_arrays).difference(FEATURE_NAMES))
     if missing_calculated or unexpected_calculated:
-        raise RuntimeError(f"Registry/build mismatch: missing={missing_calculated}, unexpected={unexpected_calculated}")
+        raise RuntimeError(
+            f"Registry/build mismatch: missing={missing_calculated}, unexpected={unexpected_calculated}"
+        )
     features = pd.DataFrame({name: feature_arrays[name] for name in FEATURE_NAMES})
 
     metadata = eligible_observations.loc[:, METADATA_COLUMNS].copy()
@@ -755,7 +925,9 @@ def build_feature_matrix(
     for column in ("product", "symbol", "active_symbol"):
         metadata[column] = metadata[column].astype(str).astype("category")
     metadata["instrument_id"] = pd.to_numeric(metadata["instrument_id"]).astype("uint32")
-    metadata["continuous_segment_id"] = pd.to_numeric(metadata["continuous_segment_id"]).astype("int32")
+    metadata["continuous_segment_id"] = pd.to_numeric(metadata["continuous_segment_id"]).astype(
+        "int32"
+    )
     matrix = pd.concat([metadata.reset_index(drop=True), features.reset_index(drop=True)], axis=1)
 
     spec_dtypes = registry.set_index("feature_name")["output_dtype"].astype(str).to_dict()
@@ -783,7 +955,10 @@ def build_feature_matrix(
             "continuity_run_id": run_id[positions],
             "bars_since_continuity_start": run_position[positions],
             "continuity_boundary_reason": pd.Categorical(
-                [BOUNDARY_REASON_LABELS[int(code)] for code in run_boundary_reason[run_id[positions]]],
+                [
+                    BOUNDARY_REASON_LABELS[int(code)]
+                    for code in run_boundary_reason[run_id[positions]]
+                ],
                 categories=list(BOUNDARY_REASON_LABELS.values()),
             ),
         }
@@ -801,9 +976,26 @@ def build_feature_matrix(
     primitive_bytes = sum(
         array.nbytes
         for array in (
-            open_, high, low, close, volume, previous_close, price_change, log_return, absolute_change,
-            bar_range, body, upper_wick, lower_wick, true_range, log_volume, typical_price, price_volume,
-            run_id, run_position, positions,
+            open_,
+            high,
+            low,
+            close,
+            volume,
+            previous_close,
+            price_change,
+            log_return,
+            absolute_change,
+            bar_range,
+            body,
+            upper_wick,
+            lower_wick,
+            true_range,
+            log_volume,
+            typical_price,
+            price_volume,
+            run_id,
+            run_position,
+            positions,
         )
     )
     estimated_peak = int(optimized_memory + primitive_bytes + 12 * len(bars) * 8)
@@ -820,11 +1012,17 @@ def build_feature_matrix(
             {"item": "decision_timestamps_exact", "value": "True"},
             {"item": "continuity_run_count", "value": str(int(run_id[-1] + 1))},
             {"item": "time_of_day_fit_scope", "value": "Development only"},
-            {"item": "development_reference_application", "value": "leave-one-New-York-trading-date-out"},
+            {
+                "item": "development_reference_application",
+                "value": "leave-one-New-York-trading-date-out",
+            },
             {"item": "validation_final_reference_application", "value": "frozen full-Development"},
             {"item": "feature_definition_version", "value": "1.0.0"},
             {"item": "numeric_feature_count", "value": str(numeric_count)},
-            {"item": "core_feature_count", "value": str(len(FEATURE_NAMES) - len(EXPERIMENTAL_FEATURE_NAMES))},
+            {
+                "item": "core_feature_count",
+                "value": str(len(FEATURE_NAMES) - len(EXPERIMENTAL_FEATURE_NAMES)),
+            },
             {"item": "experimental_feature_count", "value": str(len(EXPERIMENTAL_FEATURE_NAMES))},
         ]
     )
