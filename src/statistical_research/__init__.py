@@ -64,6 +64,14 @@ from .feature_redundancy import (
     build_redundancy_analysis,
     save_redundancy_outputs,
 )
+from .multivariate import (
+    SECTION9_RANDOM_SEED,
+    MultivariateBuildResult,
+    Section9Config,
+    build_multivariate_benchmarks,
+    load_expansion_labels,
+    save_multivariate_outputs,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -116,4 +124,10 @@ __all__ = [
     "Section8Config",
     "build_redundancy_analysis",
     "save_redundancy_outputs",
+    "SECTION9_RANDOM_SEED",
+    "MultivariateBuildResult",
+    "Section9Config",
+    "build_multivariate_benchmarks",
+    "load_expansion_labels",
+    "save_multivariate_outputs",
 ]
