@@ -4701,3 +4701,16 @@ Branch A status unchanged: no Section 8 POI backtest candidate approved.
 ```
 
 Full details, criteria, caveats, and artifact paths: `project_docs/statistical_feature_research_context_report.md` (Section 7 completion entry) and `reports/statistical_research/summaries/section7_univariate_evaluation_summary.md`.
+
+# Authoritative Branch B Update — Section 8 Redundancy and Incremental Information Complete — 2026-07-20
+
+```text
+Branch B Section 8 (redundancy and incremental information): COMPLETE — SECTION 8 STATUS: READY
+55 expansion advancers -> 30 Development-fitted clusters -> 30 representatives ->
+anchor (atr_20) + 14 confirmed-incremental representatives = 15 frozen expansion features.
+Frozen directional feature set: explicitly empty (no Section 7 directional advancer).
+Next Branch B step: Section 9.0 — Multivariate Research (linear benchmarks vs anchor-only baseline).
+Branch A status unchanged: no Section 8 POI backtest candidate approved.
+```
+
+Details: `project_docs/statistical_feature_research_context_report.md` (Section 8 completion entry) and `reports/statistical_research/summaries/section8_redundancy_summary.md`.

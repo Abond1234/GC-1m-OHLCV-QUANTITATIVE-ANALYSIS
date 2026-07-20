@@ -1264,7 +1264,8 @@ Independent forward labels:                  COMPLETE
 Independent baseline behaviour:              COMPLETE
 Independent feature engineering:             COMPLETE
 Independent univariate feature evaluation:   COMPLETE
-Redundancy and incremental information:      NOT STARTED
+Redundancy and incremental information:      COMPLETE
+Multivariate research:                       NOT STARTED
 Independent statistical backtest:            NOT STARTED
 POI integration research:                    FUTURE PHASE
 ```
@@ -1272,7 +1273,7 @@ POI integration research:                    FUTURE PHASE
 The correct next action is:
 
 ```text
-Section 8.0 — Redundancy and Incremental Information
+Section 9.0 — Multivariate Research (linear benchmarks on the frozen 15-feature expansion set)
 ```
 
 ---
@@ -1521,3 +1522,27 @@ reports/statistical_research/summaries/section7_univariate_evaluation_summary.md
 ```
 
 The Final test remains locked. **Exact next section:** Section 8.0 — Redundancy and Incremental Information (cluster the 55 expansion advancers, select interpretable representatives, test incremental value, freeze the candidate set).
+
+---
+
+## Section 8 — Redundancy and Incremental Information Completion
+
+**Status:** COMPLETE — `SECTION 8 STATUS: READY`
+
+Section 8 reduces the 55 Section 7 expansion advancers to a frozen candidate set under rules declared in `Section8Config` (seed 20260721) before computation. Development-only Spearman correlations are clustered with average linkage on `1 − |ρ|` cut at |ρ| ≥ 0.7, yielding **30 clusters** (the largest, size 7, is the ATR/realized-volatility ladder). One representative per cluster is selected mechanically: best passing-cell Validation |IC| at the 60-minute primary horizon, ties broken core-over-experimental then by name. Every non-anchor representative must then demonstrate incremental information beyond the anchor — the per-NY-date **partial rank IC** controlling for the anchor — with Development |partial IC| ≥ 0.05, Validation sign agreement, ≥ 25% retention, and 400/150 date floors, at the 60- and 180-minute horizons.
+
+Result: anchor `atr_20` plus **14 confirmed-incremental representatives = 15 frozen expansion features**, spanning volatility state, session clock, trend efficiency/structure, activity, and one surviving experimental hypothesis (`vwap_elasticity_30_exp`). Fifteen representatives were rejected for no confirmed incremental information beyond the anchor — including `log_volume` (raw Validation |IC| ≈ 0.29, fully redundant with volatility state). The frozen directional set is **explicitly empty** because Section 7 produced no directional advancer.
+
+Governance: same Development+Validation frame as Section 7; Final-test rows excluded and rejected with an error; clustering provably fitted on Development only (synthetic test: a duplicate decorrelated in Validation still clusters with its Development twin). Validation: **8/8 structural checks**, **10/10 new synthetic tests**, **122/122 full suite**. Runtime ≈ 10.5 s.
+
+Reusable implementation and tests:
+
+```text
+src/statistical_research/feature_redundancy.py
+tests/test_statistical_research_redundancy.py
+scripts/update_statistical_section8_notebook.py
+```
+
+Generated artifacts (excluded from Git): `feature_correlation_gc.parquet`, `feature_clusters_gc.parquet`, `feature_incremental_information_gc.parquet`, `frozen_expansion_feature_set_gc.parquet`, and the `reports/statistical_research/tables/section8/` CSVs. Tracked record: `reports/statistical_research/summaries/section8_redundancy_summary.md`.
+
+The Final test remains locked. **Exact next section:** Section 9.0 — Multivariate Research, beginning with simple linear benchmarks on the frozen 15-feature set against the anchor-only baseline under chronological validation.
