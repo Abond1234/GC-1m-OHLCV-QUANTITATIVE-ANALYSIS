@@ -288,7 +288,12 @@ def _mean_mad_ratio(values: np.ndarray) -> float:
 
 
 def _max_drawdown(values: np.ndarray) -> float:
-    """Maximum peak-to-trough fall of the chronological cumulative R curve."""
+    """Maximum peak-to-trough fall of the chronological cumulative R curve.
+
+    Reported as a dispersion diagnostic only: retest events overlap in time,
+    so this pooled event-level curve is not a tradable equity curve and the
+    number is never an advancement criterion.
+    """
 
     if len(values) == 0:
         return np.nan
