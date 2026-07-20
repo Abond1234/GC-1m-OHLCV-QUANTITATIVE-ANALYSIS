@@ -4741,3 +4741,16 @@ Branch A Section 8 backtest authorization decision. Final test discipline mainta
 ```
 
 Details: Section 12 completion entry in `project_docs/statistical_feature_research_context_report.md` and `reports/statistical_research/summaries/section12_hybrid_integration_summary.md`.
+
+# Authoritative Update — Section 8 POI Sequential Backtest Complete — 2026-07-20
+
+```text
+Section 8 (S7P02 sequential research backtest): COMPLETE — SEQUENTIAL_REJECTED at base costs.
+Frictionless +0.138/+0.117/+0.063 (Dev/Val/Final) reproduces the Section 7 event evidence; the
+2.6-tick base cost load flips every partition negative (-0.003/-0.035/-0.059). 3,766 trades,
+entry-realism enforced, conservative ambiguity, verdict fixed on Dev+Val before the Final read.
+Phase 2 for Branch A is closed. Per project_docs/section8_authorization_memo.md, the family's
+remaining path is the frozen Section 12B contract; failing that, Option 3 archives it.
+```
+
+Details: `reports/statistical_research/summaries/section8_poi_sequential_backtest_summary.md`.
