@@ -9,9 +9,9 @@ research outputs.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-import time
 from typing import Any, Iterable
 
 import numpy as np
@@ -246,8 +246,8 @@ def evaluate_refined_poi_proposals(
     prior = middle - 1
     confirm = middle + 1
     activation = out.get("poi_activation_bar_id", pd.Series(confirm, index=out.index))
-    activation = pd.to_numeric(activation, errors="coerce").fillna(pd.Series(confirm)).to_numpy(
-        "int64"
+    activation = (
+        pd.to_numeric(activation, errors="coerce").fillna(pd.Series(confirm)).to_numpy("int64")
     )
     activation = np.maximum(activation, confirm)
     if (activation < 0).any() or (activation >= len(bars)).any():
@@ -326,9 +326,8 @@ def evaluate_refined_poi_proposals(
     same_contract = (symbols[prior] == symbols[middle]) & (symbols[middle] == symbols[confirm])
     same_segment = (segments[prior] == segments[middle]) & (segments[middle] == segments[confirm])
     same_date = (dates[prior] == dates[middle]) & (dates[middle] == dates[confirm])
-    timestamp_continuity = (
-        (ts_ns[middle] - ts_ns[prior] == 60_000_000_000)
-        & (ts_ns[confirm] - ts_ns[middle] == 60_000_000_000)
+    timestamp_continuity = (ts_ns[middle] - ts_ns[prior] == 60_000_000_000) & (
+        ts_ns[confirm] - ts_ns[middle] == 60_000_000_000
     )
     regular = bars["is_regular_1m_bar"].to_numpy(bool, copy=False)
     prior_symbol_match = bars["same_symbol_as_previous_bar"].to_numpy(bool, copy=False)
@@ -378,7 +377,9 @@ def evaluate_refined_poi_proposals(
         open_[confirm] < low[middle],
     )
     base_geometry_case = np.where(expanded, "case_1_expanded", "case_2_standard")
-    geometry_case = np.where(close_inside_gap & close_open_gap, "case_3_invalid", base_geometry_case)
+    geometry_case = np.where(
+        close_inside_gap & close_open_gap, "case_3_invalid", base_geometry_case
+    )
     geometry_case = np.where(classic_fvg & close_open_gap, geometry_case, "invalid")
     poi_low = np.where(bullish, low[middle], np.minimum(low[middle], open_[confirm]))
     poi_high = np.where(bullish, np.maximum(high[middle], open_[confirm]), high[middle])
@@ -403,11 +404,31 @@ def evaluate_refined_poi_proposals(
             "non_consecutive_bars",
             "A/B/C are not consecutive one-minute observations on one NY date",
         ),
-        (~rollover_integrity, "rollover_integrity_failure", "A/B/C or activation failed tradable/roll integrity"),
-        (~valid_search_window, "invalid_search_window", "confirmation or activation is outside the POI search window"),
-        (~classic_fvg, "no_classic_fvg", "active-direction A/C wick interval is not a positive classic FVG"),
-        (~close_open_gap, "no_close_open_gap", "B-close/C-open gap is absent, reversed, or below one tick"),
-        (~direction_match, "direction_mismatch", "formation direction does not match the displacement break"),
+        (
+            ~rollover_integrity,
+            "rollover_integrity_failure",
+            "A/B/C or activation failed tradable/roll integrity",
+        ),
+        (
+            ~valid_search_window,
+            "invalid_search_window",
+            "confirmation or activation is outside the POI search window",
+        ),
+        (
+            ~classic_fvg,
+            "no_classic_fvg",
+            "active-direction A/C wick interval is not a positive classic FVG",
+        ),
+        (
+            ~close_open_gap,
+            "no_close_open_gap",
+            "B-close/C-open gap is absent, reversed, or below one tick",
+        ),
+        (
+            ~direction_match,
+            "direction_mismatch",
+            "formation direction does not match the displacement break",
+        ),
         (
             close_inside_gap & close_open_gap,
             "confirmation_close_inside_opening_gap",
@@ -532,7 +553,10 @@ def evaluate_refined_poi_proposals(
     out["audit_id"] = np.where(
         out["poi_variant_id"].notna(),
         out["poi_variant_id"].astype("string") + "_audit",
-        "GC_AUD_" + out["direction"].astype("string") + "_" + out["poi_middle_bar_id"].astype(str).str.zfill(8),
+        "GC_AUD_"
+        + out["direction"].astype("string")
+        + "_"
+        + out["poi_middle_bar_id"].astype(str).str.zfill(8),
     )
     return out
 
@@ -592,7 +616,9 @@ def build_supplemental_refinement_audit(
                 "displacement_start_bar_id": pd.Series(
                     pd.NA, index=np.arange(selected.size), dtype="Int64"
                 ),
-                "broken_swing_bar_id": pd.Series(pd.NA, index=np.arange(selected.size), dtype="Int64"),
+                "broken_swing_bar_id": pd.Series(
+                    pd.NA, index=np.arange(selected.size), dtype="Int64"
+                ),
             }
         )
         proposal_frames.append(frame)
@@ -653,7 +679,14 @@ def select_final_refined_pois(audit: pd.DataFrame) -> pd.DataFrame:
     out["poi_id"] = out["poi_variant_id"].astype("string")
     out = add_true_poi_identity_aliases(out)
     out = out.sort_values(
-        ["trade_date_ny", "swing_n", "break_mode", "direction", "poi_activation_bar_id", "poi_middle_bar_id"],
+        [
+            "trade_date_ny",
+            "swing_n",
+            "break_mode",
+            "direction",
+            "poi_activation_bar_id",
+            "poi_middle_bar_id",
+        ],
         kind="mergesort",
     ).reset_index(drop=True)
     return out
@@ -874,9 +907,7 @@ def _enrich_refined_candidates(
         validate="many_to_one",
     )
     poi_cols = [
-        col
-        for col in _poi_lineage_columns(poi_table)
-        if col == "poi_id" or col not in out.columns
+        col for col in _poi_lineage_columns(poi_table) if col == "poi_id" or col not in out.columns
     ]
     out = out.merge(
         poi_table[poi_cols],
@@ -911,7 +942,12 @@ def _finalize_refined_signal_frame(
     out["signal_id"] = "GC6C_SIG_" + (out.index + 1).astype(str).str.zfill(8)
     out["poi_definition_version"] = config.poi_definition_version
     out = add_true_poi_identity_aliases(out)
-    first = ["signal_id", "candidate_variant_id", "true_trade_opportunity_id", "canonical_candidate_id"]
+    first = [
+        "signal_id",
+        "candidate_variant_id",
+        "true_trade_opportunity_id",
+        "canonical_candidate_id",
+    ]
     return out[first + [col for col in out.columns if col not in set(first)]]
 
 
@@ -1002,9 +1038,7 @@ def _attach_refined_poi_structural_context(
         for col in STRUCTURAL_COLUMNS:
             out[col] = pd.NA
         return out
-    context = poi_table[["poi_variant_id", *STRUCTURAL_COLUMNS]].drop_duplicates(
-        "poi_variant_id"
-    )
+    context = poi_table[["poi_variant_id", *STRUCTURAL_COLUMNS]].drop_duplicates("poi_variant_id")
     return out.merge(context, on="poi_variant_id", how="left", validate="many_to_one")
 
 
@@ -1032,12 +1066,16 @@ def build_section6c_validation(
             downstream_ids.update(table["poi_variant_id"].dropna().astype(str))
         elif "poi_id" in table:
             downstream_ids.update(table["poi_id"].dropna().astype(str))
-    point_consistency = np.isclose(
-        poi_table["fvg_size_points"].to_numpy("float64"),
-        poi_table["fvg_size_ticks"].to_numpy("float64") * cfg.tick_size,
-        atol=1e-8,
-        rtol=0.0,
-    ).all() if not poi_table.empty else True
+    point_consistency = (
+        np.isclose(
+            poi_table["fvg_size_points"].to_numpy("float64"),
+            poi_table["fvg_size_ticks"].to_numpy("float64") * cfg.tick_size,
+            atol=1e-8,
+            rtol=0.0,
+        ).all()
+        if not poi_table.empty
+        else True
+    )
     cohort3 = set(poi_table.loc[poi_table["fvg_ge_3tick_flag"], "poi_variant_id"].astype(str))
     cohort4 = set(poi_table.loc[poi_table["fvg_ge_4tick_flag"], "poi_variant_id"].astype(str))
     cohort5 = set(poi_table.loc[poi_table["fvg_ge_5tick_flag"], "poi_variant_id"].astype(str))
@@ -1110,7 +1148,9 @@ def build_section6c_refinement_summary(
     cfg = config or Section6CConfig()
     records: list[dict[str, Any]] = []
 
-    def add(scope: str, metric: str, value: Any, dimension: str = "all", label: str = "all") -> None:
+    def add(
+        scope: str, metric: str, value: Any, dimension: str = "all", label: str = "all"
+    ) -> None:
         records.append(
             {
                 "summary_scope": scope,
@@ -1183,9 +1223,7 @@ def build_section6c_refinement_summary(
             "structural",
             "local_only",
         )
-        breakdown_frame["fvg_tick_bucket"] = _fvg_tick_bucket(
-            breakdown_frame["fvg_size_ticks"]
-        )
+        breakdown_frame["fvg_tick_bucket"] = _fvg_tick_bucket(breakdown_frame["fvg_size_ticks"])
         breakdown_frame["zone_expansion_tick_bucket"] = _expansion_tick_bucket(
             breakdown_frame["poi_zone_expansion_ticks"]
         )
@@ -1225,7 +1263,9 @@ def build_section6c_refinement_summary(
         if not retest_table.empty
         else 0,
         "valid_candidate_variants": len(candidate_trade_table),
-        "unique_canonical_candidate_variants": candidate_trade_table["canonical_candidate_id"].nunique()
+        "unique_canonical_candidate_variants": candidate_trade_table[
+            "canonical_candidate_id"
+        ].nunique()
         if not candidate_trade_table.empty
         else 0,
         "signal_rows": len(signal_frame),
@@ -1264,7 +1304,14 @@ def save_section6c_tables(
 def _fvg_tick_bucket(values: pd.Series) -> pd.Series:
     ticks = pd.to_numeric(values, errors="coerce")
     labels = np.select(
-        [ticks.eq(3), ticks.eq(4), ticks.eq(5), ticks.between(6, 9), ticks.between(10, 19), ticks.ge(20)],
+        [
+            ticks.eq(3),
+            ticks.eq(4),
+            ticks.eq(5),
+            ticks.between(6, 9),
+            ticks.between(10, 19),
+            ticks.ge(20),
+        ],
         ["3", "4", "5", "6-9", "10-19", "20+"],
         default="below_3",
     )
@@ -1274,7 +1321,14 @@ def _fvg_tick_bucket(values: pd.Series) -> pd.Series:
 def _expansion_tick_bucket(values: pd.Series) -> pd.Series:
     ticks = pd.to_numeric(values, errors="coerce")
     labels = np.select(
-        [ticks.eq(0), ticks.eq(1), ticks.eq(2), ticks.between(3, 5), ticks.between(6, 9), ticks.ge(10)],
+        [
+            ticks.eq(0),
+            ticks.eq(1),
+            ticks.eq(2),
+            ticks.between(3, 5),
+            ticks.between(6, 9),
+            ticks.ge(10),
+        ],
         ["0", "1", "2", "3-5", "6-9", "10+"],
         default="unknown",
     )

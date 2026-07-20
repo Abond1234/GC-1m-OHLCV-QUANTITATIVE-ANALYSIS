@@ -1,25 +1,24 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
 
 import numpy as np
 import pandas as pd
 
 from src.features.poi_event_study import (
     SECTION7_BAR_REQUIRED_COLUMNS,
-    SECTION7_SIGNAL_REQUIRED_COLUMNS,
+    EventStudyGroupSpec,
     Section7Config,
     build_bar_horizon_path_features,
-    build_section7_validation,
     build_section7_poi_selection_audit_batches,
+    build_section7_validation,
     build_section7_visual_audit_batches,
     build_signal_horizon_metrics,
     prepare_section7_bar_frame,
     prepare_section7_signal_frame,
     summarize_section7_groups,
-    EventStudyGroupSpec,
 )
 from src.features.poi_event_study_refined import (
     build_section7r_event_study,
@@ -155,7 +154,9 @@ class Section7EventStudyTests(unittest.TestCase):
         )
         self.assertEqual(len(populations["raw_variant_rows"]), 2)
         self.assertEqual(len(populations["canonical_candidate_variants"]), 1)
-        self.assertTrue(populations["canonical_candidate_variants"]["canonical_candidate_id"].is_unique)
+        self.assertTrue(
+            populations["canonical_candidate_variants"]["canonical_candidate_id"].is_unique
+        )
 
     def test_section7r_reports_geometry_threshold_and_population_counts(self):
         outputs = build_section7r_event_study(
@@ -164,9 +165,19 @@ class Section7EventStudyTests(unittest.TestCase):
             Section7Config(forward_horizons=(60,), min_ranking_sample_size=1),
         )
         summary = outputs["section7r_event_study_summary"]
-        self.assertTrue({"raw_variant_rows", "canonical_candidate_variants"}.issubset(summary["analysis_population"]))
-        self.assertTrue({"poi_geometry_case", "fvg_min_3_ticks", "fvg_min_4_ticks", "fvg_min_5_ticks"}.issubset(summary["group_spec"]))
-        baseline = summary.query("group_spec == 'baseline_all_candidates' and metric_mode == 'fixed'")
+        self.assertTrue(
+            {"raw_variant_rows", "canonical_candidate_variants"}.issubset(
+                summary["analysis_population"]
+            )
+        )
+        self.assertTrue(
+            {"poi_geometry_case", "fvg_min_3_ticks", "fvg_min_4_ticks", "fvg_min_5_ticks"}.issubset(
+                summary["group_spec"]
+            )
+        )
+        baseline = summary.query(
+            "group_spec == 'baseline_all_candidates' and metric_mode == 'fixed'"
+        )
         counts = baseline.set_index("analysis_population")["candidate_rows"].to_dict()
         self.assertEqual(counts["raw_variant_rows"], 2)
         self.assertEqual(counts["canonical_candidate_variants"], 1)
@@ -301,9 +312,7 @@ class Section7EventStudyTests(unittest.TestCase):
 
             plotted = manifest.loc[manifest["status"].eq("plotted")]
             self.assertEqual(len(plotted), 3)
-            self.assertTrue(
-                all(Path(path).exists() for path in plotted["chart_path"].to_list())
-            )
+            self.assertTrue(all(Path(path).exists() for path in plotted["chart_path"].to_list()))
 
     def test_poi_selection_audit_writes_index_and_charts(self):
         bars = _synthetic_research_bars().copy()
@@ -381,9 +390,7 @@ class Section7EventStudyTests(unittest.TestCase):
             plotted = index.loc[index["status"].eq("plotted")]
             self.assertEqual(len(plotted), 2)
             self.assertTrue((Path(tmp_dir) / "poi_selection_audit_index.csv").exists())
-            self.assertTrue(
-                all(Path(path).exists() for path in plotted["image_path"].to_list())
-            )
+            self.assertTrue(all(Path(path).exists() for path in plotted["image_path"].to_list()))
             self.assertIn("manual_review_status", index.columns)
             self.assertIn("manual_notes", index.columns)
 

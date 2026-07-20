@@ -10,7 +10,6 @@ from src.statistical_research.labels import (
     validate_tick_grid,
 )
 
-
 NY = "America/New_York"
 
 
@@ -25,10 +24,16 @@ def _bars(
 ):
     closes = np.asarray(closes, dtype=float)
     path_opens = np.r_[entry_open, closes[:-1]]
-    highs = np.asarray(highs if highs is not None else np.maximum(path_opens, closes) + 0.1, dtype=float)
-    lows = np.asarray(lows if lows is not None else np.minimum(path_opens, closes) - 0.1, dtype=float)
+    highs = np.asarray(
+        highs if highs is not None else np.maximum(path_opens, closes) + 0.1, dtype=float
+    )
+    lows = np.asarray(
+        lows if lows is not None else np.minimum(path_opens, closes) - 0.1, dtype=float
+    )
     entry_ny = pd.Timestamp(entry_time, tz=NY)
-    timestamps_ny = pd.date_range(entry_ny - pd.Timedelta(minutes=1), periods=len(closes) + 1, freq="min")
+    timestamps_ny = pd.date_range(
+        entry_ny - pd.Timedelta(minutes=1), periods=len(closes) + 1, freq="min"
+    )
     opens = np.r_[entry_open, path_opens]
     all_closes = np.r_[entry_open, closes]
     all_highs = np.r_[entry_open, highs]
@@ -73,7 +78,9 @@ def _observation(bars, *, entry_position=1, partition="Development", observation
             "entry_timestamp_utc": [bars.loc[entry_position, "ts_event_utc"]],
             "entry_timestamp_ny": [entry_ny],
             "trade_date_ny": [bars.loc[entry_position, "trade_date_ny"]],
-            "entry_session": pd.Categorical(["New York"], categories=["London", "New York"], ordered=True),
+            "entry_session": pd.Categorical(
+                ["New York"], categories=["London", "New York"], ordered=True
+            ),
             "research_partition": pd.Categorical(
                 [partition], categories=["Development", "Validation", "Final test"], ordered=True
             ),
@@ -88,7 +95,9 @@ def _observation(bars, *, entry_position=1, partition="Development", observation
 
 
 def _build(bars, *, horizon=5):
-    return build_forward_label_table(_observation(bars), bars, horizons=(horizon,), chunk_size=2).labels
+    return build_forward_label_table(
+        _observation(bars), bars, horizons=(horizon,), chunk_size=2
+    ).labels
 
 
 class ForwardLabelCalculationTests(unittest.TestCase):
@@ -138,7 +147,9 @@ class ForwardLabelCalculationTests(unittest.TestCase):
         labels = _build(_bars(closes))
         returns = np.log(np.r_[closes[0] / 100.0, closes[1:] / closes[:-1]])
         expected = np.sqrt(np.square(returns).sum()) * 10_000.0
-        self.assertAlmostEqual(labels.loc[0, "future_realized_volatility_5_bps"], expected, places=10)
+        self.assertAlmostEqual(
+            labels.loc[0, "future_realized_volatility_5_bps"], expected, places=10
+        )
 
     def test_long_short_excursion_symmetry(self):
         labels = _build(_bars([100.1, 99.9, 100.3, 99.8, 100.0]))
@@ -148,7 +159,10 @@ class ForwardLabelCalculationTests(unittest.TestCase):
     def test_economic_exit_timestamp_is_after_fifth_bar_close(self):
         bars = _bars([100.0] * 5, highs=[100.0] * 5, lows=[100.0] * 5)
         labels = _build(bars)
-        self.assertEqual(labels.loc[0, "exit_timestamp_utc_5"], bars.loc[5, "ts_event_utc"] + pd.Timedelta(minutes=1))
+        self.assertEqual(
+            labels.loc[0, "exit_timestamp_utc_5"],
+            bars.loc[5, "ts_event_utc"] + pd.Timedelta(minutes=1),
+        )
 
     def test_tick_grid_validation_rejects_material_off_grid_price(self):
         with self.assertRaises(ValueError):
@@ -174,7 +188,9 @@ class ForwardLabelCalculationTests(unittest.TestCase):
                     observation_id=observation_id,
                 )
             )
-        result = build_forward_label_table(pd.concat(observations, ignore_index=True), bars, horizons=(5,))
+        result = build_forward_label_table(
+            pd.concat(observations, ignore_index=True), bars, horizons=(5,)
+        )
         threshold = result.expansion_thresholds.iloc[0]
         self.assertEqual(threshold["development_observation_count_used"], 2)
         self.assertAlmostEqual(threshold["threshold"], 0.18)
@@ -193,21 +209,31 @@ class ForwardLabelAvailabilityTests(unittest.TestCase):
         bars.loc[3:, "ts_event_ny"] += pd.Timedelta(minutes=1)
         labels = _build(bars)
         self.assertFalse(labels.loc[0, "label_available_5"])
-        self.assertEqual(labels.loc[0, "label_unavailable_reason_5"], "missing_or_nonconsecutive_minute")
+        self.assertEqual(
+            labels.loc[0, "label_unavailable_reason_5"], "missing_or_nonconsecutive_minute"
+        )
 
     def test_first_failure_priority_is_deterministic(self):
         bars = _bars([100.0] * 5, highs=[100.0] * 5, lows=[100.0] * 5)
         bars.loc[3:, "ts_event_utc"] += pd.Timedelta(minutes=1)
         bars.loc[3:, "ts_event_ny"] += pd.Timedelta(minutes=1)
         bars.loc[3, "symbol"] = "GCJ4"
-        self.assertEqual(_build(bars).loc[0, "label_unavailable_reason_5"], "missing_or_nonconsecutive_minute")
+        self.assertEqual(
+            _build(bars).loc[0, "label_unavailable_reason_5"], "missing_or_nonconsecutive_minute"
+        )
 
     def test_contract_or_instrument_change(self):
-        self.assertEqual(self._reason_after_mutation("symbol", "GCJ4"), "contract_or_instrument_change")
-        self.assertEqual(self._reason_after_mutation("instrument_id", 202), "contract_or_instrument_change")
+        self.assertEqual(
+            self._reason_after_mutation("symbol", "GCJ4"), "contract_or_instrument_change"
+        )
+        self.assertEqual(
+            self._reason_after_mutation("instrument_id", 202), "contract_or_instrument_change"
+        )
 
     def test_continuous_segment_change(self):
-        self.assertEqual(self._reason_after_mutation("continuous_segment_id", 2), "continuous_segment_change")
+        self.assertEqual(
+            self._reason_after_mutation("continuous_segment_id", 2), "continuous_segment_change"
+        )
 
     def test_new_york_date_change(self):
         self.assertEqual(
@@ -226,13 +252,19 @@ class ForwardLabelAvailabilityTests(unittest.TestCase):
         )
 
     def test_exact_forced_exit_boundary_is_available(self):
-        bars = _bars([100.0] * 5, highs=[100.0] * 5, lows=[100.0] * 5, entry_time="2024-01-02 15:25")
+        bars = _bars(
+            [100.0] * 5, highs=[100.0] * 5, lows=[100.0] * 5, entry_time="2024-01-02 15:25"
+        )
         labels = _build(bars)
         self.assertTrue(labels.loc[0, "label_available_5"])
-        self.assertEqual(labels.loc[0, "exit_timestamp_ny_5"], pd.Timestamp("2024-01-02 15:30", tz=NY))
+        self.assertEqual(
+            labels.loc[0, "exit_timestamp_ny_5"], pd.Timestamp("2024-01-02 15:30", tz=NY)
+        )
 
     def test_path_closing_after_forced_exit_is_unavailable(self):
-        bars = _bars([100.0] * 5, highs=[100.0] * 5, lows=[100.0] * 5, entry_time="2024-01-02 15:26")
+        bars = _bars(
+            [100.0] * 5, highs=[100.0] * 5, lows=[100.0] * 5, entry_time="2024-01-02 15:26"
+        )
         labels = _build(bars)
         self.assertFalse(labels.loc[0, "label_available_5"])
         self.assertEqual(labels.loc[0, "label_unavailable_reason_5"], "forced_exit_boundary_breach")

@@ -1,0 +1,9 @@
+* text=auto
+*.py text
+*.md text
+*.yml text
+*.txt text
+*.ipynb text eol=lf
+*.parquet binary
+*.dbn binary
+*.png binary

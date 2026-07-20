@@ -1,15 +1,5 @@
 """Independent statistical-research utilities."""
 
-from .labels import (
-    EXPANSION_QUANTILE,
-    FORWARD_HORIZONS_MINUTES,
-    GC_TICK_SIZE,
-    LABEL_REASON_CATEGORIES,
-    ForwardLabelBuildResult,
-    build_forward_label_table,
-    build_label_availability_report,
-    validate_tick_grid,
-)
 from .baselines import (
     BASELINE_RANDOM_SEED,
     BOOTSTRAP_REPLICATES,
@@ -18,6 +8,35 @@ from .baselines import (
     build_baseline_outputs,
     save_baseline_outputs,
     summarize_outcomes,
+)
+from .feature_engineering import (
+    FEATURE_SOURCE_COLUMNS,
+    METADATA_COLUMNS,
+    FeatureBuildResult,
+    build_continuity_run_id,
+    build_feature_matrix,
+)
+from .feature_evaluation import (
+    EVALUATION_PARTITIONS,
+    EVALUATION_SESSIONS,
+    EXCLUDED_CATEGORICAL_FEATURES,
+    OUTCOME_FAMILY_ATR_TEMPLATES,
+    SECTION7_RANDOM_SEED,
+    EvaluationBuildResult,
+    Section7Config,
+    benjamini_hochberg_q_values,
+    build_evaluation_frame,
+    build_univariate_evaluation,
+    evaluated_feature_names,
+    load_forward_labels_for_evaluation,
+    save_evaluation_outputs,
+)
+from .feature_redundancy import (
+    SECTION8_RANDOM_SEED,
+    RedundancyBuildResult,
+    Section8Config,
+    build_redundancy_analysis,
+    save_redundancy_outputs,
 )
 from .feature_registry import (
     CORE_FEATURE_NAMES,
@@ -28,19 +47,48 @@ from .feature_registry import (
     feature_registry_frame,
     validate_registry,
 )
-from .feature_engineering import (
-    FEATURE_SOURCE_COLUMNS,
-    METADATA_COLUMNS,
-    FeatureBuildResult,
-    build_continuity_run_id,
-    build_feature_matrix,
-)
 from .feature_validation import (
     FeatureSaveResult,
     build_manual_feature_audit,
     compute_feature_diagnostics,
     save_feature_outputs,
     validate_feature_matrix,
+)
+from .labels import (
+    EXPANSION_QUANTILE,
+    FORWARD_HORIZONS_MINUTES,
+    GC_TICK_SIZE,
+    LABEL_REASON_CATEGORIES,
+    ForwardLabelBuildResult,
+    build_forward_label_table,
+    build_label_availability_report,
+    validate_tick_grid,
+)
+from .multivariate import (
+    SECTION9_RANDOM_SEED,
+    MultivariateBuildResult,
+    Section9Config,
+    build_multivariate_benchmarks,
+    load_expansion_labels,
+    save_multivariate_outputs,
+)
+from .sequential_backtest import (
+    SECTION11_RANDOM_SEED,
+    BacktestBuildResult,
+    Section11Config,
+    load_backtest_bars,
+    run_sequential_backtest,
+    save_backtest_outputs,
+)
+from .signal_construction import (
+    DIRECTION_VARIANTS,
+    GATE_VARIANTS,
+    SECTION10_RANDOM_SEED,
+    Section10Config,
+    SignalBuildResult,
+    build_signal_candidates,
+    load_entry_fields,
+    save_signal_outputs,
 )
 
 __all__ = [
@@ -76,4 +124,42 @@ __all__ = [
     "compute_feature_diagnostics",
     "save_feature_outputs",
     "validate_feature_matrix",
+    "EVALUATION_PARTITIONS",
+    "EVALUATION_SESSIONS",
+    "EXCLUDED_CATEGORICAL_FEATURES",
+    "OUTCOME_FAMILY_ATR_TEMPLATES",
+    "SECTION7_RANDOM_SEED",
+    "EvaluationBuildResult",
+    "Section7Config",
+    "benjamini_hochberg_q_values",
+    "build_evaluation_frame",
+    "build_univariate_evaluation",
+    "evaluated_feature_names",
+    "load_forward_labels_for_evaluation",
+    "save_evaluation_outputs",
+    "SECTION8_RANDOM_SEED",
+    "RedundancyBuildResult",
+    "Section8Config",
+    "build_redundancy_analysis",
+    "save_redundancy_outputs",
+    "SECTION9_RANDOM_SEED",
+    "MultivariateBuildResult",
+    "Section9Config",
+    "build_multivariate_benchmarks",
+    "load_expansion_labels",
+    "save_multivariate_outputs",
+    "DIRECTION_VARIANTS",
+    "GATE_VARIANTS",
+    "SECTION10_RANDOM_SEED",
+    "Section10Config",
+    "SignalBuildResult",
+    "build_signal_candidates",
+    "load_entry_fields",
+    "save_signal_outputs",
+    "SECTION11_RANDOM_SEED",
+    "BacktestBuildResult",
+    "Section11Config",
+    "load_backtest_bars",
+    "run_sequential_backtest",
+    "save_backtest_outputs",
 ]

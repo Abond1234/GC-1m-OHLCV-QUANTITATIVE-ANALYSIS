@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK = ROOT / "notebooks/exploration/statistical_feature_research.ipynb"
 
@@ -15,7 +14,13 @@ def markdown(source: str) -> dict:
 
 
 def code(source: str) -> dict:
-    return {"cell_type": "code", "execution_count": None, "metadata": {}, "outputs": [], "source": source.strip() + "\n"}
+    return {
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": source.strip() + "\n",
+    }
 
 
 SECTION_5_CELLS = [
@@ -397,7 +402,12 @@ def main() -> None:
     notebook = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
     cells = notebook["cells"]
     section_5_start = next(
-        (index for index, cell in enumerate(cells) if cell["cell_type"] == "markdown" and "".join(cell.get("source", [])).lstrip().startswith("# 5.0")),
+        (
+            index
+            for index, cell in enumerate(cells)
+            if cell["cell_type"] == "markdown"
+            and "".join(cell.get("source", [])).lstrip().startswith("# 5.0")
+        ),
         len(cells),
     )
     notebook["cells"] = cells[:section_5_start] + SECTION_5_CELLS

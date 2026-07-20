@@ -4685,3 +4685,72 @@ GC-to-MGC execution mapping, costs, sizing, portfolio state, and Section 8 remai
 ```
 
 ---
+
+# Authoritative Branch B Update — Section 7 Univariate Feature Evaluation Complete — 2026-07-20
+
+This entry updates the independent statistical branch status without altering any POI-branch statement above.
+
+```text
+Branch B Section 7 (univariate feature evaluation): COMPLETE — SECTION 7 STATUS: READY
+Evaluation partitions: Development + Validation only; all 162,224 Final-test rows excluded at frame construction.
+Result: 0 ADVANCE_DIRECTIONAL, 55 ADVANCE_EXPANSION, 28 WEAK_UNSTABLE, 0 NO_EVIDENCE across 83 evaluated predictors.
+No univariate feature produced an advancement-grade signed-return relationship; volatility/opportunity
+forecasting structure is strong and Validation-confirmed.
+Next Branch B step: Section 8.0 — Redundancy and Incremental Information.
+Branch A status unchanged: no Section 8 POI backtest candidate approved.
+```
+
+Full details, criteria, caveats, and artifact paths: `project_docs/statistical_feature_research_context_report.md` (Section 7 completion entry) and `reports/statistical_research/summaries/section7_univariate_evaluation_summary.md`.
+
+# Authoritative Branch B Update — Section 8 Redundancy and Incremental Information Complete — 2026-07-20
+
+```text
+Branch B Section 8 (redundancy and incremental information): COMPLETE — SECTION 8 STATUS: READY
+55 expansion advancers -> 30 Development-fitted clusters -> 30 representatives ->
+anchor (atr_20) + 14 confirmed-incremental representatives = 15 frozen expansion features.
+Frozen directional feature set: explicitly empty (no Section 7 directional advancer).
+Next Branch B step: Section 9.0 — Multivariate Research (linear benchmarks vs anchor-only baseline).
+Branch A status unchanged: no Section 8 POI backtest candidate approved.
+```
+
+Details: `project_docs/statistical_feature_research_context_report.md` (Section 8 completion entry) and `reports/statistical_research/summaries/section8_redundancy_summary.md`.
+
+# Authoritative Branch B Update — Sections 9-11 Complete; Standalone Statistical System Rejected — 2026-07-20
+
+```text
+Section 9 (multivariate benchmarks):    COMPLETE — model beats anchor in 3 of 4 cells; NY 60m calibration flagged.
+Section 10 (signal construction):       COMPLETE — benchmark directions + frozen opportunity gate; rules frozen first.
+Section 11 (sequential backtest):       COMPLETE — 86,353 trades, all four variants REJECTED under base costs.
+Decision: the standalone Branch B statistical system has no directional edge and is REJECTED.
+Validated assets that carry forward: the frozen 15-feature expansion set and per-session opportunity models.
+Next: Section 12 integration research — POI direction candidates filtered/sized by statistical opportunity models.
+Branch A status unchanged: no POI Section 8 backtest candidate approved. Final test locked throughout.
+```
+
+Details: the Section 9-11 completion entries in `project_docs/statistical_feature_research_context_report.md` and the section summaries under `reports/statistical_research/summaries/`.
+
+# Authoritative Update — Section 12 Hybrid Integration Complete — 2026-07-20
+
+```text
+Section 12 (hybrid integration, gate-filter form): COMPLETE — NO CONFIRMED INCREMENTAL VALUE.
+The frozen Branch B opportunity gate does not reliably improve any True POI direction family.
+Continuation short looked strong on small Dev/Val gated samples but collapsed to -0.02R on the
+one-time 301,610-event Final-test read; the pre-declared sample floors correctly withheld it.
+Open next steps: sizing/no-trade integration forms, POI-x-statistical interactions, or the
+Branch A Section 8 backtest authorization decision. Final test discipline maintained throughout.
+```
+
+Details: Section 12 completion entry in `project_docs/statistical_feature_research_context_report.md` and `reports/statistical_research/summaries/section12_hybrid_integration_summary.md`.
+
+# Authoritative Update — Section 8 POI Sequential Backtest Complete — 2026-07-20
+
+```text
+Section 8 (S7P02 sequential research backtest): COMPLETE — SEQUENTIAL_REJECTED at base costs.
+Frictionless +0.138/+0.117/+0.063 (Dev/Val/Final) reproduces the Section 7 event evidence; the
+2.6-tick base cost load flips every partition negative (-0.003/-0.035/-0.059). 3,766 trades,
+entry-realism enforced, conservative ambiguity, verdict fixed on Dev+Val before the Final read.
+Phase 2 for Branch A is closed. Per project_docs/section8_authorization_memo.md, the family's
+remaining path is the frozen Section 12B contract; failing that, Option 3 archives it.
+```
+
+Details: `reports/statistical_research/summaries/section8_poi_sequential_backtest_summary.md`.

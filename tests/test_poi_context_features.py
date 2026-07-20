@@ -16,50 +16,83 @@ from src.features.poi_context_features import (
 
 def _bars() -> pd.DataFrame:
     ny = pd.date_range("2024-01-03 07:00", periods=100, freq="min", tz="America/New_York")
-    close = 100 + np.sin(np.arange(100) / 8) + np.arange(100) * .01
+    close = 100 + np.sin(np.arange(100) / 8) + np.arange(100) * 0.01
     open_ = np.r_[close[0], close[:-1]]
-    high = np.maximum(open_, close) + .2
-    low = np.minimum(open_, close) - .2
-    frame = pd.DataFrame({
-        "ts_event_utc": ny.tz_convert("UTC"), "ts_event_ny": ny,
-        "trade_date_ny": pd.Timestamp("2024-01-03"), "product": "GC",
-        "symbol": "GCG4", "open": open_, "high": high, "low": low,
-        "close": close, "volume": np.arange(100) + 100,
-        "minute_of_day_ny": ny.hour * 60 + ny.minute, "day_of_week": "Wednesday",
-        "continuous_segment_id": 1, "bar_range": high-low,
-        "candle_body": np.abs(close-open_), "upper_wick": high-np.maximum(open_, close),
-        "lower_wick": np.minimum(open_, close)-low, "true_range": high-low,
-        "log_return": np.r_[np.nan, np.diff(np.log(close))],
-        "abs_log_return": np.r_[np.nan, np.abs(np.diff(np.log(close)))],
-        "rolling_atr_20m": .5, "rolling_atr_60m": .7,
-        "rolling_realized_vol_60m": .01, "rolling_realized_vol_240m": .008,
-        "relative_volume_60m": 1.0, "volume_zscore_240m": 0.0,
-        "tradable_research_flag": True, "roll_window_flag": False,
-    })
+    high = np.maximum(open_, close) + 0.2
+    low = np.minimum(open_, close) - 0.2
+    frame = pd.DataFrame(
+        {
+            "ts_event_utc": ny.tz_convert("UTC"),
+            "ts_event_ny": ny,
+            "trade_date_ny": pd.Timestamp("2024-01-03"),
+            "product": "GC",
+            "symbol": "GCG4",
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": np.arange(100) + 100,
+            "minute_of_day_ny": ny.hour * 60 + ny.minute,
+            "day_of_week": "Wednesday",
+            "continuous_segment_id": 1,
+            "bar_range": high - low,
+            "candle_body": np.abs(close - open_),
+            "upper_wick": high - np.maximum(open_, close),
+            "lower_wick": np.minimum(open_, close) - low,
+            "true_range": high - low,
+            "log_return": np.r_[np.nan, np.diff(np.log(close))],
+            "abs_log_return": np.r_[np.nan, np.abs(np.diff(np.log(close)))],
+            "rolling_atr_20m": 0.5,
+            "rolling_atr_60m": 0.7,
+            "rolling_realized_vol_60m": 0.01,
+            "rolling_realized_vol_240m": 0.008,
+            "relative_volume_60m": 1.0,
+            "volume_zscore_240m": 0.0,
+            "tradable_research_flag": True,
+            "roll_window_flag": False,
+        }
+    )
     return frame[CONTEXT_BAR_COLUMNS]
 
 
 def _signals() -> pd.DataFrame:
     rows = []
     for swing, mode, variant in ((3, "wick", "V1"), (5, "close", "V2")):
-        rows.append({
-            "canonical_poi_id": "CP1", "canonical_retest_id": "CR1",
-            "canonical_candidate_id": f"CC{variant}", "canonical_retest_number": 1,
-            "poi_variant_id": variant, "candidate_variant_id": f"C{variant}",
-            "retest_bar_id": 50, "retest_ts_event_utc": pd.Timestamp("2024-01-03 12:50", tz="UTC"),
-            "retest_ts_event_ny": pd.Timestamp("2024-01-03 07:50", tz="America/New_York"),
-            "direction": "bullish", "trade_date_ny": pd.Timestamp("2024-01-03"),
-            "poi_low": 100.0, "poi_high": 101.0, "poi_mid": 100.5, "poi_size_ticks": 10,
-            "poi_geometry_case": "case_2_standard", "fvg_size_ticks": 4,
-            "close_open_gap_ticks": 2, "prior_bar_id": 38, "poi_bar_id": 39,
-            "confirmation_bar_id": 40, "activation_bar_id": 41,
-            "displacement_start_bar_id": 30, "swing_n": swing, "break_mode": mode,
-            "structural_swing_break_flag": swing == 3,
-            "structural_swing_window_broken": 15 if swing == 3 else np.nan,
-            "structural_break_distance_ticks": 4.0, "execution_window_label": "New York Execution",
-            "time_since_previous_touch_minutes": np.nan,
-            "time_since_poi_activation_minutes": 9.0,
-        })
+        rows.append(
+            {
+                "canonical_poi_id": "CP1",
+                "canonical_retest_id": "CR1",
+                "canonical_candidate_id": f"CC{variant}",
+                "canonical_retest_number": 1,
+                "poi_variant_id": variant,
+                "candidate_variant_id": f"C{variant}",
+                "retest_bar_id": 50,
+                "retest_ts_event_utc": pd.Timestamp("2024-01-03 12:50", tz="UTC"),
+                "retest_ts_event_ny": pd.Timestamp("2024-01-03 07:50", tz="America/New_York"),
+                "direction": "bullish",
+                "trade_date_ny": pd.Timestamp("2024-01-03"),
+                "poi_low": 100.0,
+                "poi_high": 101.0,
+                "poi_mid": 100.5,
+                "poi_size_ticks": 10,
+                "poi_geometry_case": "case_2_standard",
+                "fvg_size_ticks": 4,
+                "close_open_gap_ticks": 2,
+                "prior_bar_id": 38,
+                "poi_bar_id": 39,
+                "confirmation_bar_id": 40,
+                "activation_bar_id": 41,
+                "displacement_start_bar_id": 30,
+                "swing_n": swing,
+                "break_mode": mode,
+                "structural_swing_break_flag": swing == 3,
+                "structural_swing_window_broken": 15 if swing == 3 else np.nan,
+                "structural_break_distance_ticks": 4.0,
+                "execution_window_label": "New York Execution",
+                "time_since_previous_touch_minutes": np.nan,
+                "time_since_poi_activation_minutes": 9.0,
+            }
+        )
     return pd.DataFrame(rows)
 
 

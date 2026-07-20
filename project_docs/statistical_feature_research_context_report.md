@@ -3,7 +3,7 @@
 > **Primary notebook**
 >
 > ```text
-> C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\notebooks\exploration\statistical_feature_research.ipynb
+> notebooks/exploration/statistical_feature_research.ipynb
 > ```
 >
 > **Purpose of this document**
@@ -132,11 +132,7 @@ POI information may be introduced only in the later integration phase, after the
 
 # 4. Project Location and Environment
 
-Project root:
-
-```text
-C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1
-```
+Project root: the repository clone location. All paths are repository-relative; nothing may depend on one contributor's machine layout.
 
 Notebook:
 
@@ -150,11 +146,7 @@ Virtual environment:
 .venv-1
 ```
 
-Active interpreter:
-
-```text
-C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv-1\Scripts\python.exe
-```
+Active interpreter: `.venv-1/Scripts/python.exe` (Windows) or `.venv-1/bin/python` (POSIX) inside the repository. Install dependencies from `requirements.txt`; `requirements.lock.txt` pins the exact executed environment.
 
 Existing core packages include:
 
@@ -162,7 +154,6 @@ Existing core packages include:
 numpy
 pandas
 scipy
-statsmodels
 matplotlib
 seaborn
 pyarrow
@@ -1263,15 +1254,18 @@ Independent statistical observation frame:   COMPLETE
 Independent forward labels:                  COMPLETE
 Independent baseline behaviour:              COMPLETE
 Independent feature engineering:             COMPLETE
-Independent feature evaluation:              NOT STARTED
-Independent statistical backtest:            NOT STARTED
-POI integration research:                    FUTURE PHASE
+Independent univariate feature evaluation:   COMPLETE
+Redundancy and incremental information:      COMPLETE
+Multivariate research:                       COMPLETE
+Statistical signal construction:             COMPLETE
+Independent statistical backtest:            COMPLETE — standalone system REJECTED
+POI integration research (gate-filter form):  COMPLETE — no confirmed incremental value
 ```
 
 The correct next action is:
 
 ```text
-Section 7.0 — Univariate Feature Evaluation
+Integration follow-ups: opportunity-based sizing, no-trade suppression, and POI-x-statistical feature interactions; or Branch A Section 8 backtest authorization
 ```
 
 ---
@@ -1469,3 +1463,124 @@ scripts/update_statistical_section6_notebook.py
 No feature has yet been shown to possess predictive value. Section 6 establishes only a valid candidate feature matrix.
 
 **Exact next approved section:** Section 7.0 — Univariate Feature Evaluation.
+
+---
+
+## Section 7 — Univariate Feature Evaluation Completion
+
+**Status:** COMPLETE — `SECTION 7 STATUS: READY`
+
+Section 7 implements the reader sequence `7.0 Univariate Feature Evaluation` through `7.10 Section 7 Summary and Completion Gate`. It screens all **83** evaluable registered predictors (80 numeric, 3 boolean) against two outcome families — `direction` (signed `forward_return_{h}_atr`) and `expansion` (unsigned `future_range_{h}_atr`) — across all six frozen horizons, both execution sessions, and the Development/Validation partitions. The two categorical context predictors are excluded with recorded reasons: `entry_session` is a stratification dimension of the screen itself, and Section 5 approved no weekday filter.
+
+Governance is unchanged and enforced mechanically. The evaluation frame contains **419,393** observations (302,774 Development, 116,619 Validation; 157,527 London, 261,866 New York; 884 trading dates); all **162,224 Final-test rows are excluded at frame construction**, and passing a frame containing Final-test rows to the evaluator raises an error. 4,913 Development/Validation rows lacking any horizon label or ATR normalization were dropped so an identical sample supports every horizon. Quintile buckets are fitted per session on Development only and applied unchanged to Validation. The evidence unit is the per-New-York-trading-date cross-sectional Spearman IC with date-block bootstrap intervals (seed 20260720, 2,000 replicates). Benjamini–Hochberg q-values exist only on the Development screen, within outcome-family × session families of 498 related tests.
+
+Shortlist criteria were frozen in `Section7Config` before results were computed: Development q ≤ 0.10; ≥ 400 Development and ≥ 150 Validation trading dates; ≥ 10,000 Development and ≥ 4,000 Validation observations; Validation sign agreement with ≥ 25% IC retention; |Development bucket monotonicity| ≥ 0.8; and, for the direction family only, a ≥ 2-tick top-minus-bottom quintile spread in both partitions.
+
+Headline result:
+
+```text
+ADVANCE_DIRECTIONAL:  0 features
+ADVANCE_EXPANSION:   55 features
+WEAK_UNSTABLE:       28 features
+NO_EVIDENCE:          0 features
+Shortlist cells:    358 of 1,992 confirmation cells
+```
+
+No univariate OHLCV/state feature produced an advancement-grade signed-return relationship — consistent with the Section 5 baseline. Expansion (opportunity/volatility) structure is strong and Validation-confirmed: leading volatility-state and session-clock features reach |daily IC| ≈ 0.61–0.76 with Development→Validation retention near or above 1.0 and monotone quintile structure (e.g. `atr_20` vs 180-minute ATR-relative future range: Dev −0.734 / Val −0.763 in New York). Recorded caveats: the expansion outcome is ATR-normalized, so negative volatility-feature ICs reflect volatility mean-reversion plus the normalization denominator; the session-clock features are mutually redundant by construction; expansion advancement is opportunity forecasting, not a trading edge.
+
+Validation: **12/12** structural checks passed; **18/18** new synthetic engine tests passed (planted-signal detection, BH noise rejection, Development-only bin fitting, bootstrap determinism, hand-checked BH q-values, Final-test rejection, session confinement, economic-gate blocking); the full project suite is **112/112**. The screen runs in ≈ 125 seconds with ≈ 1.4 GB peak working memory.
+
+Reusable implementation and tests:
+
+```text
+src/statistical_research/feature_evaluation.py
+tests/test_statistical_research_feature_evaluation.py
+scripts/update_statistical_section7_notebook.py
+```
+
+Saved generated artifacts (excluded from Git):
+
+```text
+data/processed/statistical_research/univariate_results_gc.parquet
+data/processed/statistical_research/univariate_bucket_summary_gc.parquet
+data/processed/statistical_research/feature_stability_gc.parquet
+data/processed/statistical_research/candidate_feature_shortlist_gc.parquet
+```
+
+Generated shortlist/verdict CSVs under `reports/statistical_research/tables/section7/` also remain excluded from Git per the global CSV rule. The tracked record of the milestone is:
+
+```text
+reports/statistical_research/summaries/section7_univariate_evaluation_summary.md
+```
+
+The Final test remains locked. **Exact next section:** Section 8.0 — Redundancy and Incremental Information (cluster the 55 expansion advancers, select interpretable representatives, test incremental value, freeze the candidate set).
+
+---
+
+## Section 8 — Redundancy and Incremental Information Completion
+
+**Status:** COMPLETE — `SECTION 8 STATUS: READY`
+
+Section 8 reduces the 55 Section 7 expansion advancers to a frozen candidate set under rules declared in `Section8Config` (seed 20260721) before computation. Development-only Spearman correlations are clustered with average linkage on `1 − |ρ|` cut at |ρ| ≥ 0.7, yielding **30 clusters** (the largest, size 7, is the ATR/realized-volatility ladder). One representative per cluster is selected mechanically: best passing-cell Validation |IC| at the 60-minute primary horizon, ties broken core-over-experimental then by name. Every non-anchor representative must then demonstrate incremental information beyond the anchor — the per-NY-date **partial rank IC** controlling for the anchor — with Development |partial IC| ≥ 0.05, Validation sign agreement, ≥ 25% retention, and 400/150 date floors, at the 60- and 180-minute horizons.
+
+Result: anchor `atr_20` plus **14 confirmed-incremental representatives = 15 frozen expansion features**, spanning volatility state, session clock, trend efficiency/structure, activity, and one surviving experimental hypothesis (`vwap_elasticity_30_exp`). Fifteen representatives were rejected for no confirmed incremental information beyond the anchor — including `log_volume` (raw Validation |IC| ≈ 0.29, fully redundant with volatility state). The frozen directional set is **explicitly empty** because Section 7 produced no directional advancer.
+
+Governance: same Development+Validation frame as Section 7; Final-test rows excluded and rejected with an error; clustering provably fitted on Development only (synthetic test: a duplicate decorrelated in Validation still clusters with its Development twin). Validation: **8/8 structural checks**, **10/10 new synthetic tests**, **122/122 full suite**. Runtime ≈ 10.5 s.
+
+Reusable implementation and tests:
+
+```text
+src/statistical_research/feature_redundancy.py
+tests/test_statistical_research_redundancy.py
+scripts/update_statistical_section8_notebook.py
+```
+
+Generated artifacts (excluded from Git): `feature_correlation_gc.parquet`, `feature_clusters_gc.parquet`, `feature_incremental_information_gc.parquet`, `frozen_expansion_feature_set_gc.parquet`, and the `reports/statistical_research/tables/section8/` CSVs. Tracked record: `reports/statistical_research/summaries/section8_redundancy_summary.md`.
+
+The Final test remains locked. **Exact next section:** Section 9.0 — Multivariate Research, beginning with simple linear benchmarks on the frozen 15-feature set against the anchor-only baseline under chronological validation.
+
+---
+
+## Section 9 — Multivariate Research Completion
+
+**Status:** COMPLETE — `SECTION 9 STATUS: READY`
+
+Section 9 benchmarks the frozen 15-feature expansion set against the anchor `atr_20` alone. Inputs and outcomes enter as per-date cross-sectional rank z-scores; models are fitted per session; ridge strength is selected by expanding-window walk-forward inside Development only (year folds with a one-trading-date embargo); Validation is touched once per model. Rules were frozen in `Section9Config` (seed 20260722). Tree models are deferred by contract until linear benchmarks earn them.
+
+Result: the model advances in three of four session/horizon cells (Validation IC improvement over the anchor of +0.045 London 60m, +0.081 New York 60m, +0.088 New York 180m, all with bootstrap intervals above zero); London 180m improves by only +0.008 and is recorded as anchor-sufficient. Logistic AUCs reach 0.80 to 0.93 on Validation and always exceed the anchor. Calibration is rank-correct except New York 60m, which overstates upper probability deciles and requires recalibration before any sizing use. Verification: 9/9 structural checks, 12/12 synthetic tests (including the anchor-only overfitting guard), full suite green. Implementation: `src/statistical_research/multivariate.py`, `tests/test_statistical_research_multivariate.py`, `scripts/update_statistical_section9_notebook.py`. Tracked record: `reports/statistical_research/summaries/section9_multivariate_summary.md`.
+
+---
+
+## Section 10 — Statistical Signal Construction Completion
+
+**Status:** COMPLETE — `SECTION 10 STATUS: READY`
+
+Because Section 7 approved no directional feature, Section 10 formalizes benchmark directions (long, short) with the only evidence-based component available: an opportunity gate from the Section 9 frozen per-session 60-minute ridge model at its Development 80th percentile. Stops are 1.5 x decision ATR clamped to 10-100 ticks, targets 2R, holding capped at 120 minutes, one R per trade; session, noon, and 15:30 rules are inherited. Rules frozen in `Section10Config` (seed 20260723).
+
+Result: 419,063 candidates (85,365 gate-passing); Development gate rates 19.98/19.99 percent against the declared 20 percent; median stop 10.6 ticks with the 46 percent minimum-clamp rate recorded. Verification: 7/7 structural checks, 8/8 synthetic tests (including proof that mutating Validation data leaves the frozen gate threshold unchanged). Implementation: `src/statistical_research/signal_construction.py`, `tests/test_statistical_research_signals.py`, `scripts/update_statistical_section10_notebook.py`. Tracked record: `reports/statistical_research/summaries/section10_signal_construction_summary.md`.
+
+---
+
+## Section 11 — Independent Sequential Backtest Completion
+
+**Status:** COMPLETE — `SECTION 11 STATUS: READY` — **standalone statistical system REJECTED**
+
+A chronological single-position simulator executed 86,353 trades across the four declared variants under frictionless, base (2.6 ticks round trip), and pessimistic (4.6 ticks) cost scenarios. Entry fills are verified against bar opens for every trade; ambiguous bars are scored conservative stop-first (0.19 percent of trades); no trade crosses a date, segment, or the 15:30 boundary. Rules frozen in `Section11Config` (seed 20260724).
+
+Result: every variant is rejected under the declared rule (positive net base-scenario expectancy in both partitions required); mean net R ranges -0.19 to -0.28. Win rates near one third at a 2R target are what a directionless market produces, and the expansion gate concentrates activity but supplies no direction. This is the defensible "none qualify" outcome the PRD treats as valid Phase 2 success: Branch B standalone is closed, and its validated opportunity-forecasting assets transfer to the Section 12 hybrid integration phase. Verification: 8/8 structural checks, 13/13 synthetic tests on hand-constructed bar paths, full suite green. Implementation: `src/statistical_research/sequential_backtest.py`, `tests/test_statistical_research_backtest.py`, `scripts/update_statistical_section11_notebook.py`. Tracked record: `reports/statistical_research/summaries/section11_sequential_backtest_summary.md`.
+
+The Final test remains locked throughout Sections 7-11.
+
+---
+
+## Section 12 — Hybrid Integration Research Completion
+
+**Status:** COMPLETE — `SECTION 12 STATUS: READY` — **gate-filter integration adds no confirmed incremental value**
+
+With both branches frozen, the integration boundary was crossed once, in one direction: True POI retests supplied direction candidates and the frozen Section 9/10 opportunity model supplied the filter (PRD Hybrid Mode B). Rules were frozen in `Section12Config` before computation. The full-coverage gate table is verified to reproduce the saved Development/Validation predictions exactly (population-matched per-date rank z-scores; the verification check caught the population-mismatch hazard and forced the fix). 358,072 outcome rows joined at 98.1 percent; verdicts used Development and Validation only with pre-declared floors; the Final test was read once after verdicts were fixed.
+
+Result: all four direction families are `NO_INCREMENTAL_VALUE`. Continuation short showed +1.17R/+0.87R Dev/Val improvements on only 410/241 gated events (below the 500/300 floors); the one-time Final-test read on 301,610 events collapsed that improvement to -0.02R, vindicating the floors. The gate passes only ~5 percent of POI events because POIs form in extended conditions where the model forecasts below-median relative expansion.
+
+Implementation: `src/research/hybrid_integration.py`, `tests/test_hybrid_integration.py` (11 synthetic tests including proof that Final-test outcomes cannot influence verdicts), `scripts/update_statistical_section12_notebook.py`. Tracked record: `reports/statistical_research/summaries/section12_hybrid_integration_summary.md`. Generated artifacts remain excluded from Git.
+
+Open integration forms not yet researched: opportunity-based sizing, no-trade suppression in low-opportunity regimes, and POI-context x statistical-feature interactions.

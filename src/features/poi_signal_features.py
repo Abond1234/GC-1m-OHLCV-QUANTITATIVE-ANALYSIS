@@ -175,10 +175,9 @@ def prepare_section6_feature_frame(
         cfg.poi_search_end_minute,
         inclusive="both",
     )
-    gc["is_execution_window"] = (
-        minute.between(cfg.london_start_minute, cfg.london_end_minute - 1, inclusive="both")
-        | minute.between(cfg.ny_start_minute, cfg.ny_end_minute, inclusive="both")
-    )
+    gc["is_execution_window"] = minute.between(
+        cfg.london_start_minute, cfg.london_end_minute - 1, inclusive="both"
+    ) | minute.between(cfg.ny_start_minute, cfg.ny_end_minute, inclusive="both")
     gc["execution_window_label"] = np.select(
         [
             minute.between(cfg.london_start_minute, cfg.london_end_minute - 1, inclusive="both"),
@@ -195,10 +194,9 @@ def prepare_section6_feature_frame(
     day_group = gc.groupby(day_key, observed=True, sort=False)
 
     cumulative_volume = volume_float.groupby(day_key, observed=True, sort=False).cumsum()
-    gc["day_vwap"] = (
-        price_volume.groupby(day_key, observed=True, sort=False).cumsum()
-        / cumulative_volume.replace(0, np.nan)
-    )
+    gc["day_vwap"] = price_volume.groupby(
+        day_key, observed=True, sort=False
+    ).cumsum() / cumulative_volume.replace(0, np.nan)
     gc["distance_from_vwap_ticks"] = (gc["close"] - gc["day_vwap"]) / cfg.tick_size
     gc["vwap_slope_15m_ticks"] = day_group["day_vwap"].diff(15) / cfg.tick_size
     gc["day_open"] = day_group["open"].transform("first")
@@ -223,9 +221,9 @@ def prepare_section6_feature_frame(
         .agg(day_high=("high", "max"), day_low=("low", "min"), day_close=("close", "last"))
         .sort_index()
     )
-    daily_levels[["previous_day_high", "previous_day_low", "previous_day_close"]] = (
-        daily_levels[["day_high", "day_low", "day_close"]].shift(1)
-    )
+    daily_levels[["previous_day_high", "previous_day_low", "previous_day_close"]] = daily_levels[
+        ["day_high", "day_low", "day_close"]
+    ].shift(1)
     gc = gc.merge(
         daily_levels[["previous_day_high", "previous_day_low", "previous_day_close"]],
         left_on="trade_date_ny",
@@ -241,12 +239,8 @@ def prepare_section6_feature_frame(
     ) / cfg.tick_size
 
     segment_group = gc.groupby("continuous_segment_id", observed=True, sort=False)
-    gc["sma_20"] = segment_group["close"].transform(
-        lambda s: s.rolling(20, min_periods=20).mean()
-    )
-    gc["sma_50"] = segment_group["close"].transform(
-        lambda s: s.rolling(50, min_periods=50).mean()
-    )
+    gc["sma_20"] = segment_group["close"].transform(lambda s: s.rolling(20, min_periods=20).mean())
+    gc["sma_50"] = segment_group["close"].transform(lambda s: s.rolling(50, min_periods=50).mean())
     gc["trend_bias_20_50"] = np.select(
         [gc["sma_20"].gt(gc["sma_50"]), gc["sma_20"].lt(gc["sma_50"])],
         ["bullish", "bearish"],
@@ -255,17 +249,19 @@ def prepare_section6_feature_frame(
     gc["trend_distance_ticks"] = (gc["sma_20"] - gc["sma_50"]) / cfg.tick_size
 
     close_diff = segment_group["close"].diff()
-    rolling_abs_move = close_diff.abs().groupby(
-        gc["continuous_segment_id"],
-        observed=True,
-        sort=False,
-    ).transform(lambda s: s.rolling(20, min_periods=20).sum())
+    rolling_abs_move = (
+        close_diff.abs()
+        .groupby(
+            gc["continuous_segment_id"],
+            observed=True,
+            sort=False,
+        )
+        .transform(lambda s: s.rolling(20, min_periods=20).sum())
+    )
     rolling_net_move = segment_group["close"].diff(20).abs()
     gc["directional_efficiency_20m"] = rolling_net_move / rolling_abs_move.replace(0, np.nan)
     gc["large_move_flag"] = gc["bar_range"].ge(gc["rolling_atr_60m"] * 2.0)
-    gc["volume_spike_flag"] = (
-        gc["volume_zscore_240m"].ge(2.0) | gc["relative_volume_60m"].ge(2.0)
-    )
+    gc["volume_spike_flag"] = gc["volume_zscore_240m"].ge(2.0) | gc["relative_volume_60m"].ge(2.0)
 
     vol_source = gc["rolling_realized_vol_60m"].replace([np.inf, -np.inf], np.nan)
     q = vol_source.quantile([0.25, 0.50, 0.75]).to_numpy()
@@ -604,9 +600,7 @@ def build_retest_table(
         .dt.total_seconds()
         .div(60.0)
     )
-    out["retest_id"] = (
-        out["poi_id"] + "_rt" + out["retest_number"].astype(str).str.zfill(3)
-    )
+    out["retest_id"] = out["poi_id"] + "_rt" + out["retest_number"].astype(str).str.zfill(3)
     first_cols = [
         "retest_id",
         "poi_id",
@@ -667,10 +661,9 @@ def build_candidate_trade_table(
             frame["entry_price"] = frame["poi_mid"]
         else:
             frame["entry_price"] = np.where(bullish, frame["poi_low"], frame["poi_high"])
-        frame["entry_touched_flag"] = (
-            frame["retest_low"].le(frame["entry_price"])
-            & frame["retest_high"].ge(frame["entry_price"])
-        )
+        frame["entry_touched_flag"] = frame["retest_low"].le(frame["entry_price"]) & frame[
+            "retest_high"
+        ].ge(frame["entry_price"])
         entries = frame.loc[frame["entry_touched_flag"]].copy()
         if entries.empty:
             continue
@@ -773,9 +766,7 @@ def build_candidate_trade_table(
         ["retest_ts_event_utc", "poi_id", "entry_variant", "stop_model"],
         kind="mergesort",
     ).reset_index(drop=True)
-    candidates["candidate_trade_id"] = (
-        "GC_CAND_" + (candidates.index + 1).astype(str).str.zfill(8)
-    )
+    candidates["candidate_trade_id"] = "GC_CAND_" + (candidates.index + 1).astype(str).str.zfill(8)
     first_cols = [
         "candidate_trade_id",
         "retest_id",
@@ -966,11 +957,13 @@ def build_section6_validation(
             "candidate_trade_ids_unique": candidate_trade_table["candidate_trade_id"].is_unique
             if not candidate_trade_table.empty
             else True,
-            "poi_activation_in_search_window": poi_table["poi_activation_minute_ny"].between(
+            "poi_activation_in_search_window": poi_table["poi_activation_minute_ny"]
+            .between(
                 cfg.poi_search_start_minute,
                 cfg.poi_search_end_minute,
                 inclusive="both",
-            ).all()
+            )
+            .all()
             if not poi_table.empty
             else True,
             "retests_after_poi_activation": retest_table["candles_since_poi_activation"].gt(0).all()
@@ -981,11 +974,13 @@ def build_section6_validation(
             .all()
             if not retest_table.empty
             else True,
-            "valid_signals_have_valid_stops": signal_frame["stop_ticks"].between(
+            "valid_signals_have_valid_stops": signal_frame["stop_ticks"]
+            .between(
                 cfg.min_stop_ticks,
                 cfg.max_stop_ticks,
                 inclusive="both",
-            ).all()
+            )
+            .all()
             if not signal_frame.empty
             else True,
         }
@@ -1270,9 +1265,7 @@ def annotate_poi_structural_validation(
     events = structural_break_events
     for window in sorted(cfg.structural_swing_windows):
         window_match = np.zeros(n, dtype=bool)
-        window_events = events.loc[
-            events["structural_swing_window_broken"].eq(window)
-        ]
+        window_events = events.loc[events["structural_swing_window_broken"].eq(window)]
         if window_events.empty:
             matches_by_window[window] = window_match
             continue
@@ -1316,21 +1309,21 @@ def annotate_poi_structural_validation(
                 replace_pos = matched_poi_pos[replace_primary]
                 replace_events = matched_events.iloc[np.flatnonzero(replace_primary)]
                 primary_window[replace_pos] = window
-                primary_break_bar[replace_pos] = replace_events[
-                    "structural_break_bar_id"
-                ].to_numpy("int32")
-                primary_swing_bar[replace_pos] = replace_events[
-                    "structural_swing_bar_id"
-                ].to_numpy("int32")
+                primary_break_bar[replace_pos] = replace_events["structural_break_bar_id"].to_numpy(
+                    "int32"
+                )
+                primary_swing_bar[replace_pos] = replace_events["structural_swing_bar_id"].to_numpy(
+                    "int32"
+                )
                 primary_swing_price[replace_pos] = replace_events[
                     "structural_swing_price"
                 ].to_numpy("float64")
                 primary_break_distance[replace_pos] = replace_events[
                     "structural_break_distance_ticks"
                 ].to_numpy("float64")
-                primary_break_mode[replace_pos] = replace_events[
-                    "structural_break_mode"
-                ].to_numpy(object)
+                primary_break_mode[replace_pos] = replace_events["structural_break_mode"].to_numpy(
+                    object
+                )
 
         matches_by_window[window] = window_match
 
@@ -1395,15 +1388,11 @@ def build_section6b_validation(
             == len(candidate_trade_table),
             "signal_row_count_preserved": len(structural_signal_frame) == len(signal_frame),
             "structural_columns_present_poi": required.issubset(structural_poi_table.columns),
-            "structural_columns_present_retest": required.issubset(
-                structural_retest_table.columns
-            ),
+            "structural_columns_present_retest": required.issubset(structural_retest_table.columns),
             "structural_columns_present_candidate": required.issubset(
                 structural_candidate_trade_table.columns
             ),
-            "structural_columns_present_signal": required.issubset(
-                structural_signal_frame.columns
-            ),
+            "structural_columns_present_signal": required.issubset(structural_signal_frame.columns),
             "structural_partition_valid": bool((validated ^ local_only).all()),
             "validated_rows_have_structural_window": structural_poi_table.loc[
                 validated,
@@ -1436,9 +1425,7 @@ def build_section6b_summary(
             "structurally_validated_poi_count": int(
                 structural_poi_table["structural_swing_break_flag"].sum()
             ),
-            "local_swing_only_poi_count": int(
-                structural_poi_table["local_swing_only_flag"].sum()
-            ),
+            "local_swing_only_poi_count": int(structural_poi_table["local_swing_only_flag"].sum()),
             "baseline_retest_count": len(structural_retest_table),
             "structurally_validated_retest_count": int(
                 structural_retest_table["structural_swing_break_flag"].sum()
