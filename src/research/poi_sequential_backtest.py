@@ -288,7 +288,22 @@ def run_poi_sequential_backtest(
                         "win_rate": float((group["net_r"] > 0).mean()),
                     }
                 )
-    performance = pd.DataFrame.from_records(performance_records)
+    performance = pd.DataFrame.from_records(
+        performance_records,
+        columns=[
+            "cost_scenario",
+            "research_partition",
+            "trades",
+            "trading_dates",
+            "win_rate",
+            "mean_net_r",
+            "median_net_r",
+            "profit_factor",
+            "max_drawdown_r",
+            "ambiguous_rate",
+            "mean_holding_minutes",
+        ],
+    )
     yearly_performance = pd.DataFrame.from_records(yearly_records)
 
     base = performance.loc[performance["cost_scenario"].eq("base")].set_index("research_partition")
