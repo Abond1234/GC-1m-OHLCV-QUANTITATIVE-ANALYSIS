@@ -10,10 +10,18 @@ import pandas as pd
 import psutil
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+# Single-pass memory reference measured on the full population; the adaptive
+# plan scales this estimate by the loaded signal count.
+FULL_RUN_SIGNAL_ROWS = 1_080_394
+FULL_RUN_PEAK_GB = 4.2
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.resources import chronological_chunks, plan_processing
+
 from src.features.poi_context_features import (
+    refit_development_volatility_bucket,
     CONTEXT_BAR_COLUMNS,
     PoiContextConfig,
     build_true_poi_context_frame,
@@ -36,6 +44,12 @@ def main() -> None:
     parser.add_argument("--start-date")
     parser.add_argument("--end-date")
     parser.add_argument("--skip-stop-target", action="store_true")
+    parser.add_argument(
+        "--force-chunks",
+        type=int,
+        default=None,
+        help="override the adaptive memory plan with an explicit chunk count",
+    )
     args = parser.parse_args()
 
     processed = PROJECT_ROOT / "data" / "processed"
@@ -79,14 +93,58 @@ def main() -> None:
     registry_path = save_feature_registry(
         reports / "section7_true_poi_feature_registry.csv", context_cfg
     )
-    context = stage(
-        "true_poi_context_frame",
-        lambda: build_true_poi_context_frame(signals, bars, context_cfg),
+    # Adaptive memory plan: the context/label build is the single-pass memory
+    # peak (about 4.2 GB for the full 1,080,394-row population).  Machines
+    # without that headroom process chronological whole-day chunks instead;
+    # context features and same-day labels are per-event against the full bar
+    # history, so chunked output is identical to a single pass.
+    estimated_peak_gb = max(
+        FULL_RUN_PEAK_GB * len(signals) / FULL_RUN_SIGNAL_ROWS, 0.5
     )
-    labels = stage(
-        "paired_directional_outcomes",
-        lambda: build_directional_outcome_labels(context, bars, research_cfg),
-    )
+    plan = plan_processing(estimated_peak_gb)
+    chunk_count = args.force_chunks if args.force_chunks else plan.chunk_count
+    suffix = f"; forced chunks={args.force_chunks}" if args.force_chunks else ""
+    print(f"[section7] {plan.describe()}{suffix}", flush=True)
+
+    if chunk_count > 1:
+        date_chunks = chronological_chunks(
+            pd.to_datetime(signals["trade_date_ny"]).to_numpy(), chunk_count
+        )
+        context_parts: list[pd.DataFrame] = []
+        label_parts: list[pd.DataFrame] = []
+        for index, chunk_dates in enumerate(date_chunks, start=1):
+            chunk_signals = signals.loc[
+                pd.to_datetime(signals["trade_date_ny"]).isin(chunk_dates)
+            ]
+            chunk_context = stage(
+                f"true_poi_context_frame_chunk_{index}_of_{len(date_chunks)}",
+                lambda s=chunk_signals: build_true_poi_context_frame(s, bars, context_cfg),
+            )
+            label_parts.append(
+                stage(
+                    f"paired_directional_outcomes_chunk_{index}_of_{len(date_chunks)}",
+                    lambda c=chunk_context: build_directional_outcome_labels(
+                        c, bars, research_cfg
+                    ),
+                )
+            )
+            context_parts.append(chunk_context)
+        context = pd.concat(context_parts, ignore_index=True)
+        labels = pd.concat(label_parts, ignore_index=True)
+        del context_parts, label_parts
+        # Development-fitted thresholds must see the full event population, so
+        # they are refitted once on the concatenated frame; this reproduces the
+        # single-pass output exactly.
+        context = refit_development_volatility_bucket(context, context_cfg)
+    else:
+        context = stage(
+            "true_poi_context_frame",
+            lambda: build_true_poi_context_frame(signals, bars, context_cfg),
+        )
+        labels = stage(
+            "paired_directional_outcomes",
+            lambda: build_directional_outcome_labels(context, bars, research_cfg),
+        )
     feature_summary = stage(
         "conditional_feature_studies",
         lambda: build_feature_study_summary(context, labels, research_cfg),
