@@ -4754,3 +4754,21 @@ remaining path is the frozen Section 12B contract; failing that, Option 3 archiv
 ```
 
 Details: `reports/statistical_research/summaries/section8_poi_sequential_backtest_summary.md`.
+
+# Authoritative Update — Section 12B Opportunity Conditioning Complete; S7P02 Family Archived — 2026-07-20
+
+```text
+Section 12B (opportunity-conditioned sizing/exits/suppression): COMPLETE — NO_ADVANCE on all
+three pre-declared hypotheses. H1 proportional sizing shows the model's most persistent positive
+signal (mean/MAD ratio effects with 0.81-1.07 Validation retention) but fails the base-cost
+bootstrap interval and the 0.05R mean-shift materiality bound - the lift is high-quintile return
+concentration, the effect Section 12 already rejected. H2 exit conditioning and H3 suppression
+both flip sign in Validation. One-time Final-test read: every effect within 0.03R of zero.
+Per the authorization memo linkage (Option 1 SEQUENTIAL_REJECTED + Section 12B negative),
+Option 3 applies: the S7P02 continuation-short family is ARCHIVED with its evidence chain.
+The Phase 2 research program is closed for both branches. Remaining PRD work is engineering:
+GC-to-MGC transfer validation, prop-firm rules, forward-test scaffolding. Final test locked
+throughout; any new research question requires a fresh pre-declared contract.
+```
+
+Details: Section 12B completion entry in `project_docs/statistical_feature_research_context_report.md` and `reports/statistical_research/summaries/section12b_opportunity_conditioning_summary.md`.
