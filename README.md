@@ -256,6 +256,8 @@ python -m pip install numpy pandas scipy pyarrow matplotlib seaborn databento ju
 
 On macOS or Linux, activate with `source .venv/bin/activate`.
 
+In VS Code, select the repository virtual environment as the Python interpreter so editor diagnostics match the executed environment. Style is enforced with ruff (configuration in `pyproject.toml`); run `python -m ruff check src scripts tests` and `python -m ruff format src scripts tests` before committing.
+
 Alternatively install from the committed manifests: `python -m pip install -r requirements.txt` for top-level dependencies, or `python -m pip install -r requirements.lock.txt` to reproduce the exact frozen environment used to execute the committed notebooks and tests.
 
 ### 3. Obtain the research data
