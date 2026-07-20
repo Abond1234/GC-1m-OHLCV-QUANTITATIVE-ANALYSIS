@@ -35,4 +35,6 @@ Declared decision rule: a variant advances only with positive net base-scenario 
 
 Branch B standalone research is complete through its sequential test. The next roadmap step is Section 12 integration research: POI events as direction candidates, statistical opportunity models as filters and sizing context, evaluated against the POI baseline alone. The Final test remains locked.
 
+*Follow-up (2026-07-20): executed as declared - see `section12_hybrid_integration_summary.md`.*
+
 SECTION 11 STATUS: READY

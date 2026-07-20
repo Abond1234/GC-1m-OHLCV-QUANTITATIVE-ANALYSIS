@@ -37,4 +37,6 @@ Continuation short is the instructive case: dramatic Development and Validation 
 
 `hybrid_family_results_gc.parquet`, `hybrid_quintile_results_gc.parquet`, `hybrid_verdicts_gc.parquet`, `hybrid_final_test_report_gc.parquet`, and the `tables/section12/` CSVs.
 
+*Follow-up (2026-07-20): the remaining integration forms (sizing, exits, suppression) were tested under the frozen Section 12B contract - all NO_ADVANCE; see `section12b_opportunity_conditioning_summary.md`.*
+
 SECTION 12 STATUS: READY

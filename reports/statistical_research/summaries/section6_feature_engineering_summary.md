@@ -81,4 +81,6 @@ Highest Development missingness:
 
 **Exact next section:** Section 7.0 — Univariate Feature Evaluation
 
+*Follow-up (2026-07-20): executed as declared - see `section7_univariate_evaluation_summary.md`.*
+
 SECTION 6 STATUS: READY
