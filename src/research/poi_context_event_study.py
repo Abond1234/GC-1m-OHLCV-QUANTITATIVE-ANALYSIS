@@ -137,6 +137,9 @@ def build_directional_outcome_labels(
     risk = out["label_risk_points"].to_numpy("float64")
     long_side = out["trade_side"].eq("long").to_numpy(bool)
 
+    # Path labels are accumulated in a plain dict and joined in one concat so
+    # the wide output frame stays block-consolidated (no fragmented inserts).
+    path_columns: dict[str, np.ndarray] = {}
     for horizon in cfg.horizons:
         path = build_bar_horizon_path_features(
             section7_bars, horizon, Section7Config(forward_horizons=(horizon,))
@@ -151,44 +154,51 @@ def build_directional_outcome_labels(
             mfe = np.where(long_side, max_high - entry, entry - min_low)
             mae = np.where(long_side, entry - min_low, max_high - entry)
             prefix = f"label_{mode}_{horizon}m_"
-            out[prefix + "valid"] = valid
-            out[prefix + "signed_return"] = np.where(valid, forward_points / entry, np.nan)
-            out[prefix + "r"] = np.where(valid, forward_points / risk, np.nan)
-            out[prefix + "mfe_r"] = np.where(valid, mfe / risk, np.nan)
-            out[prefix + "mae_r"] = np.where(valid, mae / risk, np.nan)
-            out[prefix + "positive_final_r"] = out[prefix + "r"] > 0
+            path_columns[prefix + "valid"] = valid
+            path_columns[prefix + "signed_return"] = np.where(valid, forward_points / entry, np.nan)
+            path_columns[prefix + "r"] = np.where(valid, forward_points / risk, np.nan)
+            path_columns[prefix + "mfe_r"] = np.where(valid, mfe / risk, np.nan)
+            path_columns[prefix + "mae_r"] = np.where(valid, mae / risk, np.nan)
+            path_columns[prefix + "positive_final_r"] = path_columns[prefix + "r"] > 0
             if mode == "capped":
-                out[prefix + "forced_exit_flag"] = aligned["capped_forced_exit_flag"].to_numpy(bool) & valid
+                path_columns[prefix + "forced_exit_flag"] = (
+                    aligned["capped_forced_exit_flag"].to_numpy(bool) & valid
+                )
+    out = pd.concat([out, pd.DataFrame(path_columns, index=out.index)], axis=1)
 
     paired = out.pivot(index="true_retest_id", columns="hypothesis", values="label_capped_60m_r")
     dominance = np.sign(paired.get("continuation", np.nan) - paired.get("reversal", np.nan))
-    out["label_continuation_dominance"] = out["true_retest_id"].map(dominance).eq(1)
-    out["label_reversal_dominance"] = out["true_retest_id"].map(dominance).eq(-1)
-    out["label_zone_hold"] = np.where(
+    derived: dict[str, np.ndarray | pd.Series] = {}
+    derived["label_continuation_dominance"] = out["true_retest_id"].map(dominance).eq(1)
+    derived["label_reversal_dominance"] = out["true_retest_id"].map(dominance).eq(-1)
+    zone_hold = np.where(
         out["direction"].eq("bullish"),
         out["label_capped_60m_r"].where(out["trade_side"].eq("long"), -out["label_capped_60m_r"]),
         out["label_capped_60m_r"].where(out["trade_side"].eq("short"), -out["label_capped_60m_r"]),
     ) > 0
-    out["label_zone_failure"] = ~out["label_zone_hold"]
-    _add_interaction_path_labels(out, section7_bars)
+    derived["label_zone_hold"] = zone_hold
+    derived["label_zone_failure"] = ~zone_hold
+    derived.update(_build_interaction_path_labels(out, section7_bars))
     location_mfe_points = (
         out["label_capped_60m_mfe_r"] * out["label_risk_points"]
     ).groupby(out["true_retest_id"]).max()
     location_r = out["label_capped_60m_mfe_r"].groupby(out["true_retest_id"]).max()
-    out["label_location_max_move_away_points_60m"] = out["true_retest_id"].map(location_mfe_points)
-    out["label_location_max_move_away_atr_60m"] = (
-        out["label_location_max_move_away_points_60m"]
-        / (out["feat_long_term_atr_ticks"] * 0.10)
-    )
-    out["label_location_reaction_0_5atr"] = out["label_location_max_move_away_atr_60m"] >= 0.5
-    out["label_location_reaction_1_0atr"] = out["label_location_max_move_away_atr_60m"] >= 1.0
+    location_points = out["true_retest_id"].map(location_mfe_points)
+    location_atr = location_points / (out["feat_long_term_atr_ticks"] * 0.10)
+    derived["label_location_max_move_away_points_60m"] = location_points
+    derived["label_location_max_move_away_atr_60m"] = location_atr
+    derived["label_location_reaction_0_5atr"] = location_atr >= 0.5
+    derived["label_location_reaction_1_0atr"] = location_atr >= 1.0
+    mapped_location_r = out["true_retest_id"].map(location_r)
     for threshold in (1, 2, 3):
-        out[f"label_location_reaction_{threshold}r"] = out["true_retest_id"].map(location_r) >= threshold
-    return out
+        derived[f"label_location_reaction_{threshold}r"] = mapped_location_r >= threshold
+    return pd.concat([out, pd.DataFrame(derived, index=out.index)], axis=1)
 
 
-def _add_interaction_path_labels(out: pd.DataFrame, bars: pd.DataFrame) -> None:
-    """Attach touch aftermath and time-to-extreme diagnostics without predictors."""
+def _build_interaction_path_labels(
+    out: pd.DataFrame, bars: pd.DataFrame
+) -> dict[str, np.ndarray | pd.Series]:
+    """Touch aftermath and time-to-extreme diagnostic columns, returned unattached."""
 
     high = bars["high"].to_numpy("float64", copy=False)
     low = bars["low"].to_numpy("float64", copy=False)
@@ -214,8 +224,10 @@ def _add_interaction_path_labels(out: pd.DataFrame, bars: pd.DataFrame) -> None:
         adverse[~valid] = -np.inf
         time_mfe[rows] = np.argmax(favorable, axis=1)
         time_mae[rows] = np.argmax(adverse, axis=1)
-    out["label_time_to_mfe_60m"] = time_mfe
-    out["label_time_to_mae_60m"] = time_mae
+    columns: dict[str, np.ndarray | pd.Series] = {
+        "label_time_to_mfe_60m": time_mfe,
+        "label_time_to_mae_60m": time_mae,
+    }
 
     unique = out.drop_duplicates("true_retest_id").copy()
     urid = unique["retest_bar_id"].to_numpy("int64")
@@ -243,10 +255,11 @@ def _add_interaction_path_labels(out: pd.DataFrame, bars: pd.DataFrame) -> None:
         _reentry=reentry,
         _inside=time_inside,
     ).set_index("true_retest_id")
-    out["label_interaction_immediate_exit_next_bar"] = out["true_retest_id"].map(mapping["_immediate_exit"])
-    out["label_interaction_immediate_rejection_ticks"] = out["true_retest_id"].map(mapping["_rejection_ticks"])
-    out["label_interaction_reentry_within_15m"] = out["true_retest_id"].map(mapping["_reentry"])
-    out["label_interaction_bars_inside_poi_next_15m"] = out["true_retest_id"].map(mapping["_inside"])
+    columns["label_interaction_immediate_exit_next_bar"] = out["true_retest_id"].map(mapping["_immediate_exit"])
+    columns["label_interaction_immediate_rejection_ticks"] = out["true_retest_id"].map(mapping["_rejection_ticks"])
+    columns["label_interaction_reentry_within_15m"] = out["true_retest_id"].map(mapping["_reentry"])
+    columns["label_interaction_bars_inside_poi_next_15m"] = out["true_retest_id"].map(mapping["_inside"])
+    return columns
 
 
 def build_stop_policy_opportunities(
