@@ -1267,14 +1267,14 @@ Independent univariate feature evaluation:   COMPLETE
 Redundancy and incremental information:      COMPLETE
 Multivariate research:                       COMPLETE
 Statistical signal construction:             COMPLETE
-Independent statistical backtest:            NOT STARTED
-POI integration research:                    FUTURE PHASE
+Independent statistical backtest:            COMPLETE — standalone system REJECTED
+POI integration research:                    NEXT PHASE
 ```
 
 The correct next action is:
 
 ```text
-Section 11.0 — Independent Sequential Backtest
+Section 12.0 — Integration Research (POI direction candidates filtered and sized by the frozen statistical opportunity models)
 ```
 
 ---
@@ -1568,3 +1568,14 @@ Because Section 7 approved no directional feature, Section 10 formalizes benchma
 
 Result: 419,063 candidates (85,365 gate-passing); Development gate rates 19.98/19.99 percent against the declared 20 percent; median stop 10.6 ticks with the 46 percent minimum-clamp rate recorded. Verification: 7/7 structural checks, 8/8 synthetic tests (including proof that mutating Validation data leaves the frozen gate threshold unchanged). Implementation: `src/statistical_research/signal_construction.py`, `tests/test_statistical_research_signals.py`, `scripts/update_statistical_section10_notebook.py`. Tracked record: `reports/statistical_research/summaries/section10_signal_construction_summary.md`.
 
+---
+
+## Section 11 — Independent Sequential Backtest Completion
+
+**Status:** COMPLETE — `SECTION 11 STATUS: READY` — **standalone statistical system REJECTED**
+
+A chronological single-position simulator executed 86,353 trades across the four declared variants under frictionless, base (2.6 ticks round trip), and pessimistic (4.6 ticks) cost scenarios. Entry fills are verified against bar opens for every trade; ambiguous bars are scored conservative stop-first (0.19 percent of trades); no trade crosses a date, segment, or the 15:30 boundary. Rules frozen in `Section11Config` (seed 20260724).
+
+Result: every variant is rejected under the declared rule (positive net base-scenario expectancy in both partitions required); mean net R ranges -0.19 to -0.28. Win rates near one third at a 2R target are what a directionless market produces, and the expansion gate concentrates activity but supplies no direction. This is the defensible "none qualify" outcome the PRD treats as valid Phase 2 success: Branch B standalone is closed, and its validated opportunity-forecasting assets transfer to the Section 12 hybrid integration phase. Verification: 8/8 structural checks, 13/13 synthetic tests on hand-constructed bar paths, full suite green. Implementation: `src/statistical_research/sequential_backtest.py`, `tests/test_statistical_research_backtest.py`, `scripts/update_statistical_section11_notebook.py`. Tracked record: `reports/statistical_research/summaries/section11_sequential_backtest_summary.md`.
+
+The Final test remains locked throughout Sections 7-11.
