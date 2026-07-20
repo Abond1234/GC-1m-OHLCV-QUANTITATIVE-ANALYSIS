@@ -1260,12 +1260,13 @@ Multivariate research:                       COMPLETE
 Statistical signal construction:             COMPLETE
 Independent statistical backtest:            COMPLETE — standalone system REJECTED
 POI integration research (gate-filter form):  COMPLETE — no confirmed incremental value
+Opportunity conditioning (Section 12B):      COMPLETE — no hypothesis advances; family archived
 ```
 
 The correct next action is:
 
 ```text
-Integration follow-ups: opportunity-based sizing, no-trade suppression, and POI-x-statistical feature interactions; or Branch A Section 8 backtest authorization
+Research program complete for Phase 2. Remaining PRD work is engineering: GC-to-MGC transfer validation, prop-firm rules, and forward-test scaffolding. Any new research question requires a fresh pre-declared contract.
 ```
 
 ---
@@ -1583,4 +1584,16 @@ Result: all four direction families are `NO_INCREMENTAL_VALUE`. Continuation sho
 
 Implementation: `src/research/hybrid_integration.py`, `tests/test_hybrid_integration.py` (11 synthetic tests including proof that Final-test outcomes cannot influence verdicts), `scripts/update_statistical_section12_notebook.py`. Tracked record: `reports/statistical_research/summaries/section12_hybrid_integration_summary.md`. Generated artifacts remain excluded from Git.
 
-Open integration forms not yet researched: opportunity-based sizing, no-trade suppression in low-opportunity regimes, and POI-context x statistical-feature interactions.
+The open integration forms named here (opportunity-based sizing, no-trade suppression) were subsequently tested under the frozen Section 12B contract - see the Section 12B completion entry below.
+
+---
+
+## Section 12B — Opportunity Conditioning Completion
+
+**Status:** COMPLETE — `SECTION 12B STATUS: READY` — **no hypothesis advances; the S7P02 family is archived**
+
+Executed exactly per the pre-declared contract in `project_docs/section12b_research_contract.md`: three hypotheses tested the frozen opportunity model in the roles magnitude information can legitimately play for the True POI continuation-short family - H1 sizing (constant / proportional-to-quintile / inverse-to-quintile weight ladders), H2 exit-horizon conditioning restricted to the capped 60/120/240-minute labels of the frozen Section 7 grid, and H3 bottom-quintile suppression. Population: the Section 12 decision-bar join (85,336 events at 98.1 percent coverage; 7,066/5,225/73,045 across partitions). Quintiles Development-fitted; advancement required a Development date-block bootstrap interval excluding zero, Validation sign agreement with 25 percent retention, floors of 1,000/700 events across 200/120 dates on affected subsets; H1 additionally both `Section11Config` cost scenarios plus a 0.05R mean-shift materiality bound.
+
+Result: `NO_ADVANCE` on all three. H1 proportional sizing is the instructive near-miss - positive mean/MAD ratio effects with 0.81-1.07 Validation retention, but the Development interval includes zero at base costs and the scheme shifts mean R by +0.04 to +0.08R, breaching materiality: the lift is the same high-quintile return concentration Section 12 already rejected, relabeled as sizing. H2's Development-fitted mapping flips negative in Validation (retention -2.0). H3 improves both co-primary effects in Development and flips both in Validation. The one-time Final-test read (after verdicts were fixed) shows every effect within 0.03R of zero. Per the linkage in `project_docs/section8_authorization_memo.md`, with Option 1 already SEQUENTIAL_REJECTED, Option 3 applies: the S7P02 family is archived with the complete evidence chain.
+
+Implementation: `src/research/opportunity_conditioning.py`, `tests/test_opportunity_conditioning.py` (10 synthetic tests with planted effects proving each pass and veto path), `scripts/update_statistical_section12b_notebook.py`. Tracked record: `reports/statistical_research/summaries/section12b_opportunity_conditioning_summary.md` plus CSVs under `reports/statistical_research/tables/section12b/`. Generated artifacts remain excluded from Git.

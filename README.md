@@ -14,9 +14,9 @@
 
 Quant Project 1 is a systematic intraday research codebase for CME Gold Futures (GC) and Micro Gold Futures (MGC) using Databento one-minute OHLCV data. It converts a discretionary Point of Interest (POI) concept into testable rules while developing a second, deliberately independent statistical-feature research branch.
 
-This repository is a research environment, not a live trading system. It does not currently contain an approved strategy, production execution, position sizing, transaction-cost modelling, or a completed sequential backtest.
+This repository is a research environment, not a live trading system. It does not contain an approved strategy or production execution. What it does contain is a completed, honestly-reported research program: two independent branches taken through pre-declared contracts, cost-aware sequential backtests, and integration research, ending in defensible rejections.
 
-> **Current decision:** the refined True POI definition and Section 7 context study are complete, but no candidate has been approved for Section 8 POI backtesting. The independent statistical branch has completed its full standalone arc (Sections 7–11) on Development+Validation only: no directional edge exists, opportunity forecasting is validated, and the standalone statistical system is rejected by its own sequential backtest. The next research phase is Section 12 hybrid integration, combining POI direction candidates with the frozen statistical opportunity models.
+> **Current decision:** the Phase 2 research program is closed for both branches. The S7P02 continuation-short family — the only policy that ever survived screening — shows a real frictionless event-level edge but was SEQUENTIAL_REJECTED at base costs (Section 8), and every conditioning form in the frozen Section 12B contract (sizing, exits, suppression) failed Validation. Per the authorization memo's linkage the family is **archived** with its evidence chain. Remaining PRD work is engineering: GC-to-MGC transfer validation, prop-firm rules, and forward-test scaffolding. Any new research question requires a fresh pre-declared contract.
 
 ## Project at a glance
 
@@ -30,8 +30,8 @@ This repository is a research environment, not a live trading system. It does no
 | Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
 | Business timezone | `America/New_York`; UTC timestamps remain immutable join keys |
 | Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
-| Automated tests | 94 tests across 9 modules |
-| Repository state | Research only; no Section 8 candidate approved |
+| Automated tests | 198 tests across 19 modules |
+| Repository state | Research complete for Phase 2; no strategy approved; S7P02 family archived |
 
 ## Project status
 
@@ -55,8 +55,8 @@ The active-contract selector compares the daily volume winner, five-day rolling-
 | Section 6C refined POI definition and downstream tables | Complete and frozen |
 | Section 7R refined event study | Complete; retained as research history |
 | Section 7 True POI context, matched controls, first passage, and candidate policies | Complete |
-| Section 8 sequential backtest | Not started |
-| Candidate approved for Section 8 | **None** |
+| Section 8 sequential backtest of S7P02 | Complete — **SEQUENTIAL_REJECTED at base costs** |
+| Section 12B opportunity conditioning of S7P02 | Complete — **no hypothesis advances; family archived** |
 
 The current Section 7 population contains:
 
@@ -66,7 +66,7 @@ The current Section 7 population contains:
 - 264 registered decision-time `feat_*` fields.
 - 882 New York trading dates.
 
-`S7P02_NY_BEAR_CONT` is the only policy retained as `RESEARCH_ONLY`. It produced positive mean R in Development, Validation, and Final test, but median and lower-quartile outcomes remained -1R and the result was runner-dependent. It is not approved for backtesting or trading.
+`S7P02_NY_BEAR_CONT` was the only policy retained as `RESEARCH_ONLY`. Its event-level edge reproduced faithfully in sequential frictionless form (+0.138/+0.117/+0.063 mean R across partitions) but the 2.6-tick base cost load flips every partition negative, and no Section 12B conditioning form (sizing, exits, suppression) survived Validation. The family is archived; it is not approved for trading.
 
 ### Branch B — independent statistical research
 
@@ -82,6 +82,7 @@ The current Section 7 population contains:
 | Section 10 signal construction | Complete |
 | Section 11 independent sequential backtest | Complete — **standalone system rejected** |
 | Section 12 hybrid integration (gate-filter form) | Complete — **no confirmed incremental value** |
+| Section 12B opportunity conditioning (sizing/exits/suppression) | Complete — **no hypothesis advances** |
 
 The statistical branch currently contains:
 
@@ -95,7 +96,7 @@ The statistical branch currently contains:
 - Completed multivariate benchmarks: the 15-feature ridge model beats the anchor in 3 of 4 session/horizon cells on Validation (IC improvements up to +0.088 with bootstrap intervals above zero); logistic AUCs reach 0.80–0.93. New York 60m probabilities are miscalibrated and flagged for recalibration before sizing use.
 - A completed sequential backtest of the honest candidate family (benchmark directions, frozen opportunity gate, declared costs): **all four variants rejected** across 86,353 simulated trades. The standalone statistical system has no directional edge.
 
-Branch B standalone research is closed with a defensible rejection. Its validated assets — the frozen expansion feature set and per-session opportunity models — carry forward to Section 12 hybrid integration research, where POI events supply direction candidates and the statistical models supply opportunity quality, sizing context, and no-trade filters.
+Branch B standalone research is closed with a defensible rejection, and both of its carry-forward integration forms have now been tested to completion against Branch A's POI events: the gate-filter form (Section 12) adds no confirmed incremental value, and the conditioning forms (Section 12B: quintile-based sizing, exit-horizon selection, bottom-quintile suppression) all fail Validation under the pre-declared contract. The opportunity model demonstrably forecasts movement magnitude, but no tested use of that forecast survives out-of-sample criteria at realistic costs.
 
 ## Research architecture
 

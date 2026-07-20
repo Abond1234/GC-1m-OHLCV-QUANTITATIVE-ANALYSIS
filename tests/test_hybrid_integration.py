@@ -134,9 +134,7 @@ class HybridAnalysisTests(unittest.TestCase):
         mutated.loc[final_rows, "robust_r"] = -5.0
         result = build_hybrid_analysis(mutated, FAST_CONFIG)
         pd.testing.assert_frame_equal(result.verdicts, self.result.verdicts)
-        self.assertLess(
-            result.final_test_report["baseline_mean_robust_r"].max(), -4.0
-        )
+        self.assertLess(result.final_test_report["baseline_mean_robust_r"].max(), -4.0)
 
     def test_quintiles_are_monotone_for_planted_effect(self) -> None:
         q = self.result.quintile_results
