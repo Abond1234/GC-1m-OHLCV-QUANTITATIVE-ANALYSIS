@@ -1265,7 +1265,8 @@ Independent baseline behaviour:              COMPLETE
 Independent feature engineering:             COMPLETE
 Independent univariate feature evaluation:   COMPLETE
 Redundancy and incremental information:      COMPLETE
-Multivariate research:                       NOT STARTED
+Multivariate research:                       COMPLETE
+Statistical signal construction:             NOT STARTED
 Independent statistical backtest:            NOT STARTED
 POI integration research:                    FUTURE PHASE
 ```
@@ -1273,7 +1274,7 @@ POI integration research:                    FUTURE PHASE
 The correct next action is:
 
 ```text
-Section 9.0 — Multivariate Research (linear benchmarks on the frozen 15-feature expansion set)
+Section 10.0 — Statistical Signal Construction
 ```
 
 ---
@@ -1546,3 +1547,14 @@ scripts/update_statistical_section8_notebook.py
 Generated artifacts (excluded from Git): `feature_correlation_gc.parquet`, `feature_clusters_gc.parquet`, `feature_incremental_information_gc.parquet`, `frozen_expansion_feature_set_gc.parquet`, and the `reports/statistical_research/tables/section8/` CSVs. Tracked record: `reports/statistical_research/summaries/section8_redundancy_summary.md`.
 
 The Final test remains locked. **Exact next section:** Section 9.0 — Multivariate Research, beginning with simple linear benchmarks on the frozen 15-feature set against the anchor-only baseline under chronological validation.
+
+---
+
+## Section 9 — Multivariate Research Completion
+
+**Status:** COMPLETE — `SECTION 9 STATUS: READY`
+
+Section 9 benchmarks the frozen 15-feature expansion set against the anchor `atr_20` alone. Inputs and outcomes enter as per-date cross-sectional rank z-scores; models are fitted per session; ridge strength is selected by expanding-window walk-forward inside Development only (year folds with a one-trading-date embargo); Validation is touched once per model. Rules were frozen in `Section9Config` (seed 20260722). Tree models are deferred by contract until linear benchmarks earn them.
+
+Result: the model advances in three of four session/horizon cells (Validation IC improvement over the anchor of +0.045 London 60m, +0.081 New York 60m, +0.088 New York 180m, all with bootstrap intervals above zero); London 180m improves by only +0.008 and is recorded as anchor-sufficient. Logistic AUCs reach 0.80 to 0.93 on Validation and always exceed the anchor. Calibration is rank-correct except New York 60m, which overstates upper probability deciles and requires recalibration before any sizing use. Verification: 9/9 structural checks, 12/12 synthetic tests (including the anchor-only overfitting guard), full suite green. Implementation: `src/statistical_research/multivariate.py`, `tests/test_statistical_research_multivariate.py`, `scripts/update_statistical_section9_notebook.py`. Tracked record: `reports/statistical_research/summaries/section9_multivariate_summary.md`.
+
