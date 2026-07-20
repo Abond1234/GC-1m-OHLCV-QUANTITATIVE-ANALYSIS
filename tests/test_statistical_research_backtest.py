@@ -14,12 +14,14 @@ from src.statistical_research.sequential_backtest import (
 )
 
 
-def _make_bars(prices: list[tuple[float, float, float, float]], *, start_minute: int = 420) -> pd.DataFrame:
+def _make_bars(
+    prices: list[tuple[float, float, float, float]], *, start_minute: int = 420
+) -> pd.DataFrame:
     """Deterministic one-date bar sequence starting 07:00 New York."""
 
     n = len(prices)
     timestamps = pd.date_range("2023-03-01 12:00", periods=n, freq="1min").to_numpy()
-    opens, highs, lows, closes = (np.array(x, dtype=np.float64) for x in zip(*prices))
+    opens, highs, lows, closes = (np.array(x, dtype=np.float64) for x in zip(*prices, strict=False))
     return pd.DataFrame(
         {
             "ts_event_utc": timestamps,
@@ -34,9 +36,15 @@ def _make_bars(prices: list[tuple[float, float, float, float]], *, start_minute:
     )
 
 
-def _make_candidate(bars: pd.DataFrame, bar_position: int, *, stop_points: float = 1.0,
-                    target_points: float = 2.0, gate: bool = True,
-                    partition: str = "Development") -> pd.DataFrame:
+def _make_candidate(
+    bars: pd.DataFrame,
+    bar_position: int,
+    *,
+    stop_points: float = 1.0,
+    target_points: float = 2.0,
+    gate: bool = True,
+    partition: str = "Development",
+) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "entry_timestamp_utc": [bars["ts_event_utc"].iloc[bar_position]],
@@ -57,11 +65,13 @@ def _make_candidate(bars: pd.DataFrame, bar_position: int, *, stop_points: float
 
 class ExitLogicTests(unittest.TestCase):
     def test_long_target_hit_gives_two_r_gross(self) -> None:
-        bars = _make_bars([
-            (100.0, 100.4, 99.8, 100.2),
-            (100.2, 101.0, 100.1, 100.9),
-            (100.9, 102.3, 100.8, 102.2),
-        ])
+        bars = _make_bars(
+            [
+                (100.0, 100.4, 99.8, 100.2),
+                (100.2, 101.0, 100.1, 100.9),
+                (100.9, 102.3, 100.8, 102.2),
+            ]
+        )
         candidates = _make_candidate(bars, 0)
         result = run_sequential_backtest(candidates, bars)
         long_trades = result.trade_log.loc[
@@ -71,10 +81,12 @@ class ExitLogicTests(unittest.TestCase):
         np.testing.assert_allclose(long_trades["gross_r"], 2.0)
 
     def test_long_stop_hit_gives_minus_one_r_gross(self) -> None:
-        bars = _make_bars([
-            (100.0, 100.2, 99.6, 99.7),
-            (99.7, 99.8, 98.9, 99.0),
-        ])
+        bars = _make_bars(
+            [
+                (100.0, 100.2, 99.6, 99.7),
+                (99.7, 99.8, 98.9, 99.0),
+            ]
+        )
         candidates = _make_candidate(bars, 0)
         result = run_sequential_backtest(candidates, bars)
         long_trades = result.trade_log.loc[
@@ -86,9 +98,11 @@ class ExitLogicTests(unittest.TestCase):
     def test_ambiguous_bar_is_conservative_stop_first(self) -> None:
         # The single bar spans stop and target for both directions:
         # long stop 99 / target 102, short stop 101 / target 98.
-        bars = _make_bars([
-            (100.0, 102.5, 97.5, 100.0),
-        ])
+        bars = _make_bars(
+            [
+                (100.0, 102.5, 97.5, 100.0),
+            ]
+        )
         candidates = _make_candidate(bars, 0)
         result = run_sequential_backtest(candidates, bars)
         trades = result.trade_log
@@ -113,10 +127,12 @@ class ExitLogicTests(unittest.TestCase):
         self.assertTrue(result.trade_log["exit_reason"].eq("forced_1530").all())
 
     def test_short_direction_is_symmetric(self) -> None:
-        bars = _make_bars([
-            (100.0, 100.2, 99.6, 99.7),
-            (99.7, 99.8, 97.9, 98.0),
-        ])
+        bars = _make_bars(
+            [
+                (100.0, 100.2, 99.6, 99.7),
+                (99.7, 99.8, 97.9, 98.0),
+            ]
+        )
         candidates = _make_candidate(bars, 0)
         result = run_sequential_backtest(candidates, bars)
         short_trades = result.trade_log.loc[
@@ -152,10 +168,12 @@ class PortfolioRuleTests(unittest.TestCase):
 
 class CostAndVerdictTests(unittest.TestCase):
     def test_cost_arithmetic_in_r(self) -> None:
-        bars = _make_bars([
-            (100.0, 100.4, 99.8, 100.2),
-            (100.2, 102.3, 100.1, 102.2),
-        ])
+        bars = _make_bars(
+            [
+                (100.0, 100.4, 99.8, 100.2),
+                (100.2, 102.3, 100.1, 102.2),
+            ]
+        )
         candidates = _make_candidate(bars, 0)
         config = Section11Config()
         result = run_sequential_backtest(candidates, bars, config)
@@ -173,7 +191,9 @@ class CostAndVerdictTests(unittest.TestCase):
         bars_dev = _make_bars(winning)
         dev = _make_candidate(bars_dev, 0, partition="Development")
         val_bars = _make_bars(winning)
-        val_bars["ts_event_utc"] = pd.date_range("2024-03-01 12:00", periods=2, freq="1min").to_numpy()
+        val_bars["ts_event_utc"] = pd.date_range(
+            "2024-03-01 12:00", periods=2, freq="1min"
+        ).to_numpy()
         val_bars["trade_date_ny"] = np.full(2, pd.Timestamp("2024-03-01").to_datetime64())
         val = _make_candidate(val_bars, 0, partition="Validation")
         val.index = pd.Index([100], name="observation_id")
@@ -184,12 +204,14 @@ class CostAndVerdictTests(unittest.TestCase):
         result = run_sequential_backtest(candidates, bars)
         long_ungated = result.verdicts.loc[
             result.verdicts["direction_variant"].eq("long_benchmark")
-            & result.verdicts["gate_variant"].eq("ungated"), "verdict"
+            & result.verdicts["gate_variant"].eq("ungated"),
+            "verdict",
         ].iloc[0]
         self.assertEqual(long_ungated, "POSITIVE_EXPECTANCY")
         short_ungated = result.verdicts.loc[
             result.verdicts["direction_variant"].eq("short_benchmark")
-            & result.verdicts["gate_variant"].eq("ungated"), "verdict"
+            & result.verdicts["gate_variant"].eq("ungated"),
+            "verdict",
         ].iloc[0]
         self.assertEqual(short_ungated, "REJECTED")
 

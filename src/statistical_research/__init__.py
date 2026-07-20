@@ -1,15 +1,5 @@
 """Independent statistical-research utilities."""
 
-from .labels import (
-    EXPANSION_QUANTILE,
-    FORWARD_HORIZONS_MINUTES,
-    GC_TICK_SIZE,
-    LABEL_REASON_CATEGORIES,
-    ForwardLabelBuildResult,
-    build_forward_label_table,
-    build_label_availability_report,
-    validate_tick_grid,
-)
 from .baselines import (
     BASELINE_RANDOM_SEED,
     BOOTSTRAP_REPLICATES,
@@ -19,28 +9,12 @@ from .baselines import (
     save_baseline_outputs,
     summarize_outcomes,
 )
-from .feature_registry import (
-    CORE_FEATURE_NAMES,
-    EXPERIMENTAL_FEATURE_NAMES,
-    FEATURE_NAMES,
-    FEATURE_SPECS,
-    FeatureSpec,
-    feature_registry_frame,
-    validate_registry,
-)
 from .feature_engineering import (
     FEATURE_SOURCE_COLUMNS,
     METADATA_COLUMNS,
     FeatureBuildResult,
     build_continuity_run_id,
     build_feature_matrix,
-)
-from .feature_validation import (
-    FeatureSaveResult,
-    build_manual_feature_audit,
-    compute_feature_diagnostics,
-    save_feature_outputs,
-    validate_feature_matrix,
 )
 from .feature_evaluation import (
     EVALUATION_PARTITIONS,
@@ -64,6 +38,32 @@ from .feature_redundancy import (
     build_redundancy_analysis,
     save_redundancy_outputs,
 )
+from .feature_registry import (
+    CORE_FEATURE_NAMES,
+    EXPERIMENTAL_FEATURE_NAMES,
+    FEATURE_NAMES,
+    FEATURE_SPECS,
+    FeatureSpec,
+    feature_registry_frame,
+    validate_registry,
+)
+from .feature_validation import (
+    FeatureSaveResult,
+    build_manual_feature_audit,
+    compute_feature_diagnostics,
+    save_feature_outputs,
+    validate_feature_matrix,
+)
+from .labels import (
+    EXPANSION_QUANTILE,
+    FORWARD_HORIZONS_MINUTES,
+    GC_TICK_SIZE,
+    LABEL_REASON_CATEGORIES,
+    ForwardLabelBuildResult,
+    build_forward_label_table,
+    build_label_availability_report,
+    validate_tick_grid,
+)
 from .multivariate import (
     SECTION9_RANDOM_SEED,
     MultivariateBuildResult,
@@ -71,6 +71,14 @@ from .multivariate import (
     build_multivariate_benchmarks,
     load_expansion_labels,
     save_multivariate_outputs,
+)
+from .sequential_backtest import (
+    SECTION11_RANDOM_SEED,
+    BacktestBuildResult,
+    Section11Config,
+    load_backtest_bars,
+    run_sequential_backtest,
+    save_backtest_outputs,
 )
 from .signal_construction import (
     DIRECTION_VARIANTS,
@@ -81,14 +89,6 @@ from .signal_construction import (
     build_signal_candidates,
     load_entry_fields,
     save_signal_outputs,
-)
-from .sequential_backtest import (
-    SECTION11_RANDOM_SEED,
-    BacktestBuildResult,
-    Section11Config,
-    load_backtest_bars,
-    run_sequential_backtest,
-    save_backtest_outputs,
 )
 
 __all__ = [

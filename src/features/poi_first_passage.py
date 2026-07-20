@@ -115,9 +115,13 @@ def evaluate_first_passage(
     entry = pd.to_numeric(base["entry_price"], errors="coerce").to_numpy("float64")
     stop = pd.to_numeric(base["stop_price"], errors="coerce").to_numpy("float64")
     long_side = base["trade_side"].eq("long").to_numpy(bool)
-    entry_model = base.get("entry_model", pd.Series("boundary_touch", index=base.index)).astype("string")
+    entry_model = base.get("entry_model", pd.Series("boundary_touch", index=base.index)).astype(
+        "string"
+    )
 
-    in_bounds = (entry_idx >= 0) & (entry_idx < len(bars)) & (retest_idx >= 0) & (retest_idx < len(bars))
+    in_bounds = (
+        (entry_idx >= 0) & (entry_idx < len(bars)) & (retest_idx >= 0) & (retest_idx < len(bars))
+    )
     risk = np.where(long_side, entry - stop, stop - entry)
     valid_level = np.isfinite(entry) & np.isfinite(stop) & np.isfinite(risk) & (risk > 0)
     valid_path = np.zeros(n, dtype=bool)
@@ -166,8 +170,10 @@ def evaluate_first_passage(
     invalid_path |= in_bounds & valid_level & ~valid_path
 
     records: list[pd.DataFrame] = []
-    max_h = cfg.max_path_minutes if max_holding_minutes is None else min(
-        cfg.max_path_minutes, int(max_holding_minutes)
+    max_h = (
+        cfg.max_path_minutes
+        if max_holding_minutes is None
+        else min(cfg.max_path_minutes, int(max_holding_minutes))
     )
     offsets = np.arange(max_h + 1, dtype="int64")
 
@@ -236,7 +242,11 @@ def evaluate_first_passage(
             first_target = _first_true(target_hit)
             any_target = target_hit.any(axis=1)
             ambiguity = any_stop & any_target & (first_stop == first_target)
-            entry_bar_ambiguity = ambiguity & first_stop.eq(0) if isinstance(first_stop, pd.Series) else ambiguity & (first_stop == 0)
+            entry_bar_ambiguity = (
+                ambiguity & first_stop.eq(0)
+                if isinstance(first_stop, pd.Series)
+                else ambiguity & (first_stop == 0)
+            )
 
             target_first = any_target & (~any_stop | (first_target < first_stop))
             stop_first = any_stop & (~any_target | (first_stop < first_target))
@@ -265,7 +275,9 @@ def evaluate_first_passage(
                     "same_bar_ambiguity": ambiguity,
                     "entry_bar_ambiguity": entry_bar_ambiguity,
                     "invalid_path": invalid_path[rows],
-                    "time_to_entry_minutes": np.where(entry_filled[rows], entry_idx[rows] - retest_idx[rows], np.nan),
+                    "time_to_entry_minutes": np.where(
+                        entry_filled[rows], entry_idx[rows] - retest_idx[rows], np.nan
+                    ),
                     "time_from_entry_to_stop_minutes": np.where(any_stop, first_stop, np.nan),
                     "time_from_entry_to_target_minutes": np.where(any_target, first_target, np.nan),
                     "realized_r": realized_r,
@@ -332,19 +344,20 @@ def _first_true(values: np.ndarray) -> np.ndarray:
     return first
 
 
-def _state_run_end(
-    segment: np.ndarray, date_code: np.ndarray, symbol: np.ndarray
-) -> np.ndarray:
+def _state_run_end(segment: np.ndarray, date_code: np.ndarray, symbol: np.ndarray) -> np.ndarray:
     """Return the last contiguous index sharing date, segment, and contract."""
 
     n = len(segment)
     if n == 0:
         return np.empty(0, dtype="int64")
-    changes = np.flatnonzero(
-        (segment[1:] != segment[:-1])
-        | (date_code[1:] != date_code[:-1])
-        | (symbol[1:] != symbol[:-1])
-    ) + 1
+    changes = (
+        np.flatnonzero(
+            (segment[1:] != segment[:-1])
+            | (date_code[1:] != date_code[:-1])
+            | (symbol[1:] != symbol[:-1])
+        )
+        + 1
+    )
     starts = np.r_[0, changes]
     ends = np.r_[changes - 1, n - 1]
     return np.repeat(ends, ends - starts + 1).astype("int64", copy=False)

@@ -73,9 +73,7 @@ def _development_spearman(frame: pd.DataFrame, features: list[str]) -> pd.DataFr
     return ranks.corr(method="pearson")
 
 
-def _cluster_features(
-    correlation: pd.DataFrame, threshold_abs_rho: float
-) -> pd.Series:
+def _cluster_features(correlation: pd.DataFrame, threshold_abs_rho: float) -> pd.Series:
     """Average-linkage clusters cut where within-cluster |rho| >= threshold."""
 
     features = list(correlation.columns)
@@ -165,11 +163,20 @@ def _daily_pair_statistics(
             n_dates = len(date_index)
             sizes = np.bincount(date_codes, minlength=n_dates)
 
-            def daily_corr(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+            def daily_corr(
+                a: np.ndarray,
+                b: np.ndarray,
+                date_codes: np.ndarray = date_codes,
+                n_dates: int = n_dates,
+            ) -> np.ndarray:
                 product = a * b
                 finite = np.isfinite(product)
-                sums = np.bincount(date_codes, weights=np.where(finite, product, 0.0), minlength=n_dates)
-                counts = np.bincount(date_codes, weights=finite.astype(np.float64), minlength=n_dates)
+                sums = np.bincount(
+                    date_codes, weights=np.where(finite, product, 0.0), minlength=n_dates
+                )
+                counts = np.bincount(
+                    date_codes, weights=finite.astype(np.float64), minlength=n_dates
+                )
                 with np.errstate(invalid="ignore", divide="ignore"):
                     out = sums / counts
                 out[counts < config.min_daily_observations] = np.nan
@@ -181,9 +188,7 @@ def _daily_pair_statistics(
                 r_bo = daily_corr(z_feature, z_outcome)
                 r_ba = daily_corr(z_feature, z_anchor)
                 with np.errstate(invalid="ignore", divide="ignore"):
-                    partial = (r_bo - r_ba * r_ao) / np.sqrt(
-                        (1.0 - r_ba**2) * (1.0 - r_ao**2)
-                    )
+                    partial = (r_bo - r_ba * r_ao) / np.sqrt((1.0 - r_ba**2) * (1.0 - r_ao**2))
                 partial[(np.abs(r_ba) >= 1.0) | (np.abs(r_ao) >= 1.0)] = np.nan
                 valid = np.isfinite(partial) & (sizes >= config.min_daily_observations)
                 records.append(
@@ -193,7 +198,9 @@ def _daily_pair_statistics(
                         "research_partition": partition,
                         "trading_date_count": int(valid.sum()),
                         "raw_daily_ic_mean": float(np.nanmean(np.where(valid, r_bo, np.nan))),
-                        "partial_daily_ic_mean": float(np.nanmean(np.where(valid, partial, np.nan))),
+                        "partial_daily_ic_mean": float(
+                            np.nanmean(np.where(valid, partial, np.nan))
+                        ),
                         "anchor_daily_ic_mean": float(np.nanmean(np.where(valid, r_ao, np.nan))),
                     }
                 )
@@ -215,15 +222,15 @@ def build_redundancy_analysis(
         raise ValueError(f"redundancy frame contains locked partitions: {observed_partitions}")
 
     advancers = (
-        feature_verdicts.loc[
-            feature_verdicts["verdict"].eq("ADVANCE_EXPANSION"), "feature_name"
-        ]
+        feature_verdicts.loc[feature_verdicts["verdict"].eq("ADVANCE_EXPANSION"), "feature_name"]
         .astype(str)
         .tolist()
     )
-    directional_advancers = feature_verdicts.loc[
-        feature_verdicts["verdict"].eq("ADVANCE_DIRECTIONAL"), "feature_name"
-    ].astype(str).tolist()
+    directional_advancers = (
+        feature_verdicts.loc[feature_verdicts["verdict"].eq("ADVANCE_DIRECTIONAL"), "feature_name"]
+        .astype(str)
+        .tolist()
+    )
     missing = [name for name in advancers if name not in frame.columns]
     if missing:
         raise ValueError(f"advancing features missing from frame: {missing[:5]}")
@@ -252,7 +259,9 @@ def build_redundancy_analysis(
 
     # ---- declared incremental gates (Development screen, Validation confirm) --
     key = ["feature_name", "horizon_minutes", "session"]
-    development = incremental.loc[incremental["research_partition"].eq("Development")].set_index(key)
+    development = incremental.loc[incremental["research_partition"].eq("Development")].set_index(
+        key
+    )
     validation = incremental.loc[incremental["research_partition"].eq("Validation")].set_index(key)
     joined = development.join(validation, lsuffix="_dev", rsuffix="_val", how="inner").reset_index()
     dev_partial = joined["partial_daily_ic_mean_dev"].to_numpy()
@@ -291,9 +300,11 @@ def build_redundancy_analysis(
                 "selection_score": row.selection_score,
             }
         )
-    frozen_feature_set = pd.DataFrame.from_records(frozen_records).sort_values(
-        ["in_frozen_set", "selection_score"], ascending=[False, False]
-    ).reset_index(drop=True)
+    frozen_feature_set = (
+        pd.DataFrame.from_records(frozen_records)
+        .sort_values(["in_frozen_set", "selection_score"], ascending=[False, False])
+        .reset_index(drop=True)
+    )
 
     cluster_sizes = cluster_ids.value_counts()
     summary = pd.Series(
@@ -335,9 +346,7 @@ def build_redundancy_analysis(
         )
         <= set(representatives["feature_name"]),
         "directional_frozen_set_empty": len(directional_advancers) == 0,
-        "incremental_rows_cover_both_partitions": set(
-            incremental["research_partition"].unique()
-        )
+        "incremental_rows_cover_both_partitions": set(incremental["research_partition"].unique())
         == set(EVALUATION_PARTITIONS),
     }
     validation_checks = pd.Series(checks, name="passed").rename_axis("check").reset_index()
@@ -395,6 +404,8 @@ def save_redundancy_outputs(
                 "reload_row_match": len(reloaded) == len(table),
             }
         )
-    result.frozen_feature_set.to_csv(tables / "section8_frozen_expansion_feature_set_gc.csv", index=False)
+    result.frozen_feature_set.to_csv(
+        tables / "section8_frozen_expansion_feature_set_gc.csv", index=False
+    )
     result.cluster_members.to_csv(tables / "section8_feature_clusters_gc.csv", index=False)
     return pd.DataFrame.from_records(records)

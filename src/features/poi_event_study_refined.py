@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -21,7 +21,6 @@ from src.features.poi_event_study import (
     rank_section7_candidate_groups,
     summarize_section7_groups,
 )
-
 
 SECTION7R_REQUIRED_COLUMNS = {
     "canonical_poi_id",
@@ -97,7 +96,12 @@ def prepare_section7r_signal_populations(
     raw["canonical_variant_multiplicity"] = multiplicity.astype("int16")
     raw["canonical_variant_multiplicity_bucket"] = pd.Categorical(
         np.select(
-            [multiplicity.eq(1), multiplicity.eq(2), multiplicity.between(3, 4), multiplicity.ge(5)],
+            [
+                multiplicity.eq(1),
+                multiplicity.eq(2),
+                multiplicity.between(3, 4),
+                multiplicity.ge(5),
+            ],
             ["1", "2", "3-4", "5+"],
             default="unknown",
         ),
@@ -204,7 +208,9 @@ def build_section7r_event_study(
                 summary.insert(0, "analysis_population", population_name)
                 summary_frames.append(summary)
 
-    event_summary = pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
+    event_summary = (
+        pd.concat(summary_frames, ignore_index=True) if summary_frames else pd.DataFrame()
+    )
     rankings: list[pd.DataFrame] = []
     for population_name in populations:
         population_summary = event_summary.loc[

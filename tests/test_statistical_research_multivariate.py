@@ -15,7 +15,6 @@ from src.statistical_research.multivariate import (
     build_multivariate_benchmarks,
 )
 
-
 FAST_CONFIG = Section9Config(
     bootstrap_replicates=200,
     horizons=(60,),
@@ -23,7 +22,9 @@ FAST_CONFIG = Section9Config(
 )
 
 
-def _make_frame(*, seed: int = 3, second_driver_weight: float = 0.5) -> tuple[pd.DataFrame, pd.DataFrame]:
+def _make_frame(
+    *, seed: int = 3, second_driver_weight: float = 0.5
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Synthetic frame with anchor + second driver + noise feature."""
 
     rng = np.random.default_rng(seed)

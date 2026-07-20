@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 
-
 FORWARD_HORIZONS_MINUTES = (5, 15, 30, 60, 120, 180)
 GC_TICK_SIZE = 0.10
 EXPANSION_QUANTILE = 0.80
@@ -87,7 +86,9 @@ class ForwardLabelBuildResult:
     column_order: tuple[str, ...]
 
 
-def _arrow_array(values: np.ndarray, valid: np.ndarray, arrow_type: pa.DataType) -> pd.arrays.ArrowExtensionArray:
+def _arrow_array(
+    values: np.ndarray, valid: np.ndarray, arrow_type: pa.DataType
+) -> pd.arrays.ArrowExtensionArray:
     return pd.arrays.ArrowExtensionArray(pa.array(values, mask=~valid, type=arrow_type))
 
 
@@ -95,7 +96,9 @@ def _float_array(values: np.ndarray, valid: np.ndarray) -> pd.arrays.ArrowExtens
     return _arrow_array(values.astype(np.float64, copy=False), valid, pa.float64())
 
 
-def _int_array(values: np.ndarray, valid: np.ndarray, arrow_type: pa.DataType) -> pd.arrays.ArrowExtensionArray:
+def _int_array(
+    values: np.ndarray, valid: np.ndarray, arrow_type: pa.DataType
+) -> pd.arrays.ArrowExtensionArray:
     return _arrow_array(values, valid, arrow_type)
 
 
@@ -157,18 +160,28 @@ def validate_tick_grid(
     }
 
 
-def _validate_inputs(observations: pd.DataFrame, path_source: pd.DataFrame, horizons: tuple[int, ...]) -> None:
+def _validate_inputs(
+    observations: pd.DataFrame, path_source: pd.DataFrame, horizons: tuple[int, ...]
+) -> None:
     missing_observation = sorted(set(BASE_LABEL_COLUMNS).difference(observations.columns))
     missing_source = sorted(set(PATH_SOURCE_COLUMNS).difference(path_source.columns))
     if missing_observation or missing_source:
-        raise KeyError({"missing_observation_columns": missing_observation, "missing_source_columns": missing_source})
+        raise KeyError(
+            {
+                "missing_observation_columns": missing_observation,
+                "missing_source_columns": missing_source,
+            }
+        )
     if not horizons or tuple(sorted(set(horizons))) != horizons or any(h <= 0 for h in horizons):
         raise ValueError("Horizons must be unique positive integers in increasing order.")
     if observations["observation_id"].duplicated().any():
         raise ValueError("observation_id must be unique.")
     if not observations["observation_id"].is_monotonic_increasing:
         raise ValueError("observations must be ordered by observation_id.")
-    if path_source["source_row_id"].duplicated().any() or not path_source["source_row_id"].is_monotonic_increasing:
+    if (
+        path_source["source_row_id"].duplicated().any()
+        or not path_source["source_row_id"].is_monotonic_increasing
+    ):
         raise ValueError("path_source source_row_id must be unique and increasing.")
 
 
@@ -312,9 +325,15 @@ def build_forward_label_table(
     if not np.array_equal(timestamps_utc_ns[entry_positions], observed_entry_utc_ns):
         raise ValueError("Saved entry timestamps do not match entry_bar_id in the path source.")
     if not np.array_equal(timestamps_ny_ns[entry_positions], observed_entry_ny_ns):
-        raise ValueError("Saved New York entry timestamps do not match entry_bar_id in the path source.")
-    if not np.array_equal(timestamps_utc_ns[decision_positions], _timestamp_ns(observations["decision_timestamp_utc"])):
-        raise ValueError("Saved decision timestamps do not match decision_bar_id in the path source.")
+        raise ValueError(
+            "Saved New York entry timestamps do not match entry_bar_id in the path source."
+        )
+    if not np.array_equal(
+        timestamps_utc_ns[decision_positions], _timestamp_ns(observations["decision_timestamp_utc"])
+    ):
+        raise ValueError(
+            "Saved decision timestamps do not match decision_bar_id in the path source."
+        )
 
     entry_prices = opens[entry_positions]
     decision_atr = atr[decision_positions]
@@ -327,7 +346,9 @@ def build_forward_label_table(
             observations.loc[:, BASE_LABEL_COLUMNS].copy(),
             pd.DataFrame(
                 {
-                    "entry_price": pd.arrays.ArrowExtensionArray(pa.array(entry_prices, type=pa.float64())),
+                    "entry_price": pd.arrays.ArrowExtensionArray(
+                        pa.array(entry_prices, type=pa.float64())
+                    ),
                     "decision_atr_20m": pd.arrays.ArrowExtensionArray(
                         pa.array(decision_atr, mask=~np.isfinite(decision_atr), type=pa.float64())
                     ),
@@ -341,7 +362,11 @@ def build_forward_label_table(
         axis=1,
     )
     horizon_columns: dict[str, object] = {}
-    base_order = list(BASE_LABEL_COLUMNS) + ["entry_price", "decision_atr_20m", "atr_normalization_available"]
+    base_order = list(BASE_LABEL_COLUMNS) + [
+        "entry_price",
+        "decision_atr_20m",
+        "atr_normalization_available",
+    ]
 
     availability_by_horizon: dict[int, np.ndarray] = {}
     for h in horizons:
@@ -357,10 +382,16 @@ def build_forward_label_table(
         starts = entry_positions[within_rows]
         ends_exclusive = starts + h
         time_bad[within_rows] = prefix_time_bad[ends_exclusive] - prefix_time_bad[starts + 1] > 0
-        contract_bad[within_rows] = prefix_contract_bad[ends_exclusive] - prefix_contract_bad[starts + 1] > 0
-        segment_bad[within_rows] = prefix_segment_bad[ends_exclusive] - prefix_segment_bad[starts + 1] > 0
+        contract_bad[within_rows] = (
+            prefix_contract_bad[ends_exclusive] - prefix_contract_bad[starts + 1] > 0
+        )
+        segment_bad[within_rows] = (
+            prefix_segment_bad[ends_exclusive] - prefix_segment_bad[starts + 1] > 0
+        )
         date_bad[within_rows] = prefix_date_bad[ends_exclusive] - prefix_date_bad[starts + 1] > 0
-        control_bad[within_rows] = prefix_control_bad[ends_exclusive] - prefix_control_bad[starts] > 0
+        control_bad[within_rows] = (
+            prefix_control_bad[ends_exclusive] - prefix_control_bad[starts] > 0
+        )
         price_bad[within_rows] = prefix_price_bad[ends_exclusive] - prefix_price_bad[starts] > 0
 
         reasons = np.full(n_observations, "available", dtype=object)
@@ -443,7 +474,9 @@ def build_forward_label_table(
         horizon_columns[f"exit_timestamp_utc_{h}"] = exit_utc
         horizon_columns[f"exit_timestamp_ny_{h}"] = exit_ny
         horizon_columns[f"exit_price_{h}"] = _float_array(exit_prices, available)
-        horizon_columns[f"forward_return_{h}_ticks"] = _int_array(raw_ticks["forward"], available, pa.int32())
+        horizon_columns[f"forward_return_{h}_ticks"] = _int_array(
+            raw_ticks["forward"], available, pa.int32()
+        )
         horizon_columns[f"forward_return_{h}_bps"] = _float_array(forward_bps, available)
         normalized_forward = np.full(n_observations, np.nan, dtype=np.float64)
         normalized_mfe_long = np.full(n_observations, np.nan, dtype=np.float64)
@@ -461,25 +494,59 @@ def build_forward_label_table(
         normalized_range[atr_valid_for_horizon] = (
             future_range_price[atr_valid_for_horizon] / decision_atr[atr_valid_for_horizon]
         )
-        horizon_columns[f"forward_return_{h}_atr"] = _float_array(normalized_forward, atr_valid_for_horizon)
-        horizon_columns[f"mfe_long_{h}_ticks"] = _int_array(raw_ticks["mfe_long"], available, pa.int32())
-        horizon_columns[f"mfe_long_{h}_atr"] = _float_array(normalized_mfe_long, atr_valid_for_horizon)
-        horizon_columns[f"mfe_short_{h}_ticks"] = _int_array(raw_ticks["mfe_short"], available, pa.int32())
-        horizon_columns[f"mfe_short_{h}_atr"] = _float_array(normalized_mfe_short, atr_valid_for_horizon)
-        horizon_columns[f"time_to_mfe_long_{h}_minutes"] = _int_array(time_max, available, pa.int16())
-        horizon_columns[f"time_to_mfe_short_{h}_minutes"] = _int_array(time_min, available, pa.int16())
-        horizon_columns[f"mae_long_{h}_ticks"] = _int_array(raw_ticks["mae_long"], available, pa.int32())
-        horizon_columns[f"mae_long_{h}_atr"] = _float_array(normalized_mfe_short, atr_valid_for_horizon)
-        horizon_columns[f"mae_short_{h}_ticks"] = _int_array(raw_ticks["mae_short"], available, pa.int32())
-        horizon_columns[f"mae_short_{h}_atr"] = _float_array(normalized_mfe_long, atr_valid_for_horizon)
-        horizon_columns[f"time_to_mae_long_{h}_minutes"] = _int_array(time_min, available, pa.int16())
-        horizon_columns[f"time_to_mae_short_{h}_minutes"] = _int_array(time_max, available, pa.int16())
-        horizon_columns[f"future_range_{h}_ticks"] = _int_array(raw_ticks["range"], available, pa.int32())
-        horizon_columns[f"future_range_{h}_atr"] = _float_array(normalized_range, atr_valid_for_horizon)
-        horizon_columns[f"future_realized_volatility_{h}_bps"] = _float_array(realized_vol_bps, available)
+        horizon_columns[f"forward_return_{h}_atr"] = _float_array(
+            normalized_forward, atr_valid_for_horizon
+        )
+        horizon_columns[f"mfe_long_{h}_ticks"] = _int_array(
+            raw_ticks["mfe_long"], available, pa.int32()
+        )
+        horizon_columns[f"mfe_long_{h}_atr"] = _float_array(
+            normalized_mfe_long, atr_valid_for_horizon
+        )
+        horizon_columns[f"mfe_short_{h}_ticks"] = _int_array(
+            raw_ticks["mfe_short"], available, pa.int32()
+        )
+        horizon_columns[f"mfe_short_{h}_atr"] = _float_array(
+            normalized_mfe_short, atr_valid_for_horizon
+        )
+        horizon_columns[f"time_to_mfe_long_{h}_minutes"] = _int_array(
+            time_max, available, pa.int16()
+        )
+        horizon_columns[f"time_to_mfe_short_{h}_minutes"] = _int_array(
+            time_min, available, pa.int16()
+        )
+        horizon_columns[f"mae_long_{h}_ticks"] = _int_array(
+            raw_ticks["mae_long"], available, pa.int32()
+        )
+        horizon_columns[f"mae_long_{h}_atr"] = _float_array(
+            normalized_mfe_short, atr_valid_for_horizon
+        )
+        horizon_columns[f"mae_short_{h}_ticks"] = _int_array(
+            raw_ticks["mae_short"], available, pa.int32()
+        )
+        horizon_columns[f"mae_short_{h}_atr"] = _float_array(
+            normalized_mfe_long, atr_valid_for_horizon
+        )
+        horizon_columns[f"time_to_mae_long_{h}_minutes"] = _int_array(
+            time_min, available, pa.int16()
+        )
+        horizon_columns[f"time_to_mae_short_{h}_minutes"] = _int_array(
+            time_max, available, pa.int16()
+        )
+        horizon_columns[f"future_range_{h}_ticks"] = _int_array(
+            raw_ticks["range"], available, pa.int32()
+        )
+        horizon_columns[f"future_range_{h}_atr"] = _float_array(
+            normalized_range, atr_valid_for_horizon
+        )
+        horizon_columns[f"future_realized_volatility_{h}_bps"] = _float_array(
+            realized_vol_bps, available
+        )
         direction = np.sign(raw_ticks["forward"]).astype(np.int8)
         horizon_columns[f"direction_label_{h}"] = _int_array(direction, available, pa.int8())
-        horizon_columns[f"label_available_{h}"] = pd.arrays.ArrowExtensionArray(pa.array(available, type=pa.bool_()))
+        horizon_columns[f"label_available_{h}"] = pd.arrays.ArrowExtensionArray(
+            pa.array(available, type=pa.bool_())
+        )
         horizon_columns[f"label_unavailable_reason_{h}"] = pd.Categorical(
             reasons, categories=LABEL_REASON_CATEGORIES, ordered=True
         )
@@ -492,7 +559,11 @@ def build_forward_label_table(
             dtype=np.float64, na_value=np.nan
         )
         fit_values = values[valid]
-        threshold = float(np.quantile(fit_values, expansion_quantile, method="linear")) if len(fit_values) else np.nan
+        threshold = (
+            float(np.quantile(fit_values, expansion_quantile, method="linear"))
+            if len(fit_values)
+            else np.nan
+        )
         expansion_valid = availability_by_horizon[h] & atr_available & np.isfinite(threshold)
         expansion = np.zeros(n_observations, dtype=bool)
         expansion[expansion_valid] = values[expansion_valid] >= threshold
@@ -517,7 +588,9 @@ def build_forward_label_table(
         expansion_thresholds["fitting_partition"], categories=["Development"], ordered=True
     )
     expansion_thresholds["normalization_denominator"] = pd.Categorical(
-        expansion_thresholds["normalization_denominator"], categories=["decision_atr_20m"], ordered=True
+        expansion_thresholds["normalization_denominator"],
+        categories=["decision_atr_20m"],
+        ordered=True,
     )
 
     labels = pd.concat([labels, pd.DataFrame(horizon_columns, index=labels.index)], axis=1)
@@ -543,14 +616,20 @@ def build_label_availability_report(
         h = int(horizon)
         available_column = f"label_available_{h}"
         reason_column = f"label_unavailable_reason_{h}"
-        base = labels[["entry_session", "research_partition", available_column, reason_column]].copy()
+        base = labels[
+            ["entry_session", "research_partition", available_column, reason_column]
+        ].copy()
         totals = (
             base.groupby(["entry_session", "research_partition"], observed=True)[available_column]
             .agg(["sum", "count"])
             .rename(columns={"sum": "available_observations", "count": "total_observations"})
         )
-        totals["unavailable_observations"] = totals["total_observations"] - totals["available_observations"]
-        totals["availability_rate"] = totals["available_observations"] / totals["total_observations"]
+        totals["unavailable_observations"] = (
+            totals["total_observations"] - totals["available_observations"]
+        )
+        totals["availability_rate"] = (
+            totals["available_observations"] / totals["total_observations"]
+        )
         reasons = (
             base.groupby(["entry_session", "research_partition", reason_column], observed=True)
             .size()

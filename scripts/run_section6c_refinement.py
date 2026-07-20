@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
@@ -22,7 +22,6 @@ from src.features.poi_selection_refinement import (
     save_section6c_tables,
 )
 from src.features.poi_signal_features import SECTION6_REQUIRED_COLUMNS
-
 
 LEGACY_OUTPUTS = (
     "section6_poi_table_gc.parquet",

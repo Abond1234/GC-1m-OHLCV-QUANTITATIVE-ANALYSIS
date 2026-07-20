@@ -23,7 +23,9 @@ from src.statistical_research.feature_registry import (
 from src.statistical_research.feature_validation import compute_feature_diagnostics
 
 
-def _bars(n: int = 500, *, start: str = "2024-01-02 06:00:00+00:00", flat: bool = False) -> pd.DataFrame:
+def _bars(
+    n: int = 500, *, start: str = "2024-01-02 06:00:00+00:00", flat: bool = False
+) -> pd.DataFrame:
     utc = pd.date_range(start, periods=n, freq="min", tz="UTC")
     ny = utc.tz_convert("America/New_York")
     if flat:
@@ -61,7 +63,9 @@ def _bars(n: int = 500, *, start: str = "2024-01-02 06:00:00+00:00", flat: bool 
     return frame.loc[:, FEATURE_SOURCE_COLUMNS]
 
 
-def _observations(bars: pd.DataFrame, decision_positions: list[int], partition: str = "Development") -> pd.DataFrame:
+def _observations(
+    bars: pd.DataFrame, decision_positions: list[int], partition: str = "Development"
+) -> pd.DataFrame:
     records = []
     for observation_id, position in enumerate(decision_positions):
         decision = bars.iloc[position]
@@ -167,17 +171,23 @@ class FeatureCausalityAndBoundaryTests(unittest.TestCase):
         observations = _observations(bars, [30])  # decision is exactly 01:00
         matrix = build_feature_matrix(bars, observations, expected_rows=None).matrix
         position = 30
-        typical = (bars.loc[position, "high"] + bars.loc[position, "low"] + bars.loc[position, "close"]) / 3.0
+        typical = (
+            bars.loc[position, "high"] + bars.loc[position, "low"] + bars.loc[position, "close"]
+        ) / 3.0
         true_range = []
         for i in range(position - 19, position + 1):
             previous_close = bars.loc[i - 1, "close"]
-            true_range.append(max(
-                bars.loc[i, "high"] - bars.loc[i, "low"],
-                abs(bars.loc[i, "high"] - previous_close),
-                abs(bars.loc[i, "low"] - previous_close),
-            ))
+            true_range.append(
+                max(
+                    bars.loc[i, "high"] - bars.loc[i, "low"],
+                    abs(bars.loc[i, "high"] - previous_close),
+                    abs(bars.loc[i, "low"] - previous_close),
+                )
+            )
         expected = (bars.loc[position, "close"] - typical) / np.mean(true_range)
-        self.assertAlmostEqual(float(matrix.loc[0, "distance_from_research_day_vwap_atr"]), expected, places=5)
+        self.assertAlmostEqual(
+            float(matrix.loc[0, "distance_from_research_day_vwap_atr"]), expected, places=5
+        )
 
     def test_zero_denominators_never_create_infinity(self):
         bars = _bars(flat=True)
@@ -185,7 +195,9 @@ class FeatureCausalityAndBoundaryTests(unittest.TestCase):
         matrix = build_feature_matrix(bars, observations, expected_rows=None).matrix
         for name in FEATURE_NAMES:
             if pd.api.types.is_numeric_dtype(matrix[name].dtype):
-                values = pd.to_numeric(matrix[name], errors="coerce").to_numpy(dtype=np.float64, na_value=np.nan)
+                values = pd.to_numeric(matrix[name], errors="coerce").to_numpy(
+                    dtype=np.float64, na_value=np.nan
+                )
                 self.assertFalse(np.isinf(values).any(), name)
         self.assertTrue(pd.isna(matrix.loc[0, "body_to_range"]))
         self.assertTrue(pd.isna(matrix.loc[0, "vwap_elasticity_30_exp"]))
@@ -204,7 +216,9 @@ class FeatureReferenceAndAssemblyTests(unittest.TestCase):
         values = []
         for date_number, date in enumerate(pd.bdate_range("2023-01-02", periods=40)):
             for minute in range(15):
-                timestamp = (date + pd.Timedelta(hours=3, minutes=minute)).tz_localize("America/New_York")
+                timestamp = (date + pd.Timedelta(hours=3, minutes=minute)).tz_localize(
+                    "America/New_York"
+                )
                 rows.append(
                     {
                         "entry_session": "London",
@@ -240,10 +254,9 @@ class FeatureReferenceAndAssemblyTests(unittest.TestCase):
         observations, log_volume = self._reference_observations()
         zscore, _, _ = _fit_time_of_day_reference(observations, log_volume)
         current_date = observations.loc[0, "trade_date_ny"]
-        mask = (
-            observations["research_partition"].eq("Development")
-            & ~observations["trade_date_ny"].eq(current_date)
-        )
+        mask = observations["research_partition"].eq("Development") & ~observations[
+            "trade_date_ny"
+        ].eq(current_date)
         baseline = log_volume[mask.to_numpy()]
         expected = (log_volume[0] - baseline.mean()) / baseline.std(ddof=1)
         self.assertAlmostEqual(zscore[0], expected, places=12)
@@ -273,7 +286,9 @@ class FeatureReferenceAndAssemblyTests(unittest.TestCase):
         observations = _observations(bars, [120, 150, 200, 250])
         result = build_feature_matrix(bars, observations, expected_rows=None)
         diagnostics = compute_feature_diagnostics(result)
-        names = set(diagnostics.loc[diagnostics["feature_name"].ne("__family_aggregate__"), "feature_name"])
+        names = set(
+            diagnostics.loc[diagnostics["feature_name"].ne("__family_aggregate__"), "feature_name"]
+        )
         self.assertEqual(names, set(FEATURE_NAMES))
         self.assertFalse(any("forward" in column.lower() for column in diagnostics.columns))
 

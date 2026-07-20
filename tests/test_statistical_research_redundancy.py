@@ -12,7 +12,6 @@ from src.statistical_research.feature_redundancy import (
     build_redundancy_analysis,
 )
 
-
 FAST_CONFIG = Section8Config(
     incremental_horizons=(60,),
     min_development_trading_dates=50,
@@ -31,7 +30,9 @@ def _make_registry(names: list[str], experimental: set[str] | None = None) -> pd
     )
 
 
-def _make_frame(*, seed: int = 5, decorrelate_duplicate_in_validation: bool = False) -> pd.DataFrame:
+def _make_frame(
+    *, seed: int = 5, decorrelate_duplicate_in_validation: bool = False
+) -> pd.DataFrame:
     """Two true outcome drivers, one near-duplicate, one pure-noise feature."""
 
     rng = np.random.default_rng(seed)
@@ -70,9 +71,7 @@ def _make_frame(*, seed: int = 5, decorrelate_duplicate_in_validation: bool = Fa
 
 def _make_section7_inputs() -> tuple[pd.DataFrame, pd.DataFrame]:
     names = ["base_signal", "dup_signal", "indep_signal", "noise_feat"]
-    verdicts = pd.DataFrame(
-        {"feature_name": names, "verdict": ["ADVANCE_EXPANSION"] * 4}
-    )
+    verdicts = pd.DataFrame({"feature_name": names, "verdict": ["ADVANCE_EXPANSION"] * 4})
     shortlist = pd.DataFrame(
         {
             "feature_name": names,
@@ -90,9 +89,7 @@ class RedundancyAnalysisTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.frame = _make_frame()
         cls.shortlist, cls.verdicts = _make_section7_inputs()
-        cls.registry = _make_registry(
-            ["base_signal", "dup_signal", "indep_signal", "noise_feat"]
-        )
+        cls.registry = _make_registry(["base_signal", "dup_signal", "indep_signal", "noise_feat"])
         cls.result = build_redundancy_analysis(
             cls.frame, cls.shortlist, cls.verdicts, cls.registry, FAST_CONFIG
         )

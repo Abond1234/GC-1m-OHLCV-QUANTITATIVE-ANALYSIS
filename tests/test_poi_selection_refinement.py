@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from src.features.poi_selection_refinement import (
     Section6CConfig,
-    build_section6c_validation,
     evaluate_refined_poi_proposals,
     price_to_tick_index,
     save_section6c_tables,
@@ -131,12 +130,16 @@ class Section6CPoiSelectionRefinementTests(unittest.TestCase):
     def test_05_bullish_confirmation_close_inside_gap_rejected(self):
         _, out = _evaluated("bullish", 2, confirmation_passes=False)
         self.assertFalse(bool(out.loc[0, "formation_valid_flag"]))
-        self.assertEqual(str(out.loc[0, "rejection_reason"]), "confirmation_close_inside_opening_gap")
+        self.assertEqual(
+            str(out.loc[0, "rejection_reason"]), "confirmation_close_inside_opening_gap"
+        )
 
     def test_06_bearish_confirmation_close_inside_gap_rejected(self):
         _, out = _evaluated("bearish", 2, confirmation_passes=False)
         self.assertFalse(bool(out.loc[0, "formation_valid_flag"]))
-        self.assertEqual(str(out.loc[0, "rejection_reason"]), "confirmation_close_inside_opening_gap")
+        self.assertEqual(
+            str(out.loc[0, "rejection_reason"]), "confirmation_close_inside_opening_gap"
+        )
 
     def test_07_no_classic_fvg_rejected(self):
         _, out = _evaluated("bullish", 2, fvg_ticks=0)
@@ -162,7 +165,9 @@ class Section6CPoiSelectionRefinementTests(unittest.TestCase):
         self.assertFalse(bool(out.loc[0, "final_poi_valid_flag"]))
 
     def test_11_apparent_2999999_ticks_rounds_safely(self):
-        self.assertEqual(int(price_to_tick_index([100.29999999999997])[0] - price_to_tick_index([100.0])[0]), 3)
+        self.assertEqual(
+            int(price_to_tick_index([100.29999999999997])[0] - price_to_tick_index([100.0])[0]), 3
+        )
 
     def test_12_exactly_three_ticks_passes(self):
         _, out = _evaluated("bullish", 2, 3)
@@ -170,15 +175,23 @@ class Section6CPoiSelectionRefinementTests(unittest.TestCase):
 
     def test_13_three_tick_flags(self):
         _, out = _evaluated("bullish", 2, 3)
-        self.assertEqual(out.loc[0, ["fvg_ge_3tick_flag", "fvg_ge_4tick_flag", "fvg_ge_5tick_flag"]].to_list(), [True, False, False])
+        self.assertEqual(
+            out.loc[0, ["fvg_ge_3tick_flag", "fvg_ge_4tick_flag", "fvg_ge_5tick_flag"]].to_list(),
+            [True, False, False],
+        )
 
     def test_14_four_tick_flags(self):
         _, out = _evaluated("bullish", 2, 4)
-        self.assertEqual(out.loc[0, ["fvg_ge_3tick_flag", "fvg_ge_4tick_flag", "fvg_ge_5tick_flag"]].to_list(), [True, True, False])
+        self.assertEqual(
+            out.loc[0, ["fvg_ge_3tick_flag", "fvg_ge_4tick_flag", "fvg_ge_5tick_flag"]].to_list(),
+            [True, True, False],
+        )
 
     def test_15_five_tick_flags(self):
         _, out = _evaluated("bullish", 2, 5)
-        self.assertTrue(out.loc[0, ["fvg_ge_3tick_flag", "fvg_ge_4tick_flag", "fvg_ge_5tick_flag"]].all())
+        self.assertTrue(
+            out.loc[0, ["fvg_ge_3tick_flag", "fvg_ge_4tick_flag", "fvg_ge_5tick_flag"]].all()
+        )
 
     def test_16_segment_boundary_rejected(self):
         bars = _formation_bars()
@@ -203,13 +216,17 @@ class Section6CPoiSelectionRefinementTests(unittest.TestCase):
         bars, poi = _evaluated("bullish", 2, 3)
         extra = pd.concat([bars.iloc[[-1]].copy(), bars.iloc[[-1]].copy()], ignore_index=True)
         extra["bar_id"] = [3, 4]
-        extra["ts_event_utc"] = pd.date_range(bars.loc[2, "ts_event_utc"] + pd.Timedelta(minutes=1), periods=2, freq="min")
+        extra["ts_event_utc"] = pd.date_range(
+            bars.loc[2, "ts_event_utc"] + pd.Timedelta(minutes=1), periods=2, freq="min"
+        )
         extra["ts_event_ny"] = extra["ts_event_utc"].dt.tz_convert("America/New_York")
         extra["minute_of_day_ny"] = [183, 184]
         extra["low"] = 100.7
         extra["high"] = 101.1
         full_bars = pd.concat([bars, extra], ignore_index=True)
-        retests = build_retest_table(full_bars, select_final_refined_pois(poi), Section6CConfig(min_stop_ticks=1))
+        retests = build_retest_table(
+            full_bars, select_final_refined_pois(poi), Section6CConfig(min_stop_ticks=1)
+        )
         self.assertTrue(retests["retest_bar_id"].gt(2).all())
 
     def test_20_case1_changes_boundary_midpoint_and_distal(self):
@@ -223,46 +240,77 @@ class Section6CPoiSelectionRefinementTests(unittest.TestCase):
         _, poi = _evaluated("bullish", 1, 3)
         poi = select_final_refined_pois(poi)
         row = poi.iloc[0]
-        retest = pd.DataFrame({
-            "retest_id": ["R1"], "poi_id": [row["poi_id"]], "direction": ["bullish"],
-            "retest_bar_id": [3], "retest_ts_event_utc": [pd.Timestamp("2024-01-03 08:03", tz="UTC")],
-            "retest_high": [row["poi_high"] + 0.1], "retest_low": [row["poi_low"] - 0.1], "retest_close": [row["poi_mid"]],
-            "retest_forward_return_5m": [0.001], "retest_forward_return_15m": [0.001],
-            "retest_forward_return_30m": [0.001], "retest_forward_return_60m": [0.001],
-        })
-        candidates = build_candidate_trade_table(poi, retest, Section6CConfig(min_stop_ticks=0, max_stop_ticks=1000))
-        boundary = candidates.query("entry_variant == 'boundary' and stop_model == 'poi_distal_edge'").iloc[0]
+        retest = pd.DataFrame(
+            {
+                "retest_id": ["R1"],
+                "poi_id": [row["poi_id"]],
+                "direction": ["bullish"],
+                "retest_bar_id": [3],
+                "retest_ts_event_utc": [pd.Timestamp("2024-01-03 08:03", tz="UTC")],
+                "retest_high": [row["poi_high"] + 0.1],
+                "retest_low": [row["poi_low"] - 0.1],
+                "retest_close": [row["poi_mid"]],
+                "retest_forward_return_5m": [0.001],
+                "retest_forward_return_15m": [0.001],
+                "retest_forward_return_30m": [0.001],
+                "retest_forward_return_60m": [0.001],
+            }
+        )
+        candidates = build_candidate_trade_table(
+            poi, retest, Section6CConfig(min_stop_ticks=0, max_stop_ticks=1000)
+        )
+        boundary = candidates.query(
+            "entry_variant == 'boundary' and stop_model == 'poi_distal_edge'"
+        ).iloc[0]
         self.assertEqual(boundary["entry_price"], row["poi_high"])
         self.assertEqual(boundary["stop_price"], row["poi_low"] - 0.1)
-        self.assertAlmostEqual(boundary["target_1R_price"], boundary["entry_price"] + boundary["risk_points"])
+        self.assertAlmostEqual(
+            boundary["target_1R_price"], boundary["entry_price"] + boundary["risk_points"]
+        )
 
     def test_22_structural_annotations_preserve_lineage(self):
         _, poi = _evaluated("bullish", 2, 3)
         poi = select_final_refined_pois(poi)
-        events = pd.DataFrame({
-            "continuous_segment_id": [1], "direction": ["bullish"], "structural_break_mode": ["wick"],
-            "structural_swing_window_broken": [15], "structural_swing_bar_id": [0], "structural_swing_price": [100.0],
-            "structural_break_bar_id": [1], "structural_break_distance_ticks": [2.0],
-        })
-        annotated = annotate_poi_structural_validation(poi, events, Section6CConfig(structural_swing_windows=(15,)))
+        events = pd.DataFrame(
+            {
+                "continuous_segment_id": [1],
+                "direction": ["bullish"],
+                "structural_break_mode": ["wick"],
+                "structural_swing_window_broken": [15],
+                "structural_swing_bar_id": [0],
+                "structural_swing_price": [100.0],
+                "structural_break_bar_id": [1],
+                "structural_break_distance_ticks": [2.0],
+            }
+        )
+        annotated = annotate_poi_structural_validation(
+            poi, events, Section6CConfig(structural_swing_windows=(15,))
+        )
         self.assertEqual(annotated.loc[0, "poi_variant_id"], poi.loc[0, "poi_variant_id"])
         self.assertTrue(bool(annotated.loc[0, "structural_swing_break_flag"]))
 
     def test_23_five_tick_cohort_strict_subset_of_four(self):
-        rows = pd.concat([_evaluated("bullish", 2, tick)[1] for tick in (3, 4, 5)], ignore_index=True)
+        rows = pd.concat(
+            [_evaluated("bullish", 2, tick)[1] for tick in (3, 4, 5)], ignore_index=True
+        )
         set4 = set(rows.index[rows["fvg_ge_4tick_flag"]])
         set5 = set(rows.index[rows["fvg_ge_5tick_flag"]])
         self.assertTrue(set5 < set4)
 
     def test_24_four_tick_cohort_strict_subset_of_three(self):
-        rows = pd.concat([_evaluated("bullish", 2, tick)[1] for tick in (3, 4, 5)], ignore_index=True)
+        rows = pd.concat(
+            [_evaluated("bullish", 2, tick)[1] for tick in (3, 4, 5)], ignore_index=True
+        )
         set3 = set(rows.index[rows["fvg_ge_3tick_flag"]])
         set4 = set(rows.index[rows["fvg_ge_4tick_flag"]])
         self.assertTrue(set4 < set3)
 
     def test_25_canonical_ids_collapse_swing_break_duplicates(self):
         bars = _formation_bars()
-        proposals = pd.concat([_proposal("bullish", "P1"), _proposal("bullish", "P2", swing_n=5, break_mode="close")], ignore_index=True)
+        proposals = pd.concat(
+            [_proposal("bullish", "P1"), _proposal("bullish", "P2", swing_n=5, break_mode="close")],
+            ignore_index=True,
+        )
         out = evaluate_refined_poi_proposals(bars, proposals)
         self.assertEqual(out["canonical_poi_id"].nunique(), 1)
         self.assertEqual(out["poi_variant_id"].nunique(), 2)
@@ -273,10 +321,17 @@ class Section6CPoiSelectionRefinementTests(unittest.TestCase):
 
     def test_27_section6c_save_does_not_overwrite_legacy_files(self):
         empty = pd.DataFrame()
-        tables = {key: empty for key in (
-            "refined_poi_audit", "refined_poi_table", "refined_retest_table",
-            "refined_candidate_trade_table", "refined_signal_frame", "refinement_summary",
-        )}
+        tables = {
+            key: empty
+            for key in (
+                "refined_poi_audit",
+                "refined_poi_table",
+                "refined_retest_table",
+                "refined_candidate_trade_table",
+                "refined_signal_frame",
+                "refinement_summary",
+            )
+        }
         with tempfile.TemporaryDirectory() as tmp:
             legacy = Path(tmp) / "section6_poi_table_gc.parquet"
             legacy.write_bytes(b"legacy")

@@ -142,7 +142,9 @@ def build_signal_candidates(
                 "session": session,
                 "gate_development_percentile": cfg.gate_development_percentile,
                 "gate_threshold": threshold,
-                "development_gate_rate": float(np.nanmean(prediction[mask & development] >= threshold)),
+                "development_gate_rate": float(
+                    np.nanmean(prediction[mask & development] >= threshold)
+                ),
                 "validation_gate_rate": float(
                     np.nanmean(prediction[mask & ~development] >= threshold)
                 ),
@@ -233,9 +235,7 @@ def build_signal_candidates(
             "validation_candidates": int(partition_counts.get("Validation", 0)),
             "gate_pass_observations": int(candidates["expansion_gate_flag"].sum()),
             "stop_clamped_fraction": clamped_fraction,
-            "median_stop_ticks": float(
-                (candidates["stop_points"] / cfg.tick_size).median()
-            ),
+            "median_stop_ticks": float((candidates["stop_points"] / cfg.tick_size).median()),
             "direction_variants": len(DIRECTION_VARIANTS),
             "gate_variants": len(GATE_VARIANTS),
         },

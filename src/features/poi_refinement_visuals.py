@@ -10,7 +10,6 @@ import pandas as pd
 
 from src.features.poi_selection_refinement import HAND_LABELLED_REGRESSION_CASES
 
-
 HAND_SIGNAL_COLUMNS = [
     "signal_id",
     "poi_id",
@@ -162,13 +161,37 @@ def build_random_stratified_refinement_audit(
     sample_dir = out_dir / "random_stratified"
     sample_dir.mkdir(parents=True, exist_ok=True)
     bars = _prepare_bars(research_bars)
-    structural = audit.get("structural_swing_break_flag", pd.Series(False, index=audit.index)).fillna(False)
-    local_only = audit.get("local_swing_only_flag", pd.Series(False, index=audit.index)).fillna(False)
+    structural = audit.get(
+        "structural_swing_break_flag", pd.Series(False, index=audit.index)
+    ).fillna(False)
+    local_only = audit.get("local_swing_only_flag", pd.Series(False, index=audit.index)).fillna(
+        False
+    )
     strata = [
-        ("valid_case1_bullish", audit["final_poi_valid_flag"] & audit["poi_geometry_case"].eq("case_1_expanded") & audit["direction"].eq("bullish")),
-        ("valid_case1_bearish", audit["final_poi_valid_flag"] & audit["poi_geometry_case"].eq("case_1_expanded") & audit["direction"].eq("bearish")),
-        ("valid_case2_bullish", audit["final_poi_valid_flag"] & audit["poi_geometry_case"].eq("case_2_standard") & audit["direction"].eq("bullish")),
-        ("valid_case2_bearish", audit["final_poi_valid_flag"] & audit["poi_geometry_case"].eq("case_2_standard") & audit["direction"].eq("bearish")),
+        (
+            "valid_case1_bullish",
+            audit["final_poi_valid_flag"]
+            & audit["poi_geometry_case"].eq("case_1_expanded")
+            & audit["direction"].eq("bullish"),
+        ),
+        (
+            "valid_case1_bearish",
+            audit["final_poi_valid_flag"]
+            & audit["poi_geometry_case"].eq("case_1_expanded")
+            & audit["direction"].eq("bearish"),
+        ),
+        (
+            "valid_case2_bullish",
+            audit["final_poi_valid_flag"]
+            & audit["poi_geometry_case"].eq("case_2_standard")
+            & audit["direction"].eq("bullish"),
+        ),
+        (
+            "valid_case2_bearish",
+            audit["final_poi_valid_flag"]
+            & audit["poi_geometry_case"].eq("case_2_standard")
+            & audit["direction"].eq("bearish"),
+        ),
         ("case3_reject", audit["rejection_reason"].eq("confirmation_close_inside_opening_gap")),
         ("no_fvg_reject", audit["rejection_reason"].eq("no_classic_fvg")),
         ("below_3_tick_reject", audit["rejection_reason"].eq("fvg_below_3_ticks")),
@@ -244,7 +267,11 @@ def plot_refined_poi_event(
     fig, axes = plt.subplots(2, 1, figsize=(14, 9), gridspec_kw={"height_ratios": [1.2, 1.0]})
     ax = axes[0]
     _draw_candles(ax, formation)
-    role_colors = {prior_id: ("A", "#375a9e"), middle_id: ("B / POI", "#f2a900"), confirm_id: ("C", "#7a3e9d")}
+    role_colors = {
+        prior_id: ("A", "#375a9e"),
+        middle_id: ("B / POI", "#f2a900"),
+        confirm_id: ("C", "#7a3e9d"),
+    }
     for bar_id, (role, color) in role_colors.items():
         row = bars.iloc[bar_id]
         x = mdates.date2num(_naive(row["ts_event_ny"]))
@@ -256,19 +283,61 @@ def plot_refined_poi_event(
     width = x_right - x_left
     overlays = [
         (float(event["poi_low"]), float(event["poi_high"]), "#f2a900", 0.11, "refined POI zone"),
-        (float(event["middle_low"]), float(event["middle_high"]), "#4c78a8", 0.12, "middle candle B range"),
+        (
+            float(event["middle_low"]),
+            float(event["middle_high"]),
+            "#4c78a8",
+            0.12,
+            "middle candle B range",
+        ),
         (float(event["fvg_low"]), float(event["fvg_high"]), "#2a9d8f", 0.24, "classic FVG"),
-        (float(event["close_open_gap_low"]), float(event["close_open_gap_high"]), "#d95f02", 0.24, "B-close/C-open gap"),
+        (
+            float(event["close_open_gap_low"]),
+            float(event["close_open_gap_high"]),
+            "#d95f02",
+            0.24,
+            "B-close/C-open gap",
+        ),
     ]
     for y0, y1, color, alpha, label in overlays:
         if np.isfinite(y0) and np.isfinite(y1) and y1 >= y0:
-            ax.add_patch(Rectangle((x_left, y0), width, max(y1 - y0, 0.005), facecolor=color, edgecolor=color, alpha=alpha, label=label))
-    if bool(event.get("poi_zone_expanded_flag", False)) and float(event["poi_zone_expansion_points"]) > 0:
+            ax.add_patch(
+                Rectangle(
+                    (x_left, y0),
+                    width,
+                    max(y1 - y0, 0.005),
+                    facecolor=color,
+                    edgecolor=color,
+                    alpha=alpha,
+                    label=label,
+                )
+            )
+    if (
+        bool(event.get("poi_zone_expanded_flag", False))
+        and float(event["poi_zone_expansion_points"]) > 0
+    ):
         if event["direction"] == "bullish":
-            y0, y1 = float(event["poi_high"] - event["poi_zone_expansion_points"]), float(event["poi_high"])
+            y0, y1 = (
+                float(event["poi_high"] - event["poi_zone_expansion_points"]),
+                float(event["poi_high"]),
+            )
         else:
-            y0, y1 = float(event["poi_low"]), float(event["poi_low"] + event["poi_zone_expansion_points"])
-        ax.add_patch(Rectangle((x_left, y0), width, y1 - y0, facecolor="none", edgecolor="#c0392b", hatch="////", linewidth=1.1, label="Case 1 extension"))
+            y0, y1 = (
+                float(event["poi_low"]),
+                float(event["poi_low"] + event["poi_zone_expansion_points"]),
+            )
+        ax.add_patch(
+            Rectangle(
+                (x_left, y0),
+                width,
+                y1 - y0,
+                facecolor="none",
+                edgecolor="#c0392b",
+                hatch="////",
+                linewidth=1.1,
+                label="Case 1 extension",
+            )
+        )
     ax.legend(loc="best", fontsize=8)
     ax.set_ylabel("GC price")
     ax.grid(True, alpha=0.16)
@@ -302,7 +371,9 @@ def plot_refined_poi_event(
     ax2.grid(True, alpha=0.16)
     ax2.legend(loc="best", fontsize=8)
 
-    signal_label = display_signal_id or str(event.get("audit_id", event.get("canonical_poi_id", "POI")))
+    signal_label = display_signal_id or str(
+        event.get("audit_id", event.get("canonical_poi_id", "POI"))
+    )
     middle_time = _fmt_time(event.get("middle_ts_event_ny", event.get("poi_middle_ts_event_ny")))
     confirm_time = _fmt_time(event.get("confirmation_ts_event_ny"))
     activation_time = _fmt_time(event.get("activation_ts_event_ny"))
@@ -346,11 +417,21 @@ def _draw_candles(ax: Any, frame: pd.DataFrame) -> None:
         frame["high"].to_numpy("float64"),
         frame["low"].to_numpy("float64"),
         frame["close"].to_numpy("float64"),
+        strict=False,
     ):
         color = "#12715b" if close >= open_ else "#a23a3a"
         ax.vlines(x_value, low, high, color=color, linewidth=0.9)
         body_low = min(open_, close)
-        ax.add_patch(Rectangle((x_value - width / 2, body_low), width, max(abs(close - open_), 0.005), facecolor=color, edgecolor=color, alpha=0.86))
+        ax.add_patch(
+            Rectangle(
+                (x_value - width / 2, body_low),
+                width,
+                max(abs(close - open_), 0.005),
+                facecolor=color,
+                edgecolor=color,
+                alpha=0.86,
+            )
+        )
 
 
 def _prepare_bars(research_bars: pd.DataFrame) -> pd.DataFrame:
@@ -377,7 +458,11 @@ def _actual_classification(event: pd.Series) -> str:
 
 def _reviewer_note(event: pd.Series, fixture: dict[str, Any]) -> str:
     actual = _actual_classification(event)
-    if actual == fixture["expected_classification"] and bool(event["formation_valid_flag"]) == fixture["expected_formation_validity"] and str(event["rejection_reason"]) == fixture["expected_rejection_reason"]:
+    if (
+        actual == fixture["expected_classification"]
+        and bool(event["formation_valid_flag"]) == fixture["expected_formation_validity"]
+        and str(event["rejection_reason"]) == fixture["expected_rejection_reason"]
+    ):
         return "Matches supplied human label."
     direction = str(event["direction"])
     if direction == "bullish":
@@ -398,7 +483,9 @@ def _abc_ohlc_records(signal_id: str, event: pd.Series) -> list[dict[str, Any]]:
             {
                 "signal_id": signal_id,
                 "role": role,
-                "bar_id": event[f"{prefix}_bar_id"] if f"{prefix}_bar_id" in event else event["poi_middle_bar_id"],
+                "bar_id": event[f"{prefix}_bar_id"]
+                if f"{prefix}_bar_id" in event
+                else event["poi_middle_bar_id"],
                 "timestamp_ny": event[f"{prefix}_ts_event_ny"],
                 "symbol": event[f"{prefix}_symbol"],
                 "open": event[f"{prefix}_open"],

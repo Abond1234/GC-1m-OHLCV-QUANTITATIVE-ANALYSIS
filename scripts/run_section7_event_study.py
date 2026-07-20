@@ -3,11 +3,12 @@
 Kept for historical reproducibility only. The full population needs roughly 4 GB
 of free memory and this legacy path has no chunked fallback.
 """
+
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
-import sys
 
 import pandas as pd
 

@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 
 from src.resources import (
-    MemoryPlan,
     chronological_chunks,
     machine_memory_gb,
     memory_tier,
@@ -68,7 +67,7 @@ class ChronologicalChunkTests(unittest.TestCase):
         chunks = chronological_chunks(dates, 3)
         recombined = np.concatenate(chunks)
         np.testing.assert_array_equal(recombined, np.unique(dates))
-        for earlier, later in zip(chunks, chunks[1:]):
+        for earlier, later in zip(chunks, chunks[1:], strict=False):
             self.assertLess(earlier[-1], later[0])
 
     def test_single_chunk_when_not_chunked(self) -> None:
