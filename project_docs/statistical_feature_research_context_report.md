@@ -1259,13 +1259,13 @@ Redundancy and incremental information:      COMPLETE
 Multivariate research:                       COMPLETE
 Statistical signal construction:             COMPLETE
 Independent statistical backtest:            COMPLETE — standalone system REJECTED
-POI integration research:                    NEXT PHASE
+POI integration research (gate-filter form):  COMPLETE — no confirmed incremental value
 ```
 
 The correct next action is:
 
 ```text
-Section 12.0 — Integration Research (POI direction candidates filtered and sized by the frozen statistical opportunity models)
+Integration follow-ups: opportunity-based sizing, no-trade suppression, and POI-x-statistical feature interactions; or Branch A Section 8 backtest authorization
 ```
 
 ---
@@ -1570,3 +1570,17 @@ A chronological single-position simulator executed 86,353 trades across the four
 Result: every variant is rejected under the declared rule (positive net base-scenario expectancy in both partitions required); mean net R ranges -0.19 to -0.28. Win rates near one third at a 2R target are what a directionless market produces, and the expansion gate concentrates activity but supplies no direction. This is the defensible "none qualify" outcome the PRD treats as valid Phase 2 success: Branch B standalone is closed, and its validated opportunity-forecasting assets transfer to the Section 12 hybrid integration phase. Verification: 8/8 structural checks, 13/13 synthetic tests on hand-constructed bar paths, full suite green. Implementation: `src/statistical_research/sequential_backtest.py`, `tests/test_statistical_research_backtest.py`, `scripts/update_statistical_section11_notebook.py`. Tracked record: `reports/statistical_research/summaries/section11_sequential_backtest_summary.md`.
 
 The Final test remains locked throughout Sections 7-11.
+
+---
+
+## Section 12 — Hybrid Integration Research Completion
+
+**Status:** COMPLETE — `SECTION 12 STATUS: READY` — **gate-filter integration adds no confirmed incremental value**
+
+With both branches frozen, the integration boundary was crossed once, in one direction: True POI retests supplied direction candidates and the frozen Section 9/10 opportunity model supplied the filter (PRD Hybrid Mode B). Rules were frozen in `Section12Config` before computation. The full-coverage gate table is verified to reproduce the saved Development/Validation predictions exactly (population-matched per-date rank z-scores; the verification check caught the population-mismatch hazard and forced the fix). 358,072 outcome rows joined at 98.1 percent; verdicts used Development and Validation only with pre-declared floors; the Final test was read once after verdicts were fixed.
+
+Result: all four direction families are `NO_INCREMENTAL_VALUE`. Continuation short showed +1.17R/+0.87R Dev/Val improvements on only 410/241 gated events (below the 500/300 floors); the one-time Final-test read on 301,610 events collapsed that improvement to -0.02R, vindicating the floors. The gate passes only ~5 percent of POI events because POIs form in extended conditions where the model forecasts below-median relative expansion.
+
+Implementation: `src/research/hybrid_integration.py`, `tests/test_hybrid_integration.py` (11 synthetic tests including proof that Final-test outcomes cannot influence verdicts), `scripts/update_statistical_section12_notebook.py`. Tracked record: `reports/statistical_research/summaries/section12_hybrid_integration_summary.md`. Generated artifacts remain excluded from Git.
+
+Open integration forms not yet researched: opportunity-based sizing, no-trade suppression in low-opportunity regimes, and POI-context x statistical-feature interactions.

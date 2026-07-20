@@ -4728,3 +4728,16 @@ Branch A status unchanged: no POI Section 8 backtest candidate approved. Final t
 ```
 
 Details: the Section 9-11 completion entries in `project_docs/statistical_feature_research_context_report.md` and the section summaries under `reports/statistical_research/summaries/`.
+
+# Authoritative Update — Section 12 Hybrid Integration Complete — 2026-07-20
+
+```text
+Section 12 (hybrid integration, gate-filter form): COMPLETE — NO CONFIRMED INCREMENTAL VALUE.
+The frozen Branch B opportunity gate does not reliably improve any True POI direction family.
+Continuation short looked strong on small Dev/Val gated samples but collapsed to -0.02R on the
+one-time 301,610-event Final-test read; the pre-declared sample floors correctly withheld it.
+Open next steps: sizing/no-trade integration forms, POI-x-statistical interactions, or the
+Branch A Section 8 backtest authorization decision. Final test discipline maintained throughout.
+```
+
+Details: Section 12 completion entry in `project_docs/statistical_feature_research_context_report.md` and `reports/statistical_research/summaries/section12_hybrid_integration_summary.md`.

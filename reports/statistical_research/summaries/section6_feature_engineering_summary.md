@@ -8,7 +8,7 @@
 - Numeric predictors: **80**
 - Critical validation checks passed: **37/37**
 - Automated feature tests: **14/14 passed**
-- Feature-build runtime: **27.08 seconds**
+- Feature-build runtime: **33.77 seconds**
 - Estimated unoptimized matrix memory: **414.21 MiB**
 - Optimized matrix memory: **213.40 MiB**
 - Estimated peak working memory: **634.05 MiB**
