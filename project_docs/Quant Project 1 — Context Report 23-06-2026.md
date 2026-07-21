@@ -2,6 +2,8 @@
 
 > **Purpose:**
 > This document serves as the authoritative project context for future AI sessions. Any AI assistant reading this file should assume all completed sections are already done and continue from the current project state unless instructed otherwise.
+>
+> **How to read this document:** it is an append-only chronicle ordered by milestone. Each entry was accurate when written, so status tables in early entries (for example "Backtesting: Not Started") are historical records, not the current state. The current state is always the final "Authoritative Update" entries at the end of this file, together with `README.md`. Nothing in the body is rewritten after the fact; corrections and closures arrive as new entries.
 
 ---
 
@@ -4754,3 +4756,42 @@ remaining path is the frozen Section 12B contract; failing that, Option 3 archiv
 ```
 
 Details: `reports/statistical_research/summaries/section8_poi_sequential_backtest_summary.md`.
+
+# Authoritative Update — Section 12B Opportunity Conditioning Complete; S7P02 Family Archived — 2026-07-20
+
+```text
+Section 12B (opportunity-conditioned sizing/exits/suppression): COMPLETE — NO_ADVANCE on all
+three pre-declared hypotheses. H1 proportional sizing shows the model's most persistent positive
+signal (mean/MAD ratio effects with 0.81-1.07 Validation retention) but fails the base-cost
+bootstrap interval and the 0.05R mean-shift materiality bound - the lift is high-quintile return
+concentration, the effect Section 12 already rejected. H2 exit conditioning and H3 suppression
+both flip sign in Validation. One-time Final-test read: every effect within 0.03R of zero.
+Per the authorization memo linkage (Option 1 SEQUENTIAL_REJECTED + Section 12B negative),
+Option 3 applies: the S7P02 continuation-short family is ARCHIVED with its evidence chain.
+The Phase 2 research program is closed for both branches. Remaining PRD work is engineering:
+GC-to-MGC transfer validation, prop-firm rules, forward-test scaffolding. Final test locked
+throughout; any new research question requires a fresh pre-declared contract.
+```
+
+Details: Section 12B completion entry in `project_docs/statistical_feature_research_context_report.md` and `reports/statistical_research/summaries/section12b_opportunity_conditioning_summary.md`.
+
+# Authoritative Update — Phase 4 Execution Layer: MGC Transfer Validated, Prop-Firm Engine Built — 2026-07-20
+
+```text
+FR-09 (GC-to-MGC transfer validation): COMPLETE — G5_PROVISIONAL_FAIL. Synchronization and
+liquidity at the 179,036 POI decision bars are excellent (100 percent coverage, median basis one
+tick, median 274 MGC contracts per decision minute, zero-volume never), but the GC first-contact
+price trades on MGC in the same minute only 80.2 percent of the time - stable 75.5-80.9 percent
+in every year, so the gap is structural, not legacy liquidity. Tick-precise GC entries cannot be
+assumed fillable on MGC; an MGC-native entry treatment (tolerance band or marketable entry) with
+telemetry-measured cost is required. Provisional thresholds were declared before computation;
+final G5 numbers await lead approval.
+FR-10 (prop-firm rules engine): COMPLETE - versioned policy layer (profit target, daily loss,
+static/trailing/EOD drawdown with initial-balance cap, consistency, min/max days, internal risk
+buffers), deterministic evaluation simulator with day-by-day ledgers, and seeded bootstrap
+estimator of pass/breach probabilities. Bundled policies are illustrative templates; real firm
+terms must be re-verified before use. No strategy is attached - none is approved.
+FR-11 (Rithmic paper integration): NOT STARTED - requires credentials and platform approval.
+Implementation: src/execution/{mgc_transfer.py, prop_firm_rules.py}, 18 synthetic tests,
+scripts/run_mgc_transfer_validation.py, reports/execution/mgc_transfer_validation_summary.md.
+```

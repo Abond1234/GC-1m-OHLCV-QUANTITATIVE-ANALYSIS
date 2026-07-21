@@ -8,7 +8,6 @@
 - Numeric predictors: **80**
 - Critical validation checks passed: **37/37**
 - Automated feature tests: **14/14 passed**
-- Feature-build runtime: **33.77 seconds**
 - Estimated unoptimized matrix memory: **414.21 MiB**
 - Optimized matrix memory: **213.40 MiB**
 - Estimated peak working memory: **634.05 MiB**
@@ -80,5 +79,7 @@ Highest Development missingness:
 **No feature has yet been shown to possess predictive value.** Section 6 establishes only a valid candidate feature matrix.
 
 **Exact next section:** Section 7.0 — Univariate Feature Evaluation
+
+*Follow-up (2026-07-20): executed as declared - see `section7_univariate_evaluation_summary.md`.*
 
 SECTION 6 STATUS: READY

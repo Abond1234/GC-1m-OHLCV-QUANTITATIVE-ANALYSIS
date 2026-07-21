@@ -44,4 +44,6 @@ This summary is the tracked record of the milestone.
 
 **Section 9.0 — Multivariate Research**, beginning with simple linear benchmarks on the 15-feature frozen set under chronological validation, against the anchor-only baseline. The Final test remains locked.
 
+*Follow-up (2026-07-20): executed as declared - see `section9_multivariate_summary.md`.*
+
 SECTION 8 STATUS: READY

@@ -1,5 +1,7 @@
 # Section 4 Follow-up Report - Research Dataset Outputs
 
+> **Point-in-time record:** written at the Section 4 milestone (June 2026). The dataset it describes remains the trusted foundation, but "next step" statements inside are historical; the current project state lives in `README.md` and the final Authoritative Update entries of the main context report.
+
 ## Purpose
 
 This report explains the outputs produced by Section 4.0 of the exploration notebook:
