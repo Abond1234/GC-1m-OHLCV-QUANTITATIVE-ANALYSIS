@@ -31,6 +31,7 @@ data/
 logs/
 models/
 .agents/
+.claude/
 reports/figures/
 reports/results/
 reports/statistical_research/figures/section5/

@@ -1,10 +1,17 @@
 """Section 7 True POI context, outcome, and candidate-policy research."""
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
+# pyright: reportArgumentType=false
+# pyright: reportOptionalMemberAccess=false
+# pyright: reportOptionalOperand=false
+# pyright: reportReturnType=false
+# pyright: reportCallIssue=false
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, cast
+from typing import Any, Iterable
 
 import numpy as np
 import pandas as pd
@@ -137,48 +144,43 @@ def build_directional_outcome_labels(
             "roll_window_flag",
         ]
     ]
-    base = cast(
-        pd.DataFrame,
-        context[
-            [
-                "true_poi_id",
-                "true_retest_id",
-                "true_trade_opportunity_id",
-                "trade_date_ny",
-                "direction",
-                "retest_bar_id",
-                "poi_low",
-                "poi_high",
-                "poi_mid",
-                "feat_first_contact_edge_price",
-                "feat_long_term_atr_ticks",
-                "feat_approach_direction_sign",
-                "feat_touch_penetration_fraction",
-                "feat_touch_full_zone_traversal",
-                "research_partition",
-            ]
-        ].copy(),
-    )
+    base = context[
+        [
+            "true_poi_id",
+            "true_retest_id",
+            "true_trade_opportunity_id",
+            "trade_date_ny",
+            "direction",
+            "retest_bar_id",
+            "poi_low",
+            "poi_high",
+            "poi_mid",
+            "feat_first_contact_edge_price",
+            "feat_long_term_atr_ticks",
+            "feat_approach_direction_sign",
+            "feat_touch_penetration_fraction",
+            "feat_touch_full_zone_traversal",
+            "research_partition",
+        ]
+    ].copy()
     frames = []
     for hypothesis in ("continuation", "reversal"):
         frame = base.copy()
         bullish = frame["direction"].eq("bullish")
         if hypothesis == "continuation":
-            frame["trade_side"] = np.where(bullish.to_numpy(), "long", "short")
+            frame["trade_side"] = np.where(bullish, "long", "short")
         else:
-            frame["trade_side"] = np.where(bullish.to_numpy(), "short", "long")
+            frame["trade_side"] = np.where(bullish, "short", "long")
         frame["hypothesis"] = hypothesis
         frame["label_entry_price"] = frame["feat_first_contact_edge_price"]
         long_side = frame["trade_side"].eq("long")
         frame["label_normalized_stop_price"] = np.where(
-            long_side.to_numpy(bool),
-            np.asarray(frame["poi_low"] - 0.10, dtype=np.float64),
-            np.asarray(frame["poi_high"] + 0.10, dtype=np.float64),
+            long_side, frame["poi_low"] - 0.10, frame["poi_high"] + 0.10
         )
         frame["label_risk_points"] = np.where(
-            long_side.to_numpy(bool),
-            np.asarray(frame["label_entry_price"] - frame["label_normalized_stop_price"], dtype=np.float64),
-            np.asarray(frame["label_normalized_stop_price"] - frame["label_entry_price"], dtype=np.float64),
+            long_side,
+            frame["label_entry_price"] - frame["label_normalized_stop_price"],
+            frame["label_normalized_stop_price"] - frame["label_entry_price"],
         )
         frames.append(frame)
     out = pd.concat(frames, ignore_index=True)
@@ -192,7 +194,7 @@ def build_directional_outcome_labels(
     path_columns: dict[str, np.ndarray] = {}
     for horizon in cfg.horizons:
         path = build_bar_horizon_path_features(
-            cast(pd.DataFrame, section7_bars), horizon, Section7Config(forward_horizons=(horizon,))
+            section7_bars, horizon, Section7Config(forward_horizons=(horizon,))
         )
         aligned = path.iloc[rid]
         for mode in ("fixed", "capped"):
@@ -217,48 +219,38 @@ def build_directional_outcome_labels(
     out = pd.concat([out, pd.DataFrame(path_columns, index=out.index)], axis=1)
 
     paired = out.pivot(index="true_retest_id", columns="hypothesis", values="label_capped_60m_r")
-    paired_cont = paired["continuation"] if "continuation" in paired.columns else pd.Series(np.nan, index=paired.index)
-    paired_rev = paired["reversal"] if "reversal" in paired.columns else pd.Series(np.nan, index=paired.index)
-    dominance = cast(pd.Series, np.sign(paired_cont - paired_rev))
-    derived: dict[str, Any] = {}
-    derived["label_continuation_dominance"] = out["true_retest_id"].map(
-        lambda x: dict(dominance).get(x)
-    ).eq(1)
-    derived["label_reversal_dominance"] = out["true_retest_id"].map(
-        lambda x: dict(dominance).get(x)
-    ).eq(-1)
+    dominance = np.sign(paired.get("continuation", np.nan) - paired.get("reversal", np.nan))
+    derived: dict[str, np.ndarray | pd.Series] = {}
+    derived["label_continuation_dominance"] = out["true_retest_id"].map(dominance).eq(1)
+    derived["label_reversal_dominance"] = out["true_retest_id"].map(dominance).eq(-1)
     zone_hold = (
         np.where(
-            out["direction"].eq("bullish").to_numpy(),
+            out["direction"].eq("bullish"),
             out["label_capped_60m_r"].where(
                 out["trade_side"].eq("long"), -out["label_capped_60m_r"]
-            ).to_numpy(),
+            ),
             out["label_capped_60m_r"].where(
                 out["trade_side"].eq("short"), -out["label_capped_60m_r"]
-            ).to_numpy(),
+            ),
         )
         > 0
     )
     derived["label_zone_hold"] = zone_hold
     derived["label_zone_failure"] = ~zone_hold
-    derived.update(_build_interaction_path_labels(out, cast(pd.DataFrame, section7_bars)))
+    derived.update(_build_interaction_path_labels(out, section7_bars))
     location_mfe_points = (
         (out["label_capped_60m_mfe_r"] * out["label_risk_points"])
         .groupby(out["true_retest_id"])
         .max()
     )
     location_r = out["label_capped_60m_mfe_r"].groupby(out["true_retest_id"]).max()
-    location_points = out["true_retest_id"].map(
-        lambda x: dict(location_mfe_points).get(x)
-    )
+    location_points = out["true_retest_id"].map(location_mfe_points)
     location_atr = location_points / (out["feat_long_term_atr_ticks"] * 0.10)
     derived["label_location_max_move_away_points_60m"] = location_points
     derived["label_location_max_move_away_atr_60m"] = location_atr
     derived["label_location_reaction_0_5atr"] = location_atr >= 0.5
     derived["label_location_reaction_1_0atr"] = location_atr >= 1.0
-    mapped_location_r = out["true_retest_id"].map(
-        lambda x: dict(location_r).get(x)
-    )
+    mapped_location_r = out["true_retest_id"].map(location_r)
     for threshold in (1, 2, 3):
         derived[f"label_location_reaction_{threshold}r"] = mapped_location_r >= threshold
     return pd.concat([out, pd.DataFrame(derived, index=out.index)], axis=1)
@@ -266,7 +258,7 @@ def build_directional_outcome_labels(
 
 def _build_interaction_path_labels(
     out: pd.DataFrame, bars: pd.DataFrame
-) -> dict[str, Any]:
+) -> dict[str, np.ndarray | pd.Series]:
     """Touch aftermath and time-to-extreme diagnostic columns, returned unattached."""
 
     high = bars["high"].to_numpy("float64", copy=False)
@@ -283,27 +275,23 @@ def _build_interaction_path_labels(
         safe = np.clip(idx, 0, len(bars) - 1)
         valid = (idx < len(bars)) & (segment[safe] == segment[rid[rows], None])
         favorable = np.where(
-            long_side[rows, None],
-            np.asarray(high[safe] - entry[rows, None], dtype=np.float64),
-            np.asarray(entry[rows, None] - low[safe], dtype=np.float64),
+            long_side[rows, None], high[safe] - entry[rows, None], entry[rows, None] - low[safe]
         )
         adverse = np.where(
-            long_side[rows, None],
-            np.asarray(entry[rows, None] - low[safe], dtype=np.float64),
-            np.asarray(high[safe] - entry[rows, None], dtype=np.float64),
+            long_side[rows, None], entry[rows, None] - low[safe], high[safe] - entry[rows, None]
         )
         favorable[~valid] = -np.inf
         adverse[~valid] = -np.inf
         time_mfe[rows] = np.argmax(favorable, axis=1)
         time_mae[rows] = np.argmax(adverse, axis=1)
-    columns: dict[str, Any] = {
+    columns: dict[str, np.ndarray | pd.Series] = {
         "label_time_to_mfe_60m": time_mfe,
         "label_time_to_mae_60m": time_mae,
     }
 
     unique = out.drop_duplicates("true_retest_id").copy()
     urid = unique["retest_bar_id"].to_numpy("int64")
-    next_idx = np.clip(urid + 1, 0, len(bars) - 1)
+    next_idx = np.minimum(urid + 1, len(bars) - 1)
     same_segment = segment[next_idx] == segment[urid]
     zone_overlap_next = (high[next_idx] >= unique["poi_low"].to_numpy()) & (
         low[next_idx] <= unique["poi_high"].to_numpy()
@@ -311,11 +299,7 @@ def _build_interaction_path_labels(
     immediate_exit = same_segment & ~zone_overlap_next
     attack = unique["feat_approach_direction_sign"].to_numpy("float64")
     edge = unique["feat_first_contact_edge_price"].to_numpy("float64")
-    rejection = np.where(
-        attack < 0,
-        np.asarray(high[next_idx] - edge, dtype=np.float64),
-        np.asarray(edge - low[next_idx], dtype=np.float64),
-    )
+    rejection = np.where(attack < 0, high[next_idx] - edge, edge - low[next_idx])
     reentry = np.zeros(len(unique), dtype=bool)
     time_inside = np.zeros(len(unique), dtype="int16")
     for i, bar in enumerate(urid):
@@ -330,22 +314,20 @@ def _build_interaction_path_labels(
         if immediate_exit[i] and len(overlap) > 2:
             reentry[i] = bool(overlap[2:].any())
     mapping = unique.assign(
-        _immediate_exit=pd.Series(immediate_exit, index=unique.index),
-        _rejection_ticks=pd.Series(np.maximum(rejection, 0) / 0.10, index=unique.index),
-        _reentry=pd.Series(reentry, index=unique.index),
-        _inside=pd.Series(time_inside, index=unique.index),
+        _immediate_exit=immediate_exit,
+        _rejection_ticks=np.maximum(rejection, 0) / 0.10,
+        _reentry=reentry,
+        _inside=time_inside,
     ).set_index("true_retest_id")
     columns["label_interaction_immediate_exit_next_bar"] = out["true_retest_id"].map(
-        lambda x: dict(mapping["_immediate_exit"]).get(x)
+        mapping["_immediate_exit"]
     )
     columns["label_interaction_immediate_rejection_ticks"] = out["true_retest_id"].map(
-        lambda x: dict(mapping["_rejection_ticks"]).get(x)
+        mapping["_rejection_ticks"]
     )
-    columns["label_interaction_reentry_within_15m"] = out["true_retest_id"].map(
-        lambda x: dict(mapping["_reentry"]).get(x)
-    )
+    columns["label_interaction_reentry_within_15m"] = out["true_retest_id"].map(mapping["_reentry"])
     columns["label_interaction_bars_inside_poi_next_15m"] = out["true_retest_id"].map(
-        lambda x: dict(mapping["_inside"]).get(x)
+        mapping["_inside"]
     )
     return columns
 
@@ -380,32 +362,29 @@ def build_stop_policy_opportunities(
         if set(FIRST_PASSAGE_REQUIRED_BAR_COLUMNS).issubset(research_bars.columns)
         else prepare_first_passage_bars(research_bars)
     )
-    base = cast(
-        pd.DataFrame,
-        context[
-            [
-                "true_poi_id",
-                "true_retest_id",
-                "true_trade_opportunity_id",
-                "trade_date_ny",
-                "direction",
-                "retest_bar_id",
-                "poi_low",
-                "poi_high",
-                "poi_size_ticks",
-                "prior_bar_id",
-                "poi_bar_id",
-                "confirmation_bar_id",
-                "feat_first_contact_edge_price",
-                "feat_long_term_atr_ticks",
-                "research_partition",
-            ]
-        ].copy(),
-    )
+    base = context[
+        [
+            "true_poi_id",
+            "true_retest_id",
+            "true_trade_opportunity_id",
+            "trade_date_ny",
+            "direction",
+            "retest_bar_id",
+            "poi_low",
+            "poi_high",
+            "poi_size_ticks",
+            "prior_bar_id",
+            "poi_bar_id",
+            "confirmation_bar_id",
+            "feat_first_contact_edge_price",
+            "feat_long_term_atr_ticks",
+            "research_partition",
+        ]
+    ].copy()
     bullish = base["direction"].eq("bullish")
     base["hypothesis"] = hypothesis
     base["trade_side"] = np.where(
-        bullish.to_numpy(),
+        bullish,
         "long" if hypothesis == "continuation" else "short",
         "short" if hypothesis == "continuation" else "long",
     )
@@ -415,7 +394,7 @@ def build_stop_policy_opportunities(
     if entry_model == "next_bar_confirmation":
         entry_bar = rid + 1
         in_bounds = entry_bar < len(bars)
-        entry_bar = np.clip(entry_bar, 0, len(bars) - 1)
+        entry_bar = np.minimum(entry_bar, len(bars) - 1)
         base["entry_price"] = bars["open"].to_numpy("float64")[entry_bar]
         base["entry_bar_id"] = entry_bar
         base.loc[~in_bounds, "entry_bar_id"] = -1
@@ -424,57 +403,37 @@ def build_stop_policy_opportunities(
         base["entry_bar_id"] = rid
     entry = base["entry_price"].to_numpy("float64")
     long_side = base["trade_side"].eq("long").to_numpy(bool)
-    high = np.asarray(bars["high"].to_numpy(), dtype=np.float64)
-    low = np.asarray(bars["low"].to_numpy(), dtype=np.float64)
+    high = bars["high"].to_numpy("float64")
+    low = bars["low"].to_numpy("float64")
     if stop_model == "poi_invalidation_1tick":
-        stop = np.where(
-            long_side,
-            np.asarray(base["poi_low"] - 0.10, dtype=np.float64),
-            np.asarray(base["poi_high"] + 0.10, dtype=np.float64),
-        )
+        stop = np.where(long_side, base["poi_low"] - 0.10, base["poi_high"] + 0.10)
     elif stop_model == "volatility_hybrid":
         minimum = base["feat_long_term_atr_ticks"].to_numpy("float64") * 0.10 * 0.50
-        poi_stop = np.where(
-            long_side,
-            np.asarray(base["poi_low"] - 0.10, dtype=np.float64),
-            np.asarray(base["poi_high"] + 0.10, dtype=np.float64),
-        )
+        poi_stop = np.where(long_side, base["poi_low"] - 0.10, base["poi_high"] + 0.10)
         stop = np.where(
             long_side, np.minimum(poi_stop, entry - minimum), np.maximum(poi_stop, entry + minimum)
         )
     elif stop_model == "touch_rejection_candle":
-        stop = np.where(
-            long_side,
-            np.asarray(low[rid] - 0.10, dtype=np.float64),
-            np.asarray(high[rid] + 0.10, dtype=np.float64),
-        )
+        stop = np.where(long_side, low[rid] - 0.10, high[rid] + 0.10)
     elif stop_model == "legacy_conservative_adjacent":
         a = base["prior_bar_id"].to_numpy("int64")
         b = base["poi_bar_id"].to_numpy("int64")
         c = base["confirmation_bar_id"].to_numpy("int64")
         stop = np.where(
             long_side,
-            np.asarray(np.minimum.reduce([low[a], low[b], low[c]]) - 0.10, dtype=np.float64),
-            np.asarray(np.maximum.reduce([high[a], high[b], high[c]]) + 0.10, dtype=np.float64),
+            np.minimum.reduce([low[a], low[b], low[c]]) - 0.10,
+            np.maximum.reduce([high[a], high[b], high[c]]) + 0.10,
         )
     else:
         entry_idx = base["entry_bar_id"].to_numpy("int64")
         matrix = np.clip(entry_idx[:, None] - np.arange(7, 0, -1)[None, :], 0, len(bars) - 1)
-        stop = np.where(
-            long_side,
-            np.asarray(low[matrix].min(axis=1) - 0.10, dtype=np.float64),
-            np.asarray(high[matrix].max(axis=1) + 0.10, dtype=np.float64),
-        )
+        stop = np.where(long_side, low[matrix].min(axis=1) - 0.10, high[matrix].max(axis=1) + 0.10)
     base["stop_price"] = stop
-    base["risk_points"] = np.where(
-        long_side,
-        np.asarray(entry - stop, dtype=np.float64),
-        np.asarray(stop - entry, dtype=np.float64),
-    )
+    base["risk_points"] = np.where(long_side, entry - stop, stop - entry)
     base["risk_ticks"] = base["risk_points"] / 0.10
     base["risk_atr"] = base["risk_ticks"] / base["feat_long_term_atr_ticks"]
     base["risk_in_poi_widths"] = base["risk_ticks"] / base["poi_size_ticks"]
-    base["risk_25_100_tick_flag"] = (base["risk_ticks"] >= 25) & (base["risk_ticks"] <= 100)
+    base["risk_25_100_tick_flag"] = base["risk_ticks"].between(25, 100, inclusive="both")
     base["true_trade_opportunity_id"] = (
         base["true_retest_id"].astype("string")
         + "_"
@@ -517,27 +476,20 @@ def build_feature_study_summary(
     for feature in features:
         if feature not in analysis:
             continue
-        dev_values = cast(
-            pd.Series,
-            pd.to_numeric(
-                analysis.loc[analysis["research_partition"].eq("development"), feature],
-                errors="coerce",
-            ),
+        dev_values = pd.to_numeric(
+            analysis.loc[analysis["research_partition"].eq("development"), feature], errors="coerce"
         ).dropna()
         if dev_values.nunique() < 4:
             continue
-        edges = np.unique(np.nanquantile(dev_values.to_numpy(), [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]))
+        edges = np.unique(np.nanquantile(dev_values, [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]))
         if len(edges) < 3:
             continue
         edges[0], edges[-1] = -np.inf, np.inf
-        bins = cast(
-            pd.Series,
-            pd.cut(
-                pd.to_numeric(analysis[feature], errors="coerce"),
-                edges,
-                include_lowest=True,
-                duplicates="drop",
-            ),
+        bins = pd.cut(
+            pd.to_numeric(analysis[feature], errors="coerce"),
+            edges,
+            include_lowest=True,
+            duplicates="drop",
         )
         temp = analysis[
             [
@@ -550,10 +502,9 @@ def build_feature_study_summary(
                 "true_poi_id",
             ]
         ].assign(feature_bin=bins.astype("string"))
-        for key, group in temp.dropna(
+        for (partition, hypothesis, feature_bin), group in temp.dropna(
             subset=["feature_bin", "screen_r"]
         ).groupby(["research_partition", "hypothesis", "feature_bin"], observed=True, sort=False):
-            partition, hypothesis, feature_bin = cast(tuple[Any, Any, Any], key)
             values = group["screen_r"].to_numpy("float64")
             uncapped = group["label_capped_60m_r"].to_numpy("float64")
             ci_low, ci_high = _date_block_bootstrap_ci(
@@ -570,14 +521,14 @@ def build_feature_study_summary(
                     "true_retest_count": group["true_retest_id"].nunique(),
                     "true_poi_count": group["true_poi_id"].nunique(),
                     "trading_date_count": group["trade_date_ny"].nunique(),
-                    "mean_r": float(group["screen_r"].mean()),
-                    "mean_uncapped_r": float(group["label_capped_60m_r"].mean()),
-                    "median_r": float(group["screen_r"].median()),
-                    "q10_r": float(group["screen_r"].quantile(0.10)),
-                    "q25_r": float(group["screen_r"].quantile(0.25)),
+                    "mean_r": np.mean(values),
+                    "mean_uncapped_r": np.mean(uncapped),
+                    "median_r": np.median(values),
+                    "q10_r": np.quantile(values, 0.10),
+                    "q25_r": np.quantile(values, 0.25),
                     "date_cluster_bootstrap_ci_low": ci_low,
                     "date_cluster_bootstrap_ci_high": ci_high,
-                    "raw_p_value": float(cast(Any, test)[1]) if test is not None else np.nan,
+                    "raw_p_value": float(test.pvalue) if test is not None else np.nan,
                 }
             )
     result = pd.DataFrame(rows)
@@ -586,13 +537,12 @@ def build_feature_study_summary(
     dev = result["research_partition"].eq("development")
     result.loc[dev, "bh_q_value"] = _benjamini_hochberg(result.loc[dev, "raw_p_value"])
     result["monotonic_direction"] = "not_assessed"
-    for key, group in result.groupby(
+    for (_feature, _partition, _hypothesis), group in result.groupby(
         ["feature_name", "research_partition", "hypothesis"], observed=True
     ):
-        _feature, _partition, _hypothesis = cast(tuple[Any, Any, Any], key)
         ordered = group.sort_values("feature_bin")
         rho = (
-            float(cast(Any, stats.spearmanr(np.arange(len(ordered)), ordered["mean_r"]))[0])
+            stats.spearmanr(np.arange(len(ordered)), ordered["mean_r"]).statistic
             if len(ordered) > 2
             else np.nan
         )
@@ -621,7 +571,7 @@ def build_interaction_summary(
     dev = analysis["research_partition"].eq("development")
 
     def q(col, value):
-        return float(cast(pd.Series, pd.to_numeric(analysis.loc[dev, col], errors="coerce")).quantile(value))
+        return float(pd.to_numeric(analysis.loc[dev, col], errors="coerce").quantile(value))
 
     conditions = {
         "displacement_quality_x_approach_quality": (
@@ -651,12 +601,12 @@ def build_interaction_summary(
         )
         & (
             np.sign(analysis["feat_vwap_slope_15m_ticks_per_minute"])
-            == np.where(analysis["trade_side"].eq("long").to_numpy(), 1, -1)
+            == np.where(analysis["trade_side"].eq("long"), 1, -1)
         ),
         "trend_state_x_hypothesis": np.where(
-            analysis["hypothesis"].eq("continuation").to_numpy(),
-            analysis["feat_trend_alignment_continuation"].to_numpy(),
-            analysis["feat_trend_alignment_reversal"].to_numpy(),
+            analysis["hypothesis"].eq("continuation"),
+            analysis["feat_trend_alignment_continuation"],
+            analysis["feat_trend_alignment_reversal"],
         ),
         "volatility_x_stop_atr": (
             analysis["feat_short_to_long_volatility_ratio"]
@@ -677,11 +627,10 @@ def build_interaction_summary(
     hypotheses = dict(INTERACTION_HYPOTHESES)
     rows = []
     for name, condition in conditions.items():
-        analysis["_condition"] = pd.Series(condition, index=analysis.index)
-        for key, group in analysis.groupby(
+        analysis["_condition"] = np.asarray(condition, dtype=bool)
+        for (partition, hypothesis, flag), group in analysis.groupby(
             ["research_partition", "hypothesis", "_condition"], observed=True
         ):
-            partition, hypothesis, flag = cast(tuple[Any, Any, Any], key)
             values = group["screen_r"].dropna()
             if values.empty:
                 continue
@@ -730,7 +679,7 @@ def build_matched_control_location_summary(
         ]
     ]
     path = build_bar_horizon_path_features(
-        cast(pd.DataFrame, section7_bars), 60, Section7Config(forward_horizons=(60,))
+        section7_bars, 60, Section7Config(forward_horizons=(60,))
     )
     dates = pd.to_datetime(bars["trade_date_ny"])
     partition = np.select(
@@ -768,7 +717,7 @@ def build_matched_control_location_summary(
             "move_bucket": move_bucket,
         }
     )
-    candidate = candidate.loc[eligible & ~candidate["bar_id"].isin(list(retest_bars))].copy()
+    candidate = candidate.loc[eligible & ~candidate["bar_id"].isin(retest_bars)].copy()
     candidate["key"] = list(
         zip(
             candidate["partition"],
@@ -842,10 +791,9 @@ def build_matched_control_location_summary(
         ignore_index=True,
     )
     rows = []
-    for key, group in observations.dropna().groupby(
+    for (research_partition, sample_type), group in observations.dropna().groupby(
         ["research_partition", "sample_type"], observed=True
     ):
-        research_partition, sample_type = cast(tuple[Any, Any], key)
         values = group["reaction_atr_60m"]
         rows.append(
             {
@@ -905,10 +853,9 @@ def build_stop_target_summary(
                 on=["true_trade_opportunity_id", "true_poi_id", "trade_date_ny"],
                 how="left",
             )
-            for key, group in enriched.groupby(
+            for (_partition, target_r), group in enriched.groupby(
                 ["research_partition", "target_r"], observed=True
             ):
-                _partition, target_r = cast(tuple[Any, Any], key)
                 rows.extend(
                     _ambiguity_sensitivity_summaries(
                         group, hypothesis, stop_model, target_r, "240m"
@@ -934,10 +881,9 @@ def build_stop_target_summary(
                     on=["true_trade_opportunity_id", "true_poi_id", "trade_date_ny"],
                     how="left",
                 )
-                for key, group in mandatory.groupby(
+                for (_partition, target_r), group in mandatory.groupby(
                     ["research_partition", "target_r"], observed=True
                 ):
-                    _partition, target_r = cast(tuple[Any, Any], key)
                     rows.extend(
                         _ambiguity_sensitivity_summaries(
                             group, hypothesis, stop_model, target_r, "15:30_mandatory"
@@ -1078,18 +1024,16 @@ def build_candidate_policy_results(
     )
     missing_float = pd.Series(-np.inf, index=pivot.index, dtype="float64")
     missing_zero = pd.Series(0.0, index=pivot.index, dtype="float64")
-    dev_pivot = pivot["development"] if "development" in pivot.columns else missing_float
-    val_pivot = pivot["validation"] if "validation" in pivot.columns else missing_float
-    freeze_score = dev_pivot.fillna(-np.inf) + val_pivot.fillna(-np.inf)
-    dev_counts = counts["development"] if "development" in counts.columns else missing_zero
-    val_counts = counts["validation"] if "validation" in counts.columns else missing_zero
-    dev_dates = dates["development"] if "development" in dates.columns else missing_zero
-    val_dates = dates["validation"] if "validation" in dates.columns else missing_zero
+    freeze_score = pivot.get("development", missing_float).fillna(-np.inf) + pivot.get(
+        "validation", missing_float
+    ).fillna(-np.inf)
     adequate = (
-        dev_counts.fillna(0).ge(cfg.min_candidate_true_pois)
-        & val_counts.fillna(0).ge(max(50, cfg.min_candidate_true_pois // 2))
-        & dev_dates.fillna(0).ge(cfg.min_candidate_dates)
-        & val_dates.fillna(0).ge(max(20, cfg.min_candidate_dates // 2))
+        counts.get("development", missing_zero).fillna(0).ge(cfg.min_candidate_true_pois)
+        & counts.get("validation", missing_zero)
+        .fillna(0)
+        .ge(max(50, cfg.min_candidate_true_pois // 2))
+        & dates.get("development", missing_zero).fillna(0).ge(cfg.min_candidate_dates)
+        & dates.get("validation", missing_zero).fillna(0).ge(max(20, cfg.min_candidate_dates // 2))
     )
     frozen_ids = freeze_score.loc[adequate].sort_values(ascending=False).head(5).index.tolist()
     ranking["frozen_before_final_test"] = ranking["policy_id"].isin(frozen_ids)
@@ -1335,26 +1279,16 @@ def _summarize_first_passage_group(
         "q25_realized_r": valid.quantile(0.25),
         "mean_uncapped_r": group["maximum_uncapped_r"].mean(),
         "runner_tail_rate_5r": group["maximum_uncapped_r"].ge(5).mean(),
-        "risk_25_100_tick_rate": (
-            group["risk_25_100_tick_flag"]
-            if "risk_25_100_tick_flag" in group.columns
-            else pd.Series(False, index=group.index)
+        "risk_25_100_tick_rate": group.get(
+            "risk_25_100_tick_flag", pd.Series(False, index=group.index)
         ).mean(),
-        "median_risk_ticks": (
-            group["risk_ticks"]
-            if "risk_ticks" in group.columns
-            else pd.Series(np.nan, index=group.index)
-        ).median(),
-        "risk_below_25_tick_rate": (
-            group["risk_ticks"]
-            if "risk_ticks" in group.columns
-            else pd.Series(np.nan, index=group.index)
-        ).lt(25).mean(),
-        "risk_above_100_tick_rate": (
-            group["risk_ticks"]
-            if "risk_ticks" in group.columns
-            else pd.Series(np.nan, index=group.index)
-        ).gt(100).mean(),
+        "median_risk_ticks": group.get("risk_ticks", pd.Series(np.nan, index=group.index)).median(),
+        "risk_below_25_tick_rate": group.get("risk_ticks", pd.Series(np.nan, index=group.index))
+        .lt(25)
+        .mean(),
+        "risk_above_100_tick_rate": group.get("risk_ticks", pd.Series(np.nan, index=group.index))
+        .gt(100)
+        .mean(),
     }
 
 
