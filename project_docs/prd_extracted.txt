@@ -1,0 +1,553 @@
+QUANT PROJECT 1
+Product Requirements Document
+Hybrid Systematic Gold Futures Research & Execution Platform
+
+[TABLE START]
+
+[TABLE END]
+
+Prepared for: Project Partners and Technical Co-Builders
+Project Owner & Market/Strategy Lead: Abond
+Version 1.0 — Partner Review Draft  |  19 July 2026
+CONFIDENTIAL — PRIVATE QUANTITATIVE RESEARCH
+This document describes a research and engineering programme. It does not claim that a profitable strategy already exists and is not investment advice.
+
+# 0. Document Control
+
+
+[TABLE START]
+Field | Value
+Document owner | Abond — Project Founder, Product Owner, and Market/Strategy Lead
+Audience | Technical partners, quantitative researchers, quantitative developers, and future approved contributors
+Status | Partner review draft
+Confidentiality | Private and internal. Code, strategy logic, research outputs, and market data must not be redistributed without owner approval.
+Primary product | A reproducible quantitative research, backtesting, risk-control, and execution platform for CME Gold futures
+Initial research instrument | GC active/front-month continuous research series
+Intended initial execution instrument | MGC, subject to explicit GC-to-MGC transfer and execution validation
+Initial data | Databento GLBX.MDP3 one-minute OHLCV, 24 May 2021–24 May 2026; eligible statistical observations currently end 22 May 2026
+Business timezone | America/New_York; UTC timestamps remain immutable join keys
+[TABLE END]
+
+
+[TABLE START]
+How to read this PRD / This document defines the target product, research rules, responsibilities, development sequence, and deployment gates. It intentionally separates the long-term vision from the current repository state so that new partners understand both what already exists and what remains unproven.
+[TABLE END]
+
+
+# 1. Executive Summary
+
+Quant Project 1 is an independent quantitative research and trading-system development programme focused on CME Gold Futures (GC) and Micro Gold Futures (MGC). Its purpose is to convert market hypotheses and discretionary trading knowledge into explicit, causal, testable, and eventually executable rules; discover additional statistical structure from market data; and integrate the strongest validated components into a hybrid trading system.
+The project is research-first. It does not begin from the assumption that an edge exists. The central objective is to determine whether any proposed behaviour remains economically meaningful after realistic execution costs, chronological out-of-sample testing, parameter sensitivity, risk constraints, and the operating rules of the selected futures funding evaluator or prop firm.
+GC is the primary Phase 1 research instrument because it is the benchmark Gold futures contract and is the established analysis instrument in the repository. MGC is the intended initial execution instrument because it is one-tenth the size of GC, with materially smaller tick value and capital commitment. This makes MGC more suitable for controlled risk, prop-firm drawdown limits, and early-stage capital. GC execution may become appropriate later as capital, risk tolerance, and operational maturity increase.
+The current repository already contains a validated data foundation, a liquidity-aware active-contract series, a formalized discretionary Point of Interest (POI) research branch, and an independent statistical-feature branch. However, it remains a research environment: no strategy has been approved for a sequential backtest or live trading, and production execution, position sizing, transaction-cost modelling, and GC-to-MGC execution mapping remain incomplete.
+
+[TABLE START]
+Product statement / Build a reproducible, risk-aware quantitative platform that translates market expertise into testable rules, independently searches for statistical structure, validates all candidate systems under realistic historical and forward conditions, and deploys only strategies that satisfy predeclared research, risk, prop-firm, and operational gates.
+[TABLE END]
+
+
+# 2. Vision, Mission, and Product Principles
+
+
+## Vision
+
+Develop a durable hybrid Gold-futures trading capability in which systematic research, disciplined execution, and informed market interpretation reinforce one another rather than compete.
+
+## Mission
+
+Independently research, engineer, validate, and operate one or more systematic intraday futures strategies that can be executed consistently by software, initially under the constraints of futures prop firms and ultimately with proprietary capital.
+
+## Core principles
+
+Evidence before conviction: market intuition may generate hypotheses, but only reproducible evidence can approve a rule for backtesting or deployment.
+Causality before performance: every feature and signal must use only information available at the decision time.
+Economic value before statistical novelty: a small p-value is not an edge unless the effect survives costs, drawdowns, and executable trade sequencing.
+Simple before complex: interpretable, stable rules are preferred over fragile complexity with marginal in-sample gains.
+Risk is a product requirement: position limits, daily loss controls, prop-firm constraints, and kill switches are part of the system design, not an afterthought.
+Research and execution are separate layers: event studies, forward labels, and attractive charts are not equivalent to a stateful sequential backtest or live system.
+No performance guarantee: the project may reject many ideas and may conclude that a proposed strategy has no durable edge.
+
+# 3. Problem Statement and Opportunity
+
+
+## The problem
+
+Discretionary trading can contain genuine market insight, but it often relies on tacit judgement, inconsistent definitions, selective memory, and execution that varies with fatigue, emotion, or context. Purely statistical research can improve consistency, but it can also overfit historical noise, ignore market mechanics, or produce signals that are difficult to execute.
+The project addresses this by building a common research and execution framework in which discretionary concepts are formalized into machine-readable rules, independent statistical features are evaluated without contamination from the discretionary branch, and all candidate systems are subjected to identical execution, risk, and validation standards.
+
+## The opportunity
+
+Gold futures offer a liquid, centrally cleared market with a benchmark contract (GC) and a smaller execution contract (MGC). The project can use the liquidity and price-discovery characteristics of GC for research while using the smaller MGC contract to express the same market thesis with finer risk control. The approach also creates a practical path from research to prop-firm capital, provided the system is explicitly engineered around each firm’s rules and does not rely on unrealistic fills or excessive leverage.
+
+# 4. Objectives, Success Definition, and Non-Goals
+
+
+## Primary objectives
+
+1. Formalize discretionary Gold-futures concepts, including POIs, trend context, displacement, retests, invalidation, entries, stops, targets, and time exits, into deterministic definitions.
+2. Independently research causal statistical features derived from one-minute OHLCV and time/session context without using POI-derived information during discovery.
+3. Develop one or more stateful sequential backtests that model order timing, costs, slippage, ambiguity, position state, rollover, daily limits, and forced exits.
+4. Validate whether signals discovered on GC can be mapped to MGC execution without unacceptable divergence, liquidity degradation, spread cost, or fill risk.
+5. Create a configurable prop-firm rules engine that can simulate evaluation and funded-account constraints without hard-coding one provider.
+6. Forward test the frozen strategy and risk engine in the Rithmic paper environment before any live or funded deployment.
+7. Build a hybrid system only after the independent statistical branch and the discretionary POI branch have each been evaluated and frozen under their own rules.
+8. Establish a maintainable collaborative codebase with versioned research artifacts, tests, documented decisions, and reproducible runs.
+
+## Success is not defined as “finding a profitable backtest.”
+
+A successful project produces a trustworthy research and execution process. A deployable strategy must show positive net expectancy and acceptable risk under predeclared rules, but rejecting an attractive-looking strategy because it fails validation is also a successful research outcome.
+
+## Current non-goals
+
+High-frequency trading, market making, latency arbitrage, or sub-millisecond competition.
+Initial live execution in standard GC before capital and risk capacity justify the tenfold contract exposure.
+Forex or CFD execution; the initial focus is exchange-traded futures with a consistent underlying market.
+Overnight positions in the first intraday system.
+Options, multi-asset portfolio construction, or cross-market statistical arbitrage in the initial scope.
+MBO-based production research in Phase 1; order-book work is a future programme after storage, compute, data, and engineering budgets are approved.
+Allowing discretionary overrides to alter live decisions without being logged, governed, and separately evaluated.
+
+# 5. Stakeholders, Roles, and Decision Rights
+
+The project is designed for complementary expertise. Abond supplies the market thesis, discretionary trading knowledge, product direction, and strategy interpretation. The partners bring advanced computer-science and software-engineering capability. All members are expected to challenge one another constructively; no individual’s intuition overrides research integrity or risk controls.
+
+[TABLE START]
+Role | Primary responsibilities | Decision rights
+Project Founder / Product Owner / Market & Strategy Lead — Abond | Owns product vision, discretionary strategy source material, market interpretation, research priorities, risk appetite, prop-firm business path, and final acceptance of whether the encoded rules faithfully represent the intended trading logic. | Final authority on product scope and discretionary-rule meaning. May not waive research, risk, or live-deployment gates unilaterally.
+Quant Research & Validation Lead — partner allocation | Owns experimental design, feature evaluation, leakage control, statistical tests, validation partitions, robustness analysis, research reports, and model governance. | May block advancement of a signal that is statistically invalid, overfit, insufficiently documented, or economically unsupported.
+Quant Platform & Execution Lead — partner allocation | Owns data pipelines, backtest architecture, performance engineering, broker/Rithmic integration, order state, monitoring, logging, deployment, and operational resilience. | May block deployment when execution, reliability, data quality, or safety requirements are unmet.
+All partners | Code review, hypothesis critique, documentation, testing, risk review, and milestone sign-off. | Live capital deployment requires unanimous technical approval and explicit risk approval from the Product Owner.
+[TABLE END]
+
+
+[TABLE START]
+Operating rule / Market expertise determines what deserves investigation. Quantitative evidence determines what survives. Engineering controls determine what can be operated safely.
+[TABLE END]
+
+
+# 6. Current Project State
+
+The repository is materially beyond an initial concept, but it has not crossed the boundary into an approved trading strategy. New partners should treat completed foundations as reusable assets and avoid restarting work that has already been validated.
+
+[TABLE START]
+Area | Current state | Implication
+Data foundation | Complete. Databento DBN data was validated, converted to Parquet, and organized into a trusted liquidity-selected GC/MGC research table. | Research should begin from the trusted processed table, not from raw-data rework.
+Trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC. | The engineering design must remain memory-conscious and scalable.
+Branch A — True POI | POI engine, refined formation definition, retests, context features, matched controls, and first-passage research are complete. No candidate is approved for Section 8 backtesting. | The branch is a formalized research asset, not a validated trading strategy.
+Branch B — independent statistics | Eligible observation frame, fixed-horizon labels, baseline behaviour, and an 85-predictor feature registry/matrix are complete. Univariate feature evaluation is next. | No feature has yet demonstrated predictive value; construction integrity is not evidence of edge.
+Research governance | Development through 2023; Validation in 2024; Final test from 2025 through 22 May 2026. Final-test values have had limited descriptive exposure. | No later rule may be tuned to exposed final-test results. Forward paper data is an important future untouched validation source.
+Testing | 94 automated tests across nine modules. | New milestones must preserve and extend the test suite.
+Backtesting and execution | Sequential strategy backtest, costs, sizing, account state, production execution, and GC-to-MGC mapping remain incomplete. | These are core future product deliverables.
+[TABLE END]
+
+
+# 7. Market, Instrument, Data, and Timeframe Scope
+
+
+## 7.1 Instrument policy
+
+
+[TABLE START]
+Instrument | Role | Rationale and constraints
+GC — COMEX Gold Futures | Primary analysis and signal-research instrument | Benchmark contract, deeper liquidity, and established project research history. Each contract represents 100 troy ounces and the minimum $0.10/oz tick equals $10 per contract. This larger exposure increases margin, drawdown, and risk concentration.
+MGC — Micro Gold Futures | Intended initial execution instrument | One-tenth the size of GC: 10 troy ounces and $1 per minimum tick. It provides finer position sizing, lower capital commitment, and better compatibility with early-stage and prop-firm risk limits.
+GC live execution | Future scaling option | Permitted only after sufficient capital, stable live operations, and explicit risk approval. The system must not assume that a GC signal automatically transfers to MGC or vice versa.
+[TABLE END]
+
+Actual exchange and broker margin requirements change over time. The project will therefore store margin and buying-power assumptions as versioned configuration rather than as permanent constants. The structural reason for preferring MGC is the tenfold smaller contract exposure and tick value, not a single temporary margin figure.
+
+## 7.2 Data assets
+
+Source: Databento GLBX.MDP3 one-minute OHLCV for GC and MGC.
+Coverage: 24 May 2021 to 24 May 2026; the current eligible statistical frame ends on 22 May 2026.
+Research table: liquidity-selected, raw non-back-adjusted tradable prices with rollover and tradability controls.
+Timestamp policy: UTC is the immutable join key; America/New_York is the business and session timezone.
+Raw DBN is immutable. Parquet is the primary research format. Raw and processed market data are not committed to Git.
+
+## 7.3 Timeframe policy
+
+One-minute bars are the base research and entry-resolution dataset because the discretionary strategy historically looks for entries on the one-minute chart. Higher-timeframe context—such as 5-minute, 15-minute, 1-hour, and daily trend or volatility state—must be derived from completed lower-timeframe bars or independently sourced and time-aligned. A one-hour feature may use only a fully completed one-hour candle at the decision timestamp; partial future candle information is prohibited.
+
+[TABLE START]
+Critical limitation of one-minute OHLCV / A one-minute bar does not reveal the order in which its high and low occurred, queue priority, bid/ask spread, aggressor flow, or market depth. Any stop/target collision inside the same bar is ambiguous and must be handled conservatively, excluded, or later resolved with finer data.
+[TABLE END]
+
+
+# 8. Target Product Architecture
+
+The product is a layered research-to-execution platform rather than a single notebook or monolithic trading script. Each layer must have a stable contract and independently testable outputs.
+
+[TABLE START]
+Layer | Purpose | Key outputs
+1. Data foundation | Load, validate, normalize, and version market/reference data. | Trusted bars, active-contract schedule, quality reports, dataset manifest.
+2. Feature and label layer | Create causal market-state features and future outcomes under strict availability rules. | Feature registry, feature matrix, label tables, audit fields.
+3. Research branches | Evaluate the discretionary POI hypothesis and independent statistical hypotheses separately. | Event studies, feature screens, shortlists, rejected hypotheses, frozen definitions.
+4. Signal synthesis | Translate validated evidence into deterministic long/short/no-trade rules or calibrated probabilities. | Versioned strategy specification and parameter set.
+5. Sequential backtester | Simulate stateful orders, fills, positions, exits, account P&L, costs, and constraints. | Trade log, equity curve, drawdown path, diagnostics, scenario results.
+6. Prop-firm policy engine | Apply provider-specific account rules as configurable constraints. | Rule-compliant pass/fail simulation, breach log, pass probability.
+7. Execution adapter | Connect the frozen strategy and risk engine to Rithmic or an approved supported platform/API. | Orders, acknowledgements, fills, positions, reconciliations.
+8. Risk and monitoring | Enforce limits and detect failures independently of signal logic. | Kill switches, alerts, daily controls, audit logs, recovery state.
+9. Reporting and governance | Make every decision and run reproducible and reviewable. | Run manifests, reports, model cards, approvals, version history.
+[TABLE END]
+
+
+## Research-to-deployment flow
+
+
+[TABLE START]
+Controlled progression / Trusted Data  →  Independent Research  →  Frozen Strategy  →  Sequential Backtest  →  Prop-Rule Simulation  →  Rithmic Forward Test  →  Controlled Deployment
+[TABLE END]
+
+
+# 9. Hybrid System Definition
+
+“Hybrid” must be defined precisely. It must not become an untestable arrangement in which a human changes signals after seeing the outcome. The project will evaluate hybrid designs as separate, logged products with explicit decision authority.
+
+[TABLE START]
+Hybrid mode | Description | Research requirement
+A. Systematic POI conversion | The algorithm fully encodes the discretionary setup and executes it without human confirmation. | Every formation, context filter, entry, stop, target, and invalidation rule must be deterministic.
+B. Statistical filter/ranker | The POI system generates opportunities; independent statistical features filter, rank, size, or select direction. | The statistical feature set must be frozen before POI integration. Incremental out-of-sample value must be measured beyond the POI baseline.
+C. Human-in-the-loop approval | The algorithm generates a structured signal and the trader approves or rejects it before order submission. | Approval criteria and reasons must be logged. Human-approved performance must be compared against fully systematic performance and against all generated opportunities.
+D. Systematic core with discretionary risk veto | The strategy is systematic, but a narrowly defined risk veto may disable trading under exceptional conditions. | Veto conditions must be predeclared where possible; all interventions must be timestamped and independently reviewed.
+[TABLE END]
+
+The long-term target is likely Mode B or a controlled combination of Modes B and C: discretionary market structure formalized into candidate events, independent statistics used to estimate opportunity quality, and a clear boundary between automated decisions and human authority.
+
+# 10. Functional Requirements
+
+
+[TABLE START]
+ID | Priority | Capability | Requirement
+FR-01 | P0 | Trusted data loading | Load the existing trusted GC/MGC Parquet table using project-root-relative paths; validate schema, row counts, dtypes, timestamps, core OHLCV, and metadata before research.
+FR-02 | P0 | Active-contract and rollover integrity | Preserve the liquidity-selected contract schedule; prevent feature windows, labels, and trades from crossing invalid contract, segment, rollover, or missing-bar boundaries.
+FR-03 | P0 | Causal multi-timeframe features | Generate one-minute and completed higher-timeframe features with explicit information-availability timestamps and no centered windows, future filling, or incomplete-candle leakage.
+FR-04 | P0 | POI research branch | Maintain the frozen refined True POI definitions, retest identities, context features, controls, and first-passage outputs. Changes require a new version rather than silent replacement.
+FR-05 | P0 | Independent statistical branch | Evaluate the registered predictors independently of POI information using chronological splits, development-fitted thresholds, multiple-testing controls, and stability analysis.
+FR-06 | P0 | Signal specification | Represent each candidate strategy as a versioned machine-readable specification covering inputs, direction, filters, no-trade states, entry timing, stop, target, holding time, conflict rules, and sizing.
+FR-07 | P0 | Sequential backtest | Simulate chronological account state, order state, positions, overlapping signals, fills, exits, P&L, daily resets, rollover, forced exits, and capital constraints.
+FR-08 | P0 | Execution-cost model | Model commissions, exchange/clearing fees, bid/ask spread, slippage, adverse fill scenarios, and configurable latency. Results must be reported under base and pessimistic assumptions.
+FR-09 | P0 | GC-to-MGC transfer validation | Compare synchronized GC signals and MGC executable prices; quantify basis, tracking difference, spread, liquidity, slippage, and cases where the mapped trade is unavailable or materially different.
+FR-10 | P0 | Prop-firm rules engine | Represent profit target, daily loss, static/trailing drawdown, consistency, minimum days, maximum contracts, news restrictions, prohibited behaviour, payout/scaling rules, and effective dates as configurable policies.
+FR-11 | P0 | Rithmic paper integration | Consume live exchange data through an approved Rithmic path, submit simulated orders, receive acknowledgements/fills, reconcile positions, and record complete decision-to-fill telemetry.
+FR-12 | P0 | Independent risk engine | Enforce max position, per-trade risk, daily stop, max drawdown buffer, consecutive-loss controls, stale-data checks, disconnect handling, order mismatch protection, and manual emergency stop.
+FR-13 | P1 | Performance analytics | Report trade-level and path-level metrics by year, session, regime, direction, strategy version, prop rule set, and execution scenario.
+FR-14 | P1 | Experiment registry | Record hypothesis, owner, data version, code commit, configuration, sample, metrics, decisions, limitations, and artifacts for every material experiment.
+FR-15 | P1 | Reproducible run interface | Provide scripts or commands that reproduce the trusted tables, research milestones, backtests, and reports without manual notebook state.
+FR-16 | P1 | Monitoring dashboard | Display data freshness, gateway status, signal state, orders, fills, positions, P&L, risk utilization, prop-rule headroom, and alerts.
+FR-17 | P2 | TBBO/MBP/MBO expansion | Add granular order-flow research as a separate data and architecture programme after cost, storage, compute, and research gates are approved.
+[TABLE END]
+
+
+# 11. Quantitative Research Requirements
+
+
+## 11.1 Observation and execution convention
+
+Decision features end at completed bar t.
+Theoretical entry is at the open of bar t+1 unless a different executable convention is explicitly defined.
+Entry eligibility is determined by the entry timestamp, not merely the feature timestamp.
+Fixed-horizon future paths begin at t+1 and are unavailable—not shortened—when the full path crosses an invalid boundary.
+The initial fixed horizons are 5, 15, 30, 60, 120, and 180 minutes.
+
+## 11.2 Chronological governance
+
+Development: start of eligible data through 31 December 2023.
+Validation: 1 January 2024 through 31 December 2024.
+Final test: 1 January 2025 through 22 May 2026.
+The final-test period has already had limited descriptive exposure and must not be described as fully unseen.
+New definitions, thresholds, and models may not be tuned to exposed final-test outcomes. Forward paper data and newly collected live-market data provide the cleanest future holdout.
+
+## 11.3 Statistical standards
+
+Chronological splits only; random splitting of minute observations is prohibited.
+Purging or embargo must be used where overlapping labels create train/test dependence.
+Thresholds, bins, normalizers, and time-of-day baselines are fitted on Development only and reused unchanged out of sample.
+Broad feature screens require false-discovery control, effect sizes, date coverage, and stability—not p-values alone.
+Overlapping observations are correlated events, not independent trades; date-block bootstrap or equivalent dependence-aware methods are preferred.
+Feature redundancy must be reduced before multivariate modelling. Interpretable representatives are preferred over duplicate transformations.
+Simple linear/logistic benchmarks precede more complex tree or nonlinear models.
+No strategy rule is approved from event-level average returns alone.
+
+## 11.4 Candidate approval evidence
+
+Before a signal becomes a backtest candidate, the research report must include its economic hypothesis, exact availability timing, sample size, date coverage, Development and Validation behaviour, session/year/regime breakdowns, effect size, uncertainty, friction-aware magnitude, parameter sensitivity, failure modes, and reasons for rejection or advancement.
+
+# 12. Backtesting Requirements
+
+A backtest must behave like a chronological trading process. It may not assume that every overlapping event can be traded independently or that maximum favourable excursion is realized profit.
+
+[TABLE START]
+Area | Required treatment
+Order timing | Use next-bar or another explicitly executable convention. Prohibit same-bar fills that rely on a close known only after the order would have been submitted.
+Intrabar ambiguity | When stop and target are both touched inside a one-minute bar, use conservative ordering, exclude the observation, or report a bounded scenario range. Optimistic ordering may be shown only as an upper bound.
+Costs | Include commissions, exchange/clearing fees, spread, slippage, and a pessimistic stress case. Cost assumptions must be versioned by instrument and date.
+Position state | Define one-position versus multi-position behaviour, pyramiding, re-entry, signal conflicts, side switching, and account-level exposure.
+Session rules | Initial entries are restricted to London [03:00, 06:00) and New York [07:00, 12:00) America/New_York. No entries from 06:00–07:00 or at/after noon.
+End of day | All positions must be flat no later than 15:30 New York time. No overnight holding in the initial product.
+Rollover and tradability | No trade path may cross an invalid rollover, contract, continuous-segment, missing-bar, or non-tradable boundary.
+Sizing | Evaluate fixed contract, volatility-targeted, fixed fractional, and prop-limit-aware sizing only after an explicit stop/risk unit exists.
+Account model | Track realized/unrealized P&L, commissions, buying power, drawdown type, daily reset, and prop-rule state.
+Validation | Report walk-forward or locked-period results, parameter sensitivity, cost sensitivity, Monte Carlo/path resampling, and failure-mode analysis.
+[TABLE END]
+
+
+## Minimum backtest outputs
+
+Number of trades and active trading dates; long/short and session mix.
+Net and gross expectancy per trade in R, ticks, and dollars.
+Win rate, average/median win, average/median loss, profit factor, payoff ratio, and tail quantiles.
+Equity curve, maximum drawdown, drawdown duration, daily P&L distribution, and time under water.
+Performance by year, month, session, direction, volatility regime, and strategy version.
+Turnover, exposure, average holding time, missed/invalid signals, and ambiguous-bar frequency.
+Parameter and cost sensitivity, bootstrap confidence intervals, and Monte Carlo risk-of-breach estimates.
+Prop-firm evaluation pass probability, expected time to pass, probability of daily/max-loss breach, and funded-period survival under the selected rule set.
+
+# 13. Prop-Firm Constraint Engine
+
+Prop firms are the intended initial pathway to operational capital and payouts, but their rules vary and can change. The system must therefore treat the prop firm as a versioned policy layer, not as a fixed assumption embedded in strategy code.
+
+[TABLE START]
+Rule family | Examples of required parameters
+Evaluation economics | Account nominal size, fee, profit target, permitted reset, minimum/maximum evaluation days.
+Loss constraints | Daily loss limit, maximum loss, static versus trailing drawdown, intraday versus end-of-day calculation, unrealized P&L treatment.
+Position constraints | Maximum contracts, product-specific limits, scaling plan, overnight/holiday restrictions.
+Consistency rules | Largest-day share, minimum profitable days, payout consistency, or other concentration limits.
+Trading restrictions | News windows, prohibited automation, copy trading, latency/HFT restrictions, holding restrictions, and permitted platforms.
+Operational rules | Inactivity, account reset time, platform/gateway, data fees, commissions, payout schedule, and rule effective date.
+Risk buffers | Internal limits must be stricter than the firm’s hard limits to reduce accidental breach from slippage, latency, or rule interpretation.
+[TABLE END]
+
+The selected firm’s current terms must be reverified before implementation and before each deployment. The project will not attempt to bypass, conceal, or exploit prohibited behaviour. Strategy design must comply with the firm’s published automation and trading rules.
+
+# 14. Forward Testing and Rithmic Paper Trading
+
+Rithmic is the preferred paper-trading environment because its simulator connects to live exchange market data and uses a simulated matching engine with server-side risk controls. This provides a materially stronger forward-test environment than replaying synthetic prices or using delayed data.
+Paper trading still cannot prove live equivalence. It may not perfectly reproduce queue priority, market impact, all rejection paths, real brokerage latency, human operational errors, or the exact fills received in a funded account. Paper results must therefore be treated as a deployment gate, not as a guarantee.
+
+[TABLE START]
+Forward-test stage | Purpose | Exit criteria
+Shadow mode | Run signals and risk checks against live data without transmitting orders. | No stale-data violations, deterministic decisions, complete telemetry, and reconciled theoretical fills.
+Rithmic simulation | Submit simulated orders and validate order lifecycle, fill handling, slippage, position state, risk rules, and prop-policy state. | Frozen strategy, zero unexplained position mismatches, zero hard-rule breaches, stable operations, and adequate sample under predeclared criteria.
+Prop evaluation — minimum size | Operate the exact approved configuration under the chosen evaluator’s terms. | Pass or fail according to the rules without changing the system mid-evaluation. Any material code/rule change restarts validation.
+Funded account — controlled scale | Validate real operational and payout behaviour at the minimum contract size. | Sustained rule compliance, expected versus realized execution within tolerance, and no unresolved safety events.
+Scale-up | Increase account count, MGC size, or later GC exposure. | Separate risk approval based on live evidence, capital, liquidity, and infrastructure capacity.
+[TABLE END]
+
+
+[TABLE START]
+Provisional paper-test sample gate / Before the first paper campaign, the team will freeze a minimum sample based on strategy frequency. The default proposal is at least 60 trading days and at least 100 executed trades, with longer testing for low-frequency systems. The threshold must be declared before results are observed.
+[TABLE END]
+
+
+# 15. Live Execution, Risk Controls, and Observability
+
+
+## 15.1 Execution requirements
+
+The live system must separate signal generation, order management, risk management, and broker/gateway communication.
+Every order must have a unique strategy, signal, account, and parent-decision identifier.
+Acknowledgements, rejections, partial fills, cancels, replaces, and fills must be idempotently processed.
+Positions must be reconciled against the broker/gateway state; unresolved mismatch forces liquidate-only or shutdown mode.
+Strategy restarts must recover open orders, positions, daily P&L, and risk state from durable storage.
+Manual intervention is permitted only through authenticated, logged controls.
+
+## 15.2 Mandatory kill switches
+
+
+[TABLE START]
+Trigger | Required response
+Stale or missing market data | Block new entries; cancel unsafe working orders; escalate if an open position cannot be managed.
+Gateway disconnect or degraded order acknowledgements | Enter safe mode, prevent duplicate orders, reconcile on reconnect.
+Position mismatch | Stop strategy, cancel working orders, reconcile, and require human review.
+Daily internal loss limit reached | Flatten according to policy and disable trading for the remainder of the session/day.
+Prop-firm buffer breached | Stop before the external hard limit; do not rely on the firm’s liquidation system as the primary control.
+Abnormal slippage or fill quality | Reduce/disable trading and flag the execution regime for review.
+Software exception or corrupted state | Fail closed: no new orders, preserve logs, and require controlled recovery.
+Manual emergency stop | Immediate cancel/flatten action according to configured safety policy.
+[TABLE END]
+
+
+# 16. Non-Functional Requirements
+
+
+[TABLE START]
+Category | Requirement
+Correctness | Correctness and research validity take priority over speed. Critical calculations require unit tests and targeted manual audits.
+Reproducibility | A result must be attributable to a data version, code commit, configuration, environment, random seed, and run timestamp.
+Performance | The research stack must handle multi-million-row tables without row-wise Python loops, repeated full scans, avoidable copies, or uncontrolled memory growth.
+Determinism | Identical inputs and configuration must produce identical decisions and outputs, except where explicitly randomized with a recorded seed.
+Modularity | Feature creation, labels, backtesting, prop policies, execution, and reporting must be separately testable and replaceable.
+Auditability | Every live or simulated decision, order, fill, risk action, and manual intervention must be logged with timestamps and identifiers.
+Reliability | The execution service must fail closed, recover state safely, and prevent duplicate order submission.
+Maintainability | Use clear interfaces, typed configuration, concise documentation, and code reviews. Notebooks should explain research; reusable logic belongs in modules.
+Security | Secrets must not be committed. Credentials use environment variables or a secure secret store. Access follows least privilege.
+Portability | Research runs must use project-root-relative paths. Environment dependencies must be captured in a versioned manifest/lock file.
+Testing | The existing 94 tests must remain green; new critical functionality requires unit, integration, and end-to-end tests.
+Documentation | Every major milestone updates the relevant context report, README/status, strategy specification, and run instructions.
+[TABLE END]
+
+
+# 17. Collaboration and Engineering Workflow
+
+1. Pull the latest main branch before beginning work.
+2. Create a short-lived branch for one coherent research or engineering milestone.
+3. State the research question, definition, expected artifacts, and acceptance checks before implementation.
+4. Keep changes scoped; do not stage unrelated files or use broad add commands in a mixed working tree.
+5. Run the complete automated test suite and any milestone-specific full-run validation.
+6. Review schemas, row counts, missingness, date coverage, outputs, memory use, and research conclusions.
+7. Update the relevant context report and README when the project state changes.
+8. Open a pull request that explains the hypothesis, implementation, outputs, checks, limitations, and decisions.
+9. Require review by at least one partner who did not author the change before merging.
+10. Do not commit raw/processed market data, secrets, virtual environments, caches, generated bulk outputs, or local logs.
+
+## Definition of done for a milestone
+
+The intended research or engineering contract is implemented.
+Tests pass and the relevant notebook/script executes without unexplained errors.
+Outputs are saved in the agreed locations and are reload-validated where applicable.
+Performance and memory behaviour are acceptable for the target data size.
+No lookahead, data-boundary, or strategy-rule violations are found.
+Documentation and project status are updated.
+A reviewer can reproduce the result from the committed code and authorized data.
+
+# 18. Phased Roadmap
+
+
+[TABLE START]
+Phase | Scope | Primary deliverable / gate
+Phase 0 — Partner onboarding | Repository access, environment, data access, documentation reading order, roles, branch/PR workflow, and security. | Each partner can run tests and reproduce a trusted project artifact.
+Phase 1 — Complete independent feature evaluation | Univariate screening, stability, redundancy, incremental value, and small multivariate benchmarks for Branch B. | Frozen shortlist or documented rejection; no final-test tuning.
+Phase 2 — Strategy candidates and sequential backtests | Translate approved Branch A and/or Branch B evidence into deterministic trade rules and stateful backtests. | At least one fully specified candidate or a defensible decision that none qualify.
+Phase 3 — Hybrid integration research | Compare statistical-only, POI-only, POI filtered/ranked by statistics, and any human-in-loop design. | Frozen hybrid specification demonstrating incremental out-of-sample value—or rejection.
+Phase 4 — MGC execution and prop-policy layer | GC-to-MGC transfer validation, cost model, account/risk model, and selected prop-firm rule configuration. | A rule-compliant strategy configuration with realistic pass/fail simulation.
+Phase 5 — Rithmic forward test | Shadow and simulated live-data operation, telemetry, fills, reliability, and risk controls. | Paper gate passed under predeclared duration/sample and operational criteria.
+Phase 6 — Controlled prop deployment | Evaluation and funded operation at minimum size, followed by measured scale-up. | Rule compliance, execution reconciliation, and approved risk-adjusted live evidence.
+Phase 7 — Granular market-data programme | Evaluate TBBO/MBP as intermediate steps, then MBO order-book reconstruction and order-flow research. | Separate PRD/data budget, validated book pipeline, and new research branch.
+Phase 8 — Proprietary capital and GC scaling | Operate without prop restrictions when capital permits; consider GC or portfolio expansion. | Independent capital, institutionalized controls, and a new scaling risk review.
+[TABLE END]
+
+
+# 19. MBO, TBBO, and Order-Flow Future Scope
+
+The future order-flow programme will be treated as a separate product expansion rather than an informal extension of the one-minute notebook. Databento MBO contains every order-book event across all price levels and is the highest-granularity public order-level schema available in this feed. TBBO is an L1 trade-space schema that combines each trade with the best bid and offer immediately preceding it. These datasets can support questions that OHLCV cannot answer, but they require materially greater storage, stateful book reconstruction, compute, and execution modelling.
+
+[TABLE START]
+Stage | Data | Potential research value | Why staged
+1 | Trades / TBBO | Trade direction, spread at trade time, top-of-book liquidity, short-term impact, execution-cost estimation. | Lower storage and complexity than full order book; useful bridge from OHLCV.
+2 | MBP-1 / MBP-10 | BBO/depth imbalance, microprice, liquidity depletion, depth changes, trade-to-book interaction. | Introduces stateful quote/depth logic without individual order queues.
+3 | MBO | Individual order events, queue position, full-depth dynamics, cancellations/modifications, order-flow and execution simulation. | Highest granularity and greatest cost/engineering burden; justified only after a concrete hypothesis and budget exist.
+[TABLE END]
+
+MBO is not automatically predictive merely because it is more granular. The order-flow programme must still use causal features, chronological validation, realistic queue/fill modelling, and strict control of data-mining risk.
+
+# 20. Acceptance Gates and Deployment Criteria
+
+Numeric thresholds must be declared before observing the decisive out-of-sample or forward-test result. The following gates are mandatory even when the exact numerical threshold remains to be approved.
+
+[TABLE START]
+Gate | Pass conditions
+G1 — Data and feature integrity | Trusted data checks pass; no leakage; feature/label availability is auditable; contract/session boundaries are respected.
+G2 — Research evidence | Candidate shows interpretable and economically meaningful value in Development and Validation with adequate sample, date coverage, stability, and friction headroom.
+G3 — Strategy freeze | Entry, exit, stop, target, sizing, overlap, and risk rules are fully specified before decisive testing.
+G4 — Sequential backtest | Positive net expectancy under base and approved pessimistic costs; acceptable drawdown/tail behaviour; no dependence on one narrow year, session, regime, or parameter.
+G5 — MGC transfer | GC-derived decisions remain executable in MGC with acceptable divergence, spread, liquidity, and slippage.
+G6 — Prop-rule resilience | No prohibited behaviour; internal buffers prevent hard-rule breaches in historical stress and Monte Carlo simulations; pass/survival characteristics meet the predeclared target.
+G7 — Paper operations | Adequate live-data sample; no unexplained mismatches; risk controls, recovery, monitoring, and logging work as designed.
+G8 — Live authorization | Unanimous technical approval, Product Owner risk approval, verified current prop/broker terms, frozen configuration, rollback plan, and emergency procedures.
+G9 — Scale authorization | Additional live evidence supports increased size/accounts; execution and drawdown remain within tolerance; capital and operational capacity are adequate.
+[TABLE END]
+
+
+# 21. Risks and Mitigations
+
+
+[TABLE START]
+Risk | Impact | Mitigation
+Overfitting and multiple testing | False edge and strategy failure out of sample. | Chronological governance, feature registry, false-discovery control, small frozen shortlist, sensitivity tests, and untouched forward data.
+Lookahead leakage | Invalid performance and false confidence. | Availability timestamps, next-bar convention, boundary tests, code review, and synthetic leakage tests.
+One-minute intrabar ambiguity | Incorrect stop/target ordering and overstated fills. | Conservative/excluded ambiguity policies, scenario bounds, and later granular data.
+GC-to-MGC mismatch | Signal quality or fills degrade at execution. | Dedicated transfer study using synchronized prices, spread, liquidity, and slippage.
+Prop-firm rule changes | Unexpected breach or unusable strategy. | Versioned policy configuration, effective dates, pre-deployment verification, and stricter internal buffers.
+Simulator-to-live gap | Paper results fail in real operation. | Pessimistic assumptions, shadow testing, minimum live size, detailed telemetry, and gradual scale-up.
+Operational failure | Duplicate orders, unhedged position, or account breach. | Idempotent order handling, reconciliation, durable state, kill switches, and fail-closed design.
+Team knowledge imbalance | Market logic or research methodology is misunderstood. | Written specifications, paired reviews, partner onboarding, glossary, and decision records.
+Data/licensing exposure | Unauthorized redistribution or loss of access. | Private repository, no data in Git, approved credentials, and explicit data access arrangements.
+Researcher discretion after results | Hidden overfitting and irreproducibility. | Predeclared hypotheses/thresholds, immutable run artifacts, and logged decision rationale.
+Capital pressure | Risk limits are loosened to pass evaluations quickly. | Risk budget is frozen before the evaluation; no mid-campaign strategy changes or revenge scaling.
+[TABLE END]
+
+
+# 22. Open Decisions for Partner Review
+
+The following decisions are intentionally left open. They should be resolved during onboarding and captured as versioned project decisions rather than informal chat agreements.
+Partner names, primary role allocation, and backup ownership for research, platform, and execution responsibilities.
+The first target futures prop firm, account/evaluation type, effective rule set, and automation permissions.
+The initial live architecture: approved third-party platform, Rithmic API path, execution language, hosting environment, and monitoring stack.
+Whether the first deployable product is POI-only, statistical-only, or hybrid; the long-term hybrid objective does not require delaying a separately validated subsystem.
+The first formal position-sizing and internal drawdown-buffer policy.
+The exact paper-test sample requirement and acceptable execution/reliability tolerances.
+The method for obtaining a new clean holdout after the current final-test period received limited exposure.
+When a TBBO/MBP/MBO data budget is justified and which order-flow hypothesis will be tested first.
+Intellectual-property ownership, partner equity/economics, expense approval, and decision rights outside technical research.
+
+# 23. Partner Onboarding Checklist
+
+1. Read the repository README and both project context reports in the documented order.
+2. Obtain private GitHub repository access and clone using the approved SSH or HTTPS workflow.
+3. Create the project environment and run the complete automated test suite.
+4. Obtain authorized access to the required Databento data; do not request that market data be committed to Git.
+5. Reproduce one completed POI artifact and one completed statistical-research artifact.
+6. Review the no-lookahead contract, chronological partitions, session rules, and current implementation boundaries.
+7. Agree on role ownership, review requirements, communication cadence, and first milestone.
+8. Sign off on confidentiality, data licensing, and live-capital approval rules.
+
+# 24. Glossary
+
+
+[TABLE START]
+Term | Meaning in this project
+GC | COMEX Gold Futures; 100 troy ounces; primary research instrument.
+MGC | Micro Gold Futures; 10 troy ounces; intended initial execution instrument.
+POI | Point of Interest: a discretionary market-structure concept converted into a formalized formation, retest, and context research framework.
+Systematic / systemic trading | Rule-based decision and execution logic that can be reproduced consistently by software.
+Hybrid system | A governed combination of formalized discretionary structure and independently validated statistical information, with explicit human/algorithm decision authority.
+OHLCV | Open, high, low, close, and volume aggregated over a time interval.
+MFE / MAE | Maximum favourable/adverse excursion over a future path; descriptive path outcomes, not automatically realized profit/loss.
+Sequential backtest | A chronological simulation of orders, positions, account state, risk, costs, and rule constraints.
+Rithmic paper trading | Live exchange market data with simulated order matching and risk controls; useful for forward testing but not identical to live fills.
+TBBO | Trade events combined with the best bid and offer immediately preceding each trade.
+MBO | Market-by-order data containing individual order-book events across all price levels.
+Final test | The project partition from 1 January 2025 through 22 May 2026; it has had limited descriptive exposure and is not fully untouched.
+[TABLE END]
+
+
+# 25. Reference Notes
+
+
+## Internal project basis
+
+Repository README: current project state, research architecture, governance, test coverage, contributor workflow, and implementation boundaries.
+Quant Project 1 context report: project objective, engineering standards, POI research history, and current authoritative project map.
+Statistical feature research context report: independent-branch mandate, no-lookahead contract, chronological partitions, feature research standards, sequential-backtest boundary, and POI integration boundary.
+
+## External facts verified for this draft
+
+— GC is a 100-troy-ounce benchmark contract.
+— MGC is one-tenth of GC, 10 troy ounces, with a $1 minimum tick.
+— Paper environment uses live exchange data and simulated fills/risk controls.
+— MBO contains individual order events across the full book.
+— TBBO, MBP, MBO, trades, and OHLCV schema relationships.
+
+# 26. Approval and Sign-Off
+
+This draft becomes the agreed product contract only after the partners review the open decisions, assign ownership, and record approval below. Future material scope changes should be versioned rather than silently added.
+
+## Partner review sign-off
+
+
+[TABLE START]
+Reviewer | Role | Decision | Date / notes
+Abond | Product Owner / Market & Strategy Lead | Pending | 
+Partner 1 | To be assigned | Pending | 
+Partner 2 | To be assigned | Pending | 
+[TABLE END]
