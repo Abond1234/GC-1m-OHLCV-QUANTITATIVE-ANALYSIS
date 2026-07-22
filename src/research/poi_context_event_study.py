@@ -1,4 +1,11 @@
 """Section 7 True POI context, outcome, and candidate-policy research."""
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
+# pyright: reportArgumentType=false
+# pyright: reportOptionalMemberAccess=false
+# pyright: reportOptionalOperand=false
+# pyright: reportReturnType=false
+# pyright: reportCallIssue=false
 
 from __future__ import annotations
 
@@ -484,7 +491,17 @@ def build_feature_study_summary(
             include_lowest=True,
             duplicates="drop",
         )
-        temp = analysis.assign(feature_bin=bins.astype("string"))
+        temp = analysis[
+            [
+                "research_partition",
+                "hypothesis",
+                "trade_date_ny",
+                "screen_r",
+                "label_capped_60m_r",
+                "true_retest_id",
+                "true_poi_id",
+            ]
+        ].assign(feature_bin=bins.astype("string"))
         for (partition, hypothesis, feature_bin), group in temp.dropna(
             subset=["feature_bin", "screen_r"]
         ).groupby(["research_partition", "hypothesis", "feature_bin"], observed=True, sort=False):

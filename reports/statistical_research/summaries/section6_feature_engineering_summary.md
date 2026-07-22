@@ -25,18 +25,18 @@
 
 ## Missingness
 
-Development missingness ranges from 0.000000% to 1.396989%. Nulls are retained for warm-up, reset boundaries, session openings, zero denominators, and insufficient fitted-reference support.
+Development missingness ranges from 0.000000% to 1.149136%. Nulls are retained for warm-up, reset boundaries, session openings, zero denominators, and insufficient fitted-reference support.
 
 Highest Development missingness:
 
-- `two_bar_directional_balance`: 1.396989%
+- `two_bar_directional_balance`: 1.149136%
 - `distance_from_session_open_atr`: 0.453581%
 - `session_range_over_atr`: 0.453581%
 - `distance_from_execution_session_vwap_atr`: 0.453581%
 - `session_range_position`: 0.416680%
-- `three_bar_directional_balance`: 0.206707%
 - `liquidity_vacuum_score_exp`: 0.200503%
 - `signed_volume_proxy`: 0.200503%
+- `range_relative_to_previous_bar`: 0.170134%
 
 ## Experimental hypotheses (*)
 
