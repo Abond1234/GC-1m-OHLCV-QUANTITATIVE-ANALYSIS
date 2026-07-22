@@ -13,9 +13,9 @@ Usage:
     arr = xp.zeros((100, 100))    # runs on GPU if available, CPU if not
     np_arr = to_numpy(arr)        # safe conversion back to numpy ndarray
 """
+
 from __future__ import annotations
 
-import os
 import subprocess
 from typing import Any
 

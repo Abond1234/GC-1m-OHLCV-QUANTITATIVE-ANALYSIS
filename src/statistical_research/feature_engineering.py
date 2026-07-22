@@ -15,7 +15,7 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
-from .device_utils import device_summary, get_array_module, get_device, to_numpy
+from .device_utils import get_array_module, to_numpy
 from .feature_registry import (
     EXPERIMENTAL_FEATURE_NAMES,
     FEATURE_NAMES,
