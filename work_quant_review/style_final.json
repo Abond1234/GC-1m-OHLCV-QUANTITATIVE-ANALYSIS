@@ -1,0 +1,170 @@
+{
+  "input": "C:\\Users\\abond\\Desktop\\WORK FILES\\Systemic\\Project 1\\deliverables\\Quant_Project_1_Statistical_Notebook_Senior_Quant_Review.docx",
+  "fonts_by_char_count": {
+    "Calibri": 23708
+  },
+  "direct_run_formatting_runs": 375,
+  "direct_paragraph_formatting_paragraphs": 377,
+  "heading_like_paragraphs_not_heading_style": [
+    {
+      "para_index": 1,
+      "text": "SENIOR QUANTITATIVE REVIEW",
+      "style": "Report Kicker"
+    },
+    {
+      "para_index": 2,
+      "text": "Statistical Research Notebook",
+      "style": "Normal"
+    },
+    {
+      "para_index": 5,
+      "text": "Review date: 20 July 2026",
+      "style": "Normal"
+    },
+    {
+      "para_index": 32,
+      "text": "Primary notebook. notebooks/exploration/statistical_feature_research.ipynb",
+      "style": "Normal"
+    },
+    {
+      "para_index": 34,
+      "text": "Context record. project_docs/statistical_feature_research_context_report.md",
+      "style": "Normal"
+    },
+    {
+      "para_index": 266,
+      "text": "Dimension",
+      "style": "Normal"
+    },
+    {
+      "para_index": 267,
+      "text": "Senior assessment",
+      "style": "Normal"
+    },
+    {
+      "para_index": 268,
+      "text": "Meaning",
+      "style": "Normal"
+    },
+    {
+      "para_index": 284,
+      "text": "Independent check",
+      "style": "Normal"
+    },
+    {
+      "para_index": 285,
+      "text": "Observed result",
+      "style": "Normal"
+    },
+    {
+      "para_index": 286,
+      "text": "Assessment",
+      "style": "Normal"
+    },
+    {
+      "para_index": 311,
+      "text": "Verdict",
+      "style": "Normal"
+    },
+    {
+      "para_index": 312,
+      "text": "Features",
+      "style": "Normal"
+    },
+    {
+      "para_index": 313,
+      "text": "Senior interpretation",
+      "style": "Normal"
+    },
+    {
+      "para_index": 328,
+      "text": "Information group",
+      "style": "Normal"
+    },
+    {
+      "para_index": 329,
+      "text": "Retained features",
+      "style": "Normal"
+    },
+    {
+      "para_index": 330,
+      "text": "Senior interpretation",
+      "style": "Normal"
+    },
+    {
+      "para_index": 346,
+      "text": "Session",
+      "style": "Normal"
+    },
+    {
+      "para_index": 347,
+      "text": "Horizon",
+      "style": "Normal"
+    },
+    {
+      "para_index": 348,
+      "text": "Model IC",
+      "style": "Normal"
+    }
+  ],
+  "examples": {
+    "direct_paragraph_formatting": [
+      {
+        "para_index": 1,
+        "text": "SENIOR QUANTITATIVE REVIEW",
+        "style": "Report Kicker"
+      },
+      {
+        "para_index": 2,
+        "text": "Statistical Research Notebook",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "text": "Partner Work After Section 6",
+        "style": "Normal"
+      },
+      {
+        "para_index": 4,
+        "text": "Notebook stages 7-12, independent validation, market-logic audit, and remediation plan",
+        "style": "Report Subtitle"
+      },
+      {
+        "para_index": 5,
+        "text": "Review date: 20 July 2026",
+        "style": "Normal"
+      }
+    ],
+    "direct_run_formatting": [
+      {
+        "para_index": 1,
+        "run_text": "SENIOR QUANTITATIVE REVIEW",
+        "style": "Report Kicker"
+      },
+      {
+        "para_index": 2,
+        "run_text": "Statistical Research Notebook",
+        "style": "Normal"
+      },
+      {
+        "para_index": 3,
+        "run_text": "Partner Work After Section 6",
+        "style": "Normal"
+      },
+      {
+        "para_index": 5,
+        "run_text": "Review date: 20 July 2026",
+        "style": "Normal"
+      },
+      {
+        "para_index": 32,
+        "run_text": "Primary notebook. ",
+        "style": "Normal"
+      }
+    ]
+  },
+  "notes": [
+    "Direct formatting is not always wrong, but it often causes inconsistent output when templates change.",
+    "Heading-like paragraphs not using Heading styles can break TOC and accessibility."
+  ]
+}
