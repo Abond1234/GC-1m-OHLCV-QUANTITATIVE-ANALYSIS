@@ -267,14 +267,32 @@ Python 3.13 or newer is recommended. The executed primary notebooks currently re
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install numpy pandas scipy pyarrow matplotlib seaborn databento jupyter nbformat psutil
+python -m pip install -r requirements.txt
 ~~~
 
 On macOS or Linux, activate with `source .venv/bin/activate`.
 
-In VS Code, select the repository virtual environment as the Python interpreter so editor diagnostics match the executed environment. Style is enforced with ruff (configuration in `pyproject.toml`); run `python -m ruff check src scripts tests` and `python -m ruff format src scripts tests` before committing.
+Install from the committed manifests rather than by naming packages by hand. `requirements.txt` pins the numerical stack to exact versions on purpose: the feature matrix is a frozen research artifact, and its committed Section 6 missingness figures have been observed to differ between NumPy builds on byte-identical input data. A version floor is not enough to make two machines agree. `requirements.lock.txt` records the full frozen environment. The statistical notebook verifies the pinned versions on startup and fails with a clear remedy if they do not match, so a divergent artifact cannot be produced silently.
 
-Alternatively install from the committed manifests: `python -m pip install -r requirements.txt` for top-level dependencies, or `python -m pip install -r requirements.lock.txt` to reproduce the exact frozen environment used to execute the committed notebooks and tests.
+The environment directory name is a local choice — the notebook accepts any virtual environment located inside the repository, so `.venv` and `.venv-1` both work.
+
+In VS Code, select the repository virtual environment as the Python interpreter so editor diagnostics match the executed environment. Style is enforced with ruff (configuration in `pyproject.toml`); run `python -m ruff check .` and `python -m ruff format .` before committing.
+
+### 2a. Optional GPU acceleration
+
+The project runs fully on CPU and requires no GPU. On a host with an NVIDIA CUDA 12.x device you may additionally install `python -m pip install -r requirements-gpu.txt`; with no GPU array module present the compute backend resolves to CPU automatically and every pipeline, test, and notebook runs unchanged.
+
+`src/compute.py` resolves the backend and reports the host in one line (device, CPU worker count, memory tier, free VRAM). Set `PROJECT_COMPUTE` to override detection:
+
+| Value | Behaviour |
+| --- | --- |
+| `auto` (default) | CUDA when a working GPU array module is importable, otherwise CPU. |
+| `cpu` | Never use the GPU. This is how a CUDA workstation reproduces a CPU-only machine exactly. |
+| `gpu` | Require CUDA and fail loudly if it is unavailable, instead of degrading silently. |
+
+Memory, not core count, is the binding constraint the backend plans around: `cpu_worker_count` bounds parallelism by available RAM and memory tier, and `plan_batches` sizes work to free device or host memory so a 4 GB card processes the same workload as a 32 GB host in more, smaller batches rather than by failing.
+
+**Research numerics do not move when a GPU is present.** Floating-point reductions are not associative, so a device scan and a host scan can disagree in the last bits. Frozen research artifacts are therefore computed on the deterministic CPU path regardless of host, and CPU parallelism is used only where the work splits into independent units whose results are unchanged by the split. This is what makes the committed feature matrix identical on a CPU-only laptop and a CUDA workstation.
 
 ### 3. Obtain the research data
 
@@ -310,11 +328,11 @@ python -m unittest discover -s tests -v
 Current verified result:
 
 ~~~text
-Ran 94 tests
+Ran 268 tests
 OK
 ~~~
 
-The suite uses Python’s standard `unittest` runner; `pytest` is not required.
+The suite uses Python’s standard `unittest` runner; `pytest` is not required. It runs identically with or without a GPU; `PROJECT_COMPUTE=cpu` forces the CPU path if you want to confirm that explicitly.
 
 ## Running the project
 
@@ -414,12 +432,28 @@ Tracked summaries under `reports/statistical_research/summaries/` provide a ligh
 | `test_poi_first_passage.py` | 10 | Entry, stop/target order, ambiguity, forced exits, contract/segment boundaries |
 | `test_poi_event_study.py` | 7 | Horizon handling, canonical populations, summaries, and visual-audit outputs |
 | `test_poi_context_features.py` | 6 | Availability timing, True POI identity, deduplication, and entry-model gating |
+| `test_poi_sequential_backtest.py` | 6 | POI chronological account state, costs, and rejection paths |
 | `test_poi_context_event_study.py` | 2 | Direction mapping and Development-bin reuse |
 | `test_poi_signal_features.py` | 2 | Baseline POI construction and structural annotation |
 | `test_statistical_research_labels.py` | 20 | Fixed paths, availability reasons, tick grid, outcomes, and Development-only thresholds |
+| `test_statistical_research_feature_evaluation.py` | 18 | Univariate screening, BH control, Development-only binning, and shortlist gates |
 | `test_statistical_research_features.py` | 14 | Causality, resets, references, registry, dtypes, and diagnostics |
+| `test_statistical_research_backtest.py` | 13 | Sequential fills, daily limits, forced exits, and cost scenarios |
+| `test_statistical_research_multivariate.py` | 12 | Fold discipline, anchor comparison, and metric reproducibility |
+| `test_statistical_research_redundancy.py` | 10 | Correlation clustering and incremental-information gates |
+| `test_statistical_research_signals.py` | 8 | Versioned signal configuration and construction rules |
+| `test_statistical_research_calibration.py` | 5 | Isotonic recalibration fitted on Development only |
 | `test_statistical_research_baselines.py` | 4 | Availability-aware aggregation, cost hurdles, date counts, and bootstrap reproducibility |
-| **Total** | **94** | |
+| `test_compute.py` | 24 | Device override, forced-CPU reproduction, memory-aware batching, order-preserving parallelism |
+| `test_garch_volatility.py` | 12 | Development-only fitting, forward recursion, and direct leakage assertions |
+| `test_hybrid_integration.py` | 11 | Section 12 gate-filter population and identity join |
+| `test_prop_firm_rules.py` | 11 | Drawdown types, consistency blocks, buffers, and evaluation outcomes |
+| `test_resources.py` | 11 | Memory tiering, chunk planning, and chronological chunk integrity |
+| `test_opportunity_conditioning.py` | 10 | Section 12B planted effects proving each pass and veto path |
+| `test_feature_window_determinism.py` | 8 | Rolling-window oracle, group-key integrity, device independence |
+| `test_shadow_mode.py` | 8 | Hash-chain integrity, tamper detection, stale data, fill reconciliation |
+| `test_mgc_transfer.py` | 7 | Coverage, tick-exact basis, containment, and provisional verdict paths |
+| **Total** | **268** | across 25 modules |
 
 ## Research governance
 

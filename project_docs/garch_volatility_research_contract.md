@@ -40,3 +40,19 @@ Can a GARCH(1,1) conditional volatility estimate — fitted on the development p
 ## Relationship to forward test plan
 
 GARCH conditional volatility is a **risk management input**, not a directional signal. A passing H1/H2 result would justify using `feat_garch_high_vol_regime` to condition position size or suppress entries in any future strategy candidate — it does not by itself constitute a new tradeable strategy requiring Section 8 authorization.
+
+---
+
+## Implementation status addendum (2026-07-23)
+
+Everything declared above is unchanged; this addendum records execution state only, in keeping with the project rule that history is never rewritten and current state is always discoverable.
+
+**Implemented and verified.** The feature side of the contract is complete. Fitting, the forward recursion, and the regime threshold now live in `src/statistical_research/garch_volatility.py` with coverage in `tests/test_garch_volatility.py`, rather than only in notebook cells. Two defects in the original notebook implementation were corrected: the recursion was seeded with the *last* development bar's conditional volatility but applied from the *first* bar of the series, and is now seeded with the development return variance (a development-only quantity, and the appropriate choice because a boundary fit makes the long-run variance `omega / (1 - alpha - beta)` undefined); and a comment describing the recursion as vectorised was removed, as the recursion is sequential by definition. Leakage is asserted directly by test and re-checked on the full dataset: perturbing final-test prices leaves every earlier feature value bit-identical.
+
+**Outstanding: H1 and H2 are not evaluated.** Two blockers are recorded rather than resolved unilaterally, because resolving either changes what the frozen contract means.
+
+1. *The primary research horizon is not pinned.* H1 refers to "the primary research horizon" without naming it, and the label set offers six (`forward_return_{5,15,30,60,120,180}_atr`). Choosing one after the fitting is visible is exactly the degree of freedom the contract's own voiding clause exists to prevent, so the horizon needs to be declared by the contract owner as an amendment before evaluation.
+
+2. *The fitted model is a boundary solution.* Both products fit with persistence at 1.0000 and the optimizer reporting a non-convergence code. An integrated GARCH has no unconditional variance, so H3 as written ("α+β > 0.90") would read as a pass on a fit that is in fact degenerate. This is a well-known outcome when GARCH(1,1) is fitted directly to one-minute bars carrying strong intraday volatility seasonality. Evaluating H1/H2 on this fit would attribute economic meaning to a specification artefact. The remedies (deseasonalising returns before fitting, fitting at a coarser frequency, or variance targeting) are all specification changes and therefore contract amendments.
+
+Measured values, diagnostics and the leakage evidence are recorded in `reports/statistical_research/summaries/garch_volatility_status.md`. The final-test partition remains unread: it is excluded from every notebook summary until the hypothesis verdicts are fixed.
