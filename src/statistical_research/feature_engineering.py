@@ -15,7 +15,6 @@ from typing import Mapping
 import numpy as np
 import pandas as pd
 
-from .device_utils import get_array_module, to_numpy
 from .feature_registry import (
     EXPERIMENTAL_FEATURE_NAMES,
     FEATURE_NAMES,
@@ -141,49 +140,40 @@ def _lag(values: np.ndarray, periods: int, groups: np.ndarray) -> np.ndarray:
 def _window_mask(
     length: int, window: int, groups: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    ends = np.arange(window - 1, length, dtype=np.int32)
+    ends = np.arange(window - 1, length, dtype=np.int64)
     starts = ends - window + 1
     valid_group = groups[ends] == groups[starts]
     return ends, starts, valid_group
 
 
 def _rolling_sum(values: np.ndarray, window: int, groups: np.ndarray) -> np.ndarray:
-    xp = get_array_module()
-    try:
-        val_xp = xp.asarray(values, dtype=xp.float64)
-        grp_xp = xp.asarray(groups, dtype=xp.int32)
-        n = len(val_xp)
-        finite = xp.isfinite(val_xp)
-        sums = xp.zeros(n + 1, dtype=xp.float64)
-        counts = xp.zeros(n + 1, dtype=xp.int32)
-        xp.cumsum(xp.where(finite, val_xp, 0.0), out=sums[1:])
-        xp.cumsum(finite, dtype=xp.int32, out=counts[1:])
-        ends = xp.arange(window - 1, n, dtype=xp.int32)
-        starts = ends - window + 1
-        valid_group = grp_xp[ends] == grp_xp[starts]
-        complete = valid_group & ((counts[ends + 1] - counts[starts]) == window)
-        selected = ends[complete]
-        selected_starts = starts[complete]
-        result = xp.full(n, xp.nan, dtype=xp.float64)
-        result[selected] = sums[selected + 1] - sums[selected_starts]
-        return to_numpy(result)
-    except Exception:
-        values = np.asarray(values, dtype=np.float64)
-        n = len(values)
-        result = np.full(n, np.nan, dtype=np.float64)
-        finite = np.isfinite(values)
-        sums = np.zeros(n + 1, dtype=np.float64)
-        counts = np.zeros(n + 1, dtype=np.int32)
-        np.cumsum(np.where(finite, values, 0.0), out=sums[1:])
-        np.cumsum(finite, dtype=np.int32, out=counts[1:])
-        ends = np.arange(window - 1, n, dtype=np.int32)
-        starts = ends - window + 1
-        valid_group = groups[ends] == groups[starts]
-        complete = valid_group & ((counts[ends + 1] - counts[starts]) == window)
-        selected = ends[complete]
-        selected_starts = starts[complete]
-        result[selected] = sums[selected + 1] - sums[selected_starts]
-        return result
+    """Grouped rolling sum over complete windows, on the deterministic CPU path.
+
+    This produces a frozen research artefact, so it deliberately does not
+    dispatch to a GPU array module: a device scan and a host scan over the same
+    float64 array can disagree in the last bits, which would make the committed
+    feature matrix depend on which machine built it.  See :mod:`src.compute` for
+    the project's determinism policy.
+
+    Index and count arrays are int64 so that a group key is never truncated:
+    windows must not be joined across a continuity boundary because two
+    distinct run identifiers collided in a narrower integer type.
+    """
+
+    values = np.asarray(values, dtype=np.float64)
+    n = len(values)
+    result = np.full(n, np.nan, dtype=np.float64)
+    finite = np.isfinite(values)
+    sums = np.zeros(n + 1, dtype=np.float64)
+    counts = np.zeros(n + 1, dtype=np.int64)
+    np.cumsum(np.where(finite, values, 0.0), out=sums[1:])
+    np.cumsum(finite, dtype=np.int64, out=counts[1:])
+    ends, starts, valid_group = _window_mask(n, window, groups)
+    complete = valid_group & ((counts[ends + 1] - counts[starts]) == window)
+    selected = ends[complete]
+    selected_starts = starts[complete]
+    result[selected] = sums[selected + 1] - sums[selected_starts]
+    return result
 
 
 def _rolling_mean(values: np.ndarray, window: int, groups: np.ndarray) -> np.ndarray:
