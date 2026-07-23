@@ -1,0 +1,4 @@
+method,raw_forecast_column,calibrated_forecast_column,calibration_method,calibration_start_utc,calibration_end_utc,n_fit_observations,multiplier,intercept,success,message
+garch,garch_sigma_forecast_60m,garch_sigma_calibrated_60m,nonnegative_zero_intercept_least_squares,2023-01-01 05:00:00+00:00,2024-01-01 04:59:59+00:00,295599,0.9668444743790493,0,True,frozen 2023 zero-intercept least-squares scale
+realized_volatility_anchor,rv_anchor_sigma_60m,rv_anchor_sigma_calibrated_60m,nonnegative_zero_intercept_least_squares,2023-01-01 05:00:00+00:00,2024-01-01 04:59:59+00:00,275427,0.90313366246987592,0,True,frozen 2023 zero-intercept least-squares scale
+atr_anchor,atr_anchor_sigma_60m,atr_anchor_sigma_calibrated_60m,nonnegative_zero_intercept_least_squares,2023-01-01 05:00:00+00:00,2024-01-01 04:59:59+00:00,288874,2.8398330556127873,0,True,frozen 2023 zero-intercept least-squares scale

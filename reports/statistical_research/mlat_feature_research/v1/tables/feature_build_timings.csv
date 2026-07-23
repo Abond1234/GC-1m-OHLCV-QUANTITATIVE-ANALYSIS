@@ -1,0 +1,5 @@
+stage,seconds
+registry_and_input_validation,1.8119879999976547
+continuity_and_float64_feature_construction,7.6513741000017035
+decision_mapping_and_matrix_assembly,0.34430710000015097
+diagnostics_and_persistence_validation,0.43121389999942039

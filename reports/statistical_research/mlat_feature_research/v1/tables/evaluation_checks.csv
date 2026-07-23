@@ -1,0 +1,7 @@
+check,passed,observed,expected
+gc_only,True,"{""feature_products"": [""GC""], ""label_products"": [""GC""]}","{""feature_products"": [""GC""], ""label_products"": [""GC""]}"
+feature_label_id_alignment,True,"{""feature_only"": 0, ""label_only"": 0}","{""feature_only"": 0, ""label_only"": 0}"
+feature_label_provenance_alignment,True,"{""active_symbol"": 0, ""continuous_segment_id"": 0, ""decision_timestamp_ny"": 0, ""decision_timestamp_utc"": 0, ""entry_timestamp_ny"": 0, ""entry_timestamp_utc"": 0, ""instrument_id"": 0, ""product"": 0, ""research_partition"": 0, ""symbol"": 0, ""trade_date_ny"": 0}","{""active_symbol"": 0, ""continuous_segment_id"": 0, ""decision_timestamp_ny"": 0, ""decision_timestamp_utc"": 0, ""entry_timestamp_ny"": 0, ""entry_timestamp_utc"": 0, ""instrument_id"": 0, ""product"": 0, ""research_partition"": 0, ""symbol"": 0, ""trade_date_ny"": 0}"
+final_excluded,True,0,excluded from evaluation frame
+unknown_partition_excluded,True,0,0
+new_york_date_evidence_present,True,0,0

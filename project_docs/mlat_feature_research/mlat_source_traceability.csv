@@ -1,0 +1,14 @@
+hypothesis_id,feature_or_method,source_chapter,source_pdf_page,book_concept,project_adaptation,implementation_target,status
+MLAT-H001,bollinger_zscore_20,4; Appendix,131-133; 740-742,Bollinger mean/bands and examples,Adapted standardized z-score,mlat_feature_engineering.py,FROZEN
+MLAT-H002,bollinger_bandwidth_20,Appendix,740-742,Normalized band width/squeeze,Direct formula adaptation,mlat_feature_engineering.py,FROZEN
+MLAT-H003,cutler_rsi_14,4,132,RSI with 14-period example,Cutler rolling convention declared by project,mlat_feature_engineering.py,FROZEN
+MLAT-H004,chaikin_money_flow_20,Appendix,752-753,Money-flow multiplier and volume,Rolling normalized adaptation,mlat_feature_engineering.py,FROZEN
+MLAT-H005,amihud_illiquidity_60,20; Appendix,656; 752,Absolute return / dollar volume rolling measure,Within-GC close-volume proxy,mlat_feature_engineering.py,FROZEN
+MLAT-H006,parkinson_volatility_30,9,297-301,Volatility modelling motivation and anchor comparison,Project-original estimator; formula not claimed as book formula,mlat_feature_engineering.py,FROZEN
+MLAT-H007,rogers_satchell_volatility_30,9,297-301,Volatility modelling motivation and anchor comparison,Project-original estimator; formula not claimed as book formula,mlat_feature_engineering.py,FROZEN
+MLAT-H008,realized_semivariance_balance_60,5; 9,169-178; 297-301,Downside risk and changing variance,Project-original signed variation state,mlat_feature_engineering.py,FROZEN
+MLAT-H009,bipower_jump_ratio_60,9,297-301,Changing variance and residual diagnostics,Project-original jump-state estimator,mlat_feature_engineering.py,FROZEN
+MLAT-H010,variance_ratio_60_5,9,280-296,"Stationarity, AR dependence, forecast diagnostics",Adapted local random-walk diagnostic,mlat_feature_engineering.py,FROZEN
+MLAT-H011,return_sign_entropy_60,6,192,Entropy and mutual information,Project-original rolling sign entropy,mlat_feature_engineering.py,FROZEN
+MLAT-H012,volatility_of_volatility_60,9,297-301,Volatility clustering and forecasting,Project-original second-order volatility state,mlat_feature_engineering.py,FROZEN
+MLAT-H015,garch_variance_forecast,9,297-301,ARCH/GARCH equations and diagnostics,Independent segmented audit only,mlat_volatility_models.py,AUDIT_ONLY

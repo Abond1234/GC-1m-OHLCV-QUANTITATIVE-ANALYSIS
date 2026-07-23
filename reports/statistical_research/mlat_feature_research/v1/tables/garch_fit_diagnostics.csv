@@ -1,0 +1,10 @@
+category,check_name,critical,passed,numeric_value,threshold,details
+garch_fit,gc_only_input,True,True,1,products == {'GC'} after explicit filtering,excluded_non_gc_rows=0
+garch_fit,fit_scope_ends_2022,True,True,1.67243754e+18,timestamp <= 2023-01-01T04:59:59+00:00,max_fit_timestamp=2022-12-30T21:59:00+00:00
+garch_fit,optimizer_success,True,True,0,scipy success == True,CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH; iterations=20
+garch_fit,objective_finite,True,True,2.1123863329028909,finite mean negative log likelihood,likelihood evaluated on scaled fit returns only
+garch_fit,omega_positive,True,True,3.4748307241874539e-10,omega > 0,raw log-return variance scale
+garch_fit,alpha_nonnegative,True,True,0.07600239833656447,alpha >= 0,ARCH coefficient
+garch_fit,beta_nonnegative,True,True,0.91392187544578829,beta >= 0,GARCH coefficient
+garch_fit,persistence_below_one,True,True,0.98992427378235281,alpha + beta < 1,mathematical stationarity constraint
+garch_fit,persistence_below_audit_limit,True,True,0.98992427378235281,alpha + beta < 0.999,frozen audit rejection threshold

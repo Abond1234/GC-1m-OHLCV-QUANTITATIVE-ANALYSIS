@@ -1,0 +1,13 @@
+hypothesis_id,feature_name,nearest_existing_features,formula_overlap_assessment,preimplementation_redundancy_risk,preimplementation_decision,observed_nearest_feature,observed_max_abs_spearman_development,observed_exact_duplicate,final_eligibility
+MLAT-H001,bollinger_zscore_20,rolling_range_position_15; normalized_ols_slope_30,related but not formula-equivalent,MEDIUM,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H002,bollinger_bandwidth_20,range_compression_ratio_5_30; atr_ratio_20_60,same broad compression target; different close-standard-deviation formula,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H003,cutler_rsi_14,return_15m_bps; directional_persistence_15,bounded gain/loss transform is distinct,MEDIUM,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H004,chaikin_money_flow_20,close_location_value; signed_volume_proxy; volume_price_alignment_10,interaction/aggregation is distinct but likely correlated,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H005,amihud_illiquidity_60,volume_per_tick_range; liquidity_vacuum_score_exp,inverse activity-impact form is distinct,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H006,parkinson_volatility_30,atr_20; realized_volatility_30; current_range_over_atr,high-low quadratic estimator is distinct,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H007,rogers_satchell_volatility_30,atr_20; realized_volatility_30,OHLC drift-robust estimator is distinct,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H008,realized_semivariance_balance_60,directional_energy_balance_15_exp,related signed-energy idea at a different definition/horizon,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H009,bipower_jump_ratio_60,current_range_over_atr; liquidity_vacuum_score_exp,jump share is distinct,MEDIUM,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H010,variance_ratio_60_5,return_autocorrelation_15; return_sign_change_rate_30,same persistence family but non-equivalent variance scaling,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H011,return_sign_entropy_60,return_sign_change_rate_30; choppiness_14,distributional sign disorder versus transition rate/path choppiness,HIGH,ELIGIBLE_PENDING_EMPIRICAL,,,,
+MLAT-H012,volatility_of_volatility_60,realized_volatility_ratio_15_60; atr_ratio_20_60,volatility instability versus level ratio,MEDIUM,ELIGIBLE_PENDING_EMPIRICAL,,,,

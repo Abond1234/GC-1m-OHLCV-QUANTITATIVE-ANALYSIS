@@ -1,0 +1,17 @@
+target_family,research_partition,entry_session,eligible_rows,complete_rows,coverage_rate
+direction,Development,London,114834,113912,0.99197101903617391
+direction,Development,New York,191396,188862,0.98676043386486656
+direction,Validation,London,44276,43615,0.98507091878218445
+direction,Validation,New York,73800,73004,0.98921409214092137
+expansion,Development,London,114834,113912,0.99197101903617391
+expansion,Development,New York,191396,188862,0.98676043386486656
+expansion,Validation,London,44276,43615,0.98507091878218445
+expansion,Validation,New York,73800,73004,0.98921409214092137
+volatility,Development,London,114834,113934,0.99216259992685096
+volatility,Development,New York,191396,188862,0.98676043386486656
+volatility,Validation,London,44276,43615,0.98507091878218445
+volatility,Validation,New York,73800,73013,0.98933604336043357
+path_risk,Development,London,114834,113912,0.99197101903617391
+path_risk,Development,New York,191396,188862,0.98676043386486656
+path_risk,Validation,London,44276,43615,0.98507091878218445
+path_risk,Validation,New York,73800,73004,0.98921409214092137

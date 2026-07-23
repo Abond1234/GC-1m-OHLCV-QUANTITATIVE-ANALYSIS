@@ -1,0 +1,7 @@
+artifact,exact_path,exists,row_count_pass,column_count_pass,sha256_pass,schema_fingerprint_recorded,manifest_validation_status
+bars,data/processed/research_bars_gc_mgc_1m.parquet,True,True,True,True,True,VALIDATED_WITH_COLUMN_WHITELIST
+eligible,data/processed/statistical_research/eligible_observations_gc.parquet,True,True,True,True,True,VALIDATED
+labels,data/processed/statistical_research/forward_labels_gc.parquet,True,True,True,True,True,VALIDATED_DEV_VALIDATION_ONLY
+features,data/processed/statistical_research/feature_matrix_gc.parquet,True,True,True,True,True,VALIDATED
+registry,data/processed/statistical_research/feature_registry_gc.parquet,True,True,True,True,True,VALIDATED
+frozen,data/processed/statistical_research/frozen_expansion_feature_set_gc.parquet,True,True,True,True,True,VALIDATED

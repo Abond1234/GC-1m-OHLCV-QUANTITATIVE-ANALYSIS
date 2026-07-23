@@ -1,0 +1,12 @@
+check,passed,severity,observed,expected,details
+reload_shape,True,ERROR,"[424306, 24]","[424306, 24]",
+reload_column_order,True,ERROR,"[""observation_id"", ""decision_timestamp_utc"", ""decision_timestamp_ny"", ""entry_timestamp_utc"", ""entry_timestamp_ny"", ""trade_date_ny"", ""research_partition"", ""product"", ""symbol"", ""active_symbol"", ""instrument_id"", ""continuous_segment_id"", ""bollinger_zscore_20"", ""bollinger_bandwidth_20"", ""cutler_rsi_14"", ""chaikin_money_flow_20"", ""amihud_illiquidity_60"", ""parkinson_volatility_30"", ""rogers_satchell_volatility_30"", ""realized_semivariance_balance_60"", ""bipower_jump_ratio_60"", ""variance_ratio_60_5"", ""return_sign_entropy_60"", ""volatility_of_volatility_60""]","[""observation_id"", ""decision_timestamp_utc"", ""decision_timestamp_ny"", ""entry_timestamp_utc"", ""entry_timestamp_ny"", ""trade_date_ny"", ""research_partition"", ""product"", ""symbol"", ""active_symbol"", ""instrument_id"", ""continuous_segment_id"", ""bollinger_zscore_20"", ""bollinger_bandwidth_20"", ""cutler_rsi_14"", ""chaikin_money_flow_20"", ""amihud_illiquidity_60"", ""parkinson_volatility_30"", ""rogers_satchell_volatility_30"", ""realized_semivariance_balance_60"", ""bipower_jump_ratio_60"", ""variance_ratio_60_5"", ""return_sign_entropy_60"", ""volatility_of_volatility_60""]",
+reload_dtypes,True,ERROR,[],[],
+reload_observation_id,True,ERROR,0,0,
+reload_decision_timestamp_utc,True,ERROR,0,0,
+reload_entry_timestamp_utc,True,ERROR,0,0,
+reload_null_counts,True,ERROR,[],[],
+reload_metadata_values,True,ERROR,[],[],
+reload_nonnumeric_values,True,ERROR,[],[],
+reload_deterministic_sample_hash,True,ERROR,f547451f889ef5efea1176b4739814f7375c213410f04530109650b891829eb9,f547451f889ef5efea1176b4739814f7375c213410f04530109650b891829eb9,
+reload_numeric_values,True,ERROR,[],[],
