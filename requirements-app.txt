@@ -1,0 +1,14 @@
+# Desktop trade-simulation app dependencies ONLY.
+# Install on top of the pinned core (which stays untouched for determinism/CI):
+#   python -m pip install -r requirements.txt -r requirements-app.txt
+#
+# Nothing in the research pipeline imports these; keeping them out of
+# requirements.txt preserves the deterministic core install and the CI matrix.
+# numpy / pandas / pyarrow are inherited from requirements.txt and not re-declared.
+#
+# Licenses: PySide6/Qt is LGPL v3 (dynamic linking; internal tool). pyqtgraph and
+# finplot are MIT.
+
+PySide6==6.9.*
+pyqtgraph==0.13.*
+finplot==1.9.*
