@@ -292,8 +292,81 @@ class ChartWidget(QtWidgets.QWidget):
             )
         )
 
-    def _add_trade_item(self, item) -> None:
-        self._price.addItem(item)
+    def draw_excursion(self, exc, hook: bool = False) -> None:
+        """Shade how far the trade ran for/against, with peak/trough markers.
+
+        ``exc`` is an analysis.excursion.Excursion (global x). When ``hook`` the
+        favourable ribbon is brightened to gold to flag a 'winner on the hook'.
+        """
+
+        p = theme.active()
+        x = np.asarray(exc.x) - self._view_start
+        baseline = pg.PlotDataItem(x, np.full(len(x), exc.entry_price), pen=None)
+        fav_curve = pg.PlotDataItem(x, exc.fav_price, pen=pg.mkPen(p.target, width=1))
+        adv_curve = pg.PlotDataItem(x, exc.adv_price, pen=pg.mkPen(p.stop, width=1))
+        fav_fill = pg.FillBetweenItem(
+            baseline, fav_curve, brush=pg.mkBrush(*(p.hook_fill if hook else p.mfe_fill))
+        )
+        adv_fill = pg.FillBetweenItem(baseline, adv_curve, brush=pg.mkBrush(*p.mae_fill))
+        for item in (fav_fill, adv_fill):
+            item.setZValue(-5)
+        for item in (fav_fill, adv_fill, baseline, fav_curve, adv_curve):
+            self._add_trade_item(item)
+        self._add_trade_item(
+            pg.ScatterPlotItem(
+                x=[exc.peak_x - self._view_start],
+                y=[exc.peak_price],
+                symbol="d",
+                size=12,
+                brush=pg.mkBrush(p.hook if hook else p.target),
+                pen=pg.mkPen(p.bg),
+            )
+        )
+        self._add_trade_item(
+            pg.ScatterPlotItem(
+                x=[exc.trough_x - self._view_start],
+                y=[exc.trough_price],
+                symbol="d",
+                size=11,
+                brush=pg.mkBrush(p.stop),
+                pen=pg.mkPen(p.bg),
+            )
+        )
+        label = pg.TextItem(
+            f"+{exc.mfe_r:.1f} R @ +{exc.time_to_peak_min}m",
+            color=p.hook if hook else p.target,
+            anchor=(0, 1),
+        )
+        label.setPos(exc.peak_x - self._view_start, exc.peak_price)
+        self._add_trade_item(label, ignore_bounds=True)
+
+    def draw_whatif(self, runs) -> None:
+        """Overlay each alternative-exit run's stop track and exit in its colour."""
+
+        for run in runs:
+            r = run.result
+            start = r.entry_position - self._view_start
+            if len(r.stop_track):
+                held = np.arange(start, start + len(r.stop_track))
+                self._add_trade_item(
+                    pg.PlotDataItem(
+                        held,
+                        r.stop_track,
+                        pen=pg.mkPen(run.color, width=1.2, style=QtCore.Qt.DashDotLine),
+                    )
+                )
+            self._add_trade_item(
+                pg.ScatterPlotItem(
+                    x=[r.exit_position - self._view_start],
+                    y=[r.exit_price],
+                    symbol="x",
+                    size=11,
+                    pen=pg.mkPen(run.color, width=2),
+                )
+            )
+
+    def _add_trade_item(self, item, ignore_bounds: bool = False) -> None:
+        self._price.addItem(item, ignoreBounds=ignore_bounds)
         self._trade_items.append(item)
 
     def clear_trades(self) -> None:
@@ -343,7 +416,18 @@ class ChartWidget(QtWidgets.QWidget):
 
     def center_on(self, local_index: int, pad: int | None = None) -> None:
         pad = theme.CHART_PAD_BARS if pad is None else int(pad)
-        self._price.setXRange(local_index - pad, local_index + pad, padding=0)
+        x0, x1 = local_index - pad, local_index + pad
+        self._price.setXRange(x0, x1, padding=0)
+        # Fit Y to the candles actually visible so a single trade isn't squashed
+        # (annotation items must not drag autorange toward zero).
+        if self._ohlc is not None:
+            n = len(self._ohlc["close"])
+            a, b = max(0, x0), min(n - 1, x1)
+            if b > a:
+                lo = float(np.nanmin(self._ohlc["low"][a : b + 1]))
+                hi = float(np.nanmax(self._ohlc["high"][a : b + 1]))
+                margin = (hi - lo) * 0.08 or 1.0
+                self._price.setYRange(lo - margin, hi + margin, padding=0)
 
     # -- interaction -------------------------------------------------------
     def _on_click(self, event) -> None:

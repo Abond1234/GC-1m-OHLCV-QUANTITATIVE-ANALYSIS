@@ -54,6 +54,7 @@ class Palette:
     hook: str
     mfe_fill: tuple[int, int, int, int]  # RGBA translucent favourable ribbon
     mae_fill: tuple[int, int, int, int]  # RGBA translucent adverse ribbon
+    hook_fill: tuple[int, int, int, int]  # RGBA brighter fill for 'winner on the hook'
     # vwap family
     vwap_rolling: str
     vwap_day: str
@@ -85,6 +86,7 @@ DARK = Palette(
     hook="#f0c65e",
     mfe_fill=(92, 192, 160, 45),
     mae_fill=(224, 106, 82, 40),
+    hook_fill=(240, 198, 94, 66),
     vwap_rolling="#5aa0d6",
     vwap_day="#c58fd6",
     vwap_session="#d99a5c",
@@ -114,6 +116,7 @@ LIGHT = Palette(
     hook="#b3841f",
     mfe_fill=(47, 143, 107, 55),
     mae_fill=(188, 77, 56, 50),
+    hook_fill=(179, 132, 31, 80),
     vwap_rolling="#3a78ad",
     vwap_day="#9155ad",
     vwap_session="#b3701f",
