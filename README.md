@@ -30,7 +30,7 @@ This repository is a research environment, not a live trading system. It does no
 | Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
 | Business timezone | `America/New_York`; UTC timestamps remain immutable join keys |
 | Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
-| Automated tests | 352 tests across 35 modules |
+| Automated tests | 363 tests across 36 modules |
 | Repository state | Research complete for Phase 2; no strategy approved; S7P02 family archived |
 
 ## Project status
@@ -83,7 +83,7 @@ The current Section 7 population contains:
 | Section 11 independent sequential backtest | Complete — **standalone system rejected** |
 | Section 12 hybrid integration (gate-filter form) | Complete — **no confirmed incremental value** |
 | Section 12B opportunity conditioning (sizing/exits/suppression) | Complete — **no hypothesis advances** |
-| Backtest verification and multi-strategy search (strategy lab) | Complete — **engine verified to the tick; 0 of 12 directional strategies advance** |
+| Backtest verification and multi-strategy search (strategy lab) | Complete — **engine verified to the tick; 0 of 196 pre-registered directional strategies advance** (see `STRATEGIES.md`) |
 
 The statistical branch currently contains:
 
@@ -99,7 +99,7 @@ The statistical branch currently contains:
 
 Branch B standalone research is closed with a defensible rejection, and both of its carry-forward integration forms have now been tested to completion against Branch A's POI events: the gate-filter form (Section 12) adds no confirmed incremental value, and the conditioning forms (Section 12B: quintile-based sizing, exit-horizon selection, bottom-quintile suppression) all fail Validation under the pre-declared contract. The opportunity model demonstrably forecasts movement magnitude, but no tested use of that forecast survives out-of-sample criteria at realistic costs.
 
-Before extending this line, the sequential-backtest engine was independently re-verified: a clean-room re-simulation reconciles all 86,353 recorded trades to the tick, fills match the raw bars, and inputs agree across three artifacts (`reports/statistical_research/summaries/backtest_verification_report.md`). On that verified engine, a strategy laboratory searched 12 pre-registered directional rules across trend, reversion, breakout, volatility, session, and volume families. **None advanced.** The frictionless decomposition shows the gross per-trade edge is ~0 for every rule — a signal wall, not merely a cost wall — and every anti-overfitting lens agrees (Benjamini–Hochberg q of 1.0, Validation bootstrap intervals below zero, deflated Sharpe of zero, CSCV overfitting probability of 0 with zero out-of-sample profitability). The evidence points the next cycle toward expansion/volatility timing rather than direction (`reports/statistical_research/summaries/strategy_lab_findings.md`).
+Before extending this line, the sequential-backtest engine was independently re-verified: a clean-room re-simulation reconciles all 86,353 recorded trades to the tick, fills match the raw bars, and inputs agree across three artifacts (`reports/statistical_research/summaries/backtest_verification_report.md`). On that verified engine, a strategy laboratory then searched a **pre-registered catalog of 196 directional strategies** across trend, mean-reversion, breakout, volatility, volume, candle, VWAP, session, and regime-gated families (the full menu with each rule's logic, parameters, and result is `STRATEGIES.md`). **None advanced** across ~4.0M simulated trades. The frictionless decomposition shows the gross per-trade edge is ~0 for essentially every rule — a signal wall, not merely a cost wall — and every anti-overfitting lens agrees (maximum deflated Sharpe 0.000 after deflating by the full 196-trial count, Benjamini–Hochberg q of 1.0, Validation bootstrap intervals below zero, CSCV overfitting probability of 0 with zero out-of-sample profitability). The evidence points the next cycle toward expansion/volatility timing rather than direction (`reports/statistical_research/summaries/strategy_lab_findings.md`).
 
 ### MLAT book-derived feature research
 
@@ -212,9 +212,10 @@ src/statistical_research/backtest_verification.py
     Independent clean-room re-simulation that reconciles the Section 11 backtest
     to the raw bars trade for trade, with physical-fidelity and cross-artifact audits
 
-src/statistical_research/strategy_lab.py, strategy_evaluation.py
-    Multi-strategy directional search on the verified engine, with date-block
-    bootstrap, Benjamini-Hochberg, deflated-Sharpe, and CSCV overfitting controls
+src/statistical_research/strategy_lab.py, strategy_evaluation.py, strategy_catalog.py
+    Multi-strategy directional search on the verified engine (a ~200-strategy
+    pre-registered catalog), with date-block bootstrap, Benjamini-Hochberg,
+    deflated-Sharpe, and CSCV overfitting controls; catalog documented in STRATEGIES.md
 ~~~
 
 Branch B will remain independent until feature evaluation, selection, and its own research rules are frozen.
@@ -266,7 +267,7 @@ project-1/
 │   ├── features/                  POI construction, refinement, context, and paths
 │   ├── research/                  True POI research pipeline
 │   └── statistical_research/      Independent labels, baselines, and features
-├── tests/                         352 synthetic and unit tests
+├── tests/                         363 synthetic and unit tests
 └── .gitignore                     Excludes data, environments, logs, and outputs
 ~~~
 
@@ -357,7 +358,7 @@ python -m unittest discover -s tests -v
 Current verified result:
 
 ~~~text
-Ran 352 tests
+Ran 363 tests
 OK
 ~~~
 
@@ -492,7 +493,8 @@ Tracked summaries under `reports/statistical_research/summaries/` provide a ligh
 | `test_backtest_verification.py` | 16 | Clean-room re-simulation vs the engine, gap-through, corruption, and Final-test leak detection |
 | `test_strategy_lab.py` | 10 | Generalised simulator tie-back to the benchmarks, ternary signals, and no-leakage governance |
 | `test_strategy_evaluation.py` | 10 | Deflated Sharpe, CSCV overfitting probability, bootstrap determinism, and one-sided testing |
-| **Total** | **352** | across 35 modules |
+| `test_strategy_catalog.py` | 10 | Archetype builders, Development-only thresholds, unique-name catalog, and the near-dead filter |
+| **Total** | **363** | across 36 modules |
 
 ## Research governance
 

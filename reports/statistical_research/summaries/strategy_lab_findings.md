@@ -78,3 +78,24 @@ The evidence points the next research cycle away from direction:
 Any future strategy must be declared before it is run, and must clear a positive
 gross edge *before* costs are debated. A gate specification for the expansion line
 should be frozen in a research contract prior to computation.
+
+## Addendum (2026-07-24): ~200-strategy catalog
+
+The dozen-rule search was extended to a **pre-registered catalog of 196 directional
+strategies** (`src/statistical_research/strategy_catalog.py`) spanning trend,
+mean-reversion, breakout, volatility-regime, volume/flow, candle/price-action,
+VWAP-relative, session/time-of-day, and regime-gated families - the technical-analysis
+canon, academic factor/anomaly ideas, and the Jansen ML4T alpha material, each mapped
+to the causal registered features. Thresholds are Development-only marginal quantiles
+(never outcome-fitted); the shared frozen exit contract makes it purely an entry search.
+The generated menu with every strategy's entry logic, parameters, and result is `STRATEGIES.md`.
+
+Result over 196 strategies and ~4.0M simulated trades: **0 advanced.** The gross
+(frictionless) per-trade edge stays ~0 (49/196 positive; range [-0.061, +0.027] R), the
+maximum deflated Sharpe is 0.000 (deflated by the full 196-trial count), Benjamini-Hochberg
+q is 1.0 throughout, and CSCV PBO is 0.00 with zero probability the in-sample-best strategy
+is profitable out of sample. Widening the search 16-fold surfaced no edge and raised the
+significance bar, as intended. The faint positive gross tilt concentrates in
+fade-in-choppy-regime rules, reinforcing that mean-reversion/expansion, not direction, is
+the open question. A fast precomputed-exit path (`precompute_directional_exits`) makes the
+196-strategy run take about three minutes.
