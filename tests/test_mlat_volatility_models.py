@@ -369,7 +369,10 @@ class TestMLATArtifactPersistence(unittest.TestCase):
 
     def test_versioned_paths_match_the_locked_layout(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            # Resolve so the expected paths match MLATArtifactPaths, which resolves
+            # its root; on Windows the raw TemporaryDirectory can be an 8.3 short
+            # path (e.g. RUNNER~1) that resolve() expands to the long form.
+            root = Path(temporary).resolve()
             paths = MLATArtifactPaths(root, version="v1").ensure()
 
             self.assertEqual(
