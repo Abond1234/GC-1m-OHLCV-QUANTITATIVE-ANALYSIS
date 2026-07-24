@@ -105,6 +105,20 @@ from .signal_construction import (
     load_entry_fields,
     save_signal_outputs,
 )
+from .strategy_lab import (
+    SIGNAL_FEATURE_COLUMNS,
+    STRATEGY_LAB_SEED,
+    StrategyLabConfig,
+    StrategyLabResult,
+    StrategySpec,
+    load_strategy_universe,
+    run_strategy_lab,
+    save_strategy_lab_outputs,
+    score_trades,
+    simulate_positions,
+    simulate_strategy,
+    strategy_library,
+)
 
 __all__ = [
     "EXPANSION_QUANTILE",
@@ -190,4 +204,16 @@ __all__ = [
     "reconcile_trades",
     "run_verification",
     "save_verification_outputs",
+    "SIGNAL_FEATURE_COLUMNS",
+    "STRATEGY_LAB_SEED",
+    "StrategyLabConfig",
+    "StrategyLabResult",
+    "StrategySpec",
+    "load_strategy_universe",
+    "run_strategy_lab",
+    "save_strategy_lab_outputs",
+    "score_trades",
+    "simulate_positions",
+    "simulate_strategy",
+    "strategy_library",
 ]
