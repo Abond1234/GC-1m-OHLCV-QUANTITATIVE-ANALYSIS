@@ -19,10 +19,12 @@ from src.statistical_research.strategy_lab import (
     SIGNAL_FEATURE_COLUMNS,
     StrategyLabConfig,
     _bar_arrays,
+    precompute_directional_exits,
     run_strategy_lab,
     score_trades,
     simulate_positions,
     strategy_library,
+    walk_precomputed,
 )
 
 _DATE = pd.Timestamp("2021-06-01")
@@ -180,6 +182,88 @@ class SimulatorTieBackTests(unittest.TestCase):
         )
         np.testing.assert_allclose(
             lab["gross_r"].to_numpy(), prod_short["gross_r"].to_numpy(), atol=1e-12
+        )
+
+
+class FastPathTests(unittest.TestCase):
+    """The precomputed fast walk must equal the verified reference simulator."""
+
+    def _random_bars(self, n=400, seed=11):
+        rng = np.random.default_rng(seed)
+        mid = 100 + np.cumsum(rng.normal(0, 0.2, n))
+        o = mid + rng.normal(0, 0.05, n)
+        c = mid + rng.normal(0, 0.05, n)
+        h = np.maximum(o, c) + np.abs(rng.normal(0, 0.1, n))
+        low = np.minimum(o, c) - np.abs(rng.normal(0, 0.1, n))
+        half = n // 2
+        dates = [_DATE] * half + [_DATE + pd.Timedelta(days=1)] * (n - half)
+        minute = np.concatenate(
+            [np.arange(850, 850 + half), np.arange(850, 850 + (n - half))]
+        ).astype(np.int64)
+        segment = np.array([1] * half + [2] * (n - half))
+        return pd.DataFrame(
+            {
+                "ts_event_utc": [_BASE_TS + pd.Timedelta(minutes=i) for i in range(n)],
+                "product": ["GC"] * n,
+                "open": o,
+                "high": h,
+                "low": low,
+                "close": c,
+                "trade_date_ny": dates,
+                "minute_of_day_ny": minute,
+                "continuous_segment_id": segment,
+            }
+        )
+
+    def test_precomputed_walk_equals_reference(self):
+        rng = np.random.default_rng(3)
+        bars = self._random_bars()
+        arrays = _bar_arrays(bars)
+        n = len(bars)
+        entry_positions = np.arange(n)
+        directions = rng.choice([-1, 1], size=n).astype(np.int8)
+        stop_points = rng.uniform(0.2, 1.5, n)
+        target_points = rng.uniform(0.2, 3.0, n)
+        meta = pd.DataFrame(
+            {
+                "research_partition": ["Development"] * n,
+                "entry_session": rng.choice(["London", "New_York"], size=n),
+                "trade_date_ny": bars["trade_date_ny"].to_numpy(),
+            }
+        )
+        cfg = StrategyLabConfig()
+
+        reference = (
+            simulate_positions(
+                entry_positions, directions, stop_points, target_points, meta, arrays, cfg
+            )
+            .sort_values("entry_position")
+            .reset_index(drop=True)
+        )
+        precomputed = precompute_directional_exits(
+            entry_positions, stop_points, target_points, arrays, cfg
+        )
+        fast = (
+            walk_precomputed(
+                entry_positions, directions, precomputed, meta, stop_points / cfg.tick_size, cfg
+            )
+            .sort_values("entry_position")
+            .reset_index(drop=True)
+        )
+
+        self.assertEqual(len(reference), len(fast))
+        for col in [
+            "entry_position",
+            "exit_position",
+            "exit_reason",
+            "direction",
+            "holding_minutes",
+        ]:
+            np.testing.assert_array_equal(
+                reference[col].to_numpy(), fast[col].to_numpy(), err_msg=col
+            )
+        np.testing.assert_allclose(
+            reference["gross_r"].to_numpy(), fast["gross_r"].to_numpy(), atol=1e-12
         )
 
 

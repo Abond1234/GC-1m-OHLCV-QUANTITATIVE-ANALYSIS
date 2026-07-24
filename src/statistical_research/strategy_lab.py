@@ -114,12 +114,19 @@ SignalFn = Callable[[pd.DataFrame, StrategyLabConfig], np.ndarray]
 
 @dataclass(frozen=True)
 class StrategySpec:
-    """A named, pre-registered directional rule."""
+    """A named, pre-registered directional rule.
+
+    ``parameters`` records the rule's numeric constants and ``looks_for`` states
+    its entry condition in plain language; both feed the generated strategy
+    catalog so the documentation cannot drift from the code.
+    """
 
     name: str
     family: str
     thesis: str
     signal: SignalFn
+    parameters: dict = field(default_factory=dict)
+    looks_for: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +470,157 @@ def simulate_positions(
     return pd.DataFrame.from_records(records)
 
 
+def _single_exit(
+    start: int,
+    is_long: bool,
+    stop_pts: float,
+    target_pts: float,
+    arrays: dict,
+    cfg: StrategyLabConfig,
+) -> tuple[int, str, bool, float]:
+    """Standalone exit for one entry - identical logic to ``simulate_positions``.
+
+    A trade's exit depends only on its entry bar, direction, and stop/target, not
+    on any other trade, so this can be precomputed once per observation and
+    reused across every strategy that opens there.
+    """
+
+    high = arrays["high"]
+    low = arrays["low"]
+    close = arrays["close"]
+    open_price = arrays["open"]
+    segment = arrays["segment"]
+    trade_date = arrays["trade_date"]
+    minute_ny = arrays["minute_ny"]
+    n_bars = len(high)
+
+    price_in = open_price[start]
+    stop = price_in - stop_pts if is_long else price_in + stop_pts
+    target = price_in + target_pts if is_long else price_in - target_pts
+    start_segment = segment[start]
+    start_date = trade_date[start]
+    max_position = min(start + cfg.max_holding_minutes - 1, n_bars - 1)
+    exit_position = start
+    exit_reason = "end_of_data"
+    exit_price = close[start]
+    ambiguous = False
+    for position in range(start, max_position + 1):
+        if segment[position] != start_segment or trade_date[position] != start_date:
+            exit_position = position - 1
+            exit_reason = "boundary_exit"
+            exit_price = close[position - 1]
+            break
+        hit_stop = low[position] <= stop if is_long else high[position] >= stop
+        hit_target = high[position] >= target if is_long else low[position] <= target
+        if hit_stop:
+            exit_position = position
+            exit_reason = "stop"
+            exit_price = stop
+            ambiguous = bool(hit_target)
+            break
+        if hit_target:
+            exit_position = position
+            exit_reason = "target"
+            exit_price = target
+            break
+        if minute_ny[position] >= cfg.forced_exit_minute_ny:
+            exit_position = position
+            exit_reason = "forced_1530"
+            exit_price = close[position]
+            break
+        if position == max_position:
+            exit_position = position
+            exit_reason = "time_exit"
+            exit_price = close[position]
+    points = exit_price - price_in if is_long else price_in - exit_price
+    return exit_position, exit_reason, ambiguous, float(points / stop_pts)
+
+
+def precompute_directional_exits(
+    entry_positions: np.ndarray,
+    stop_points: np.ndarray,
+    target_points: np.ndarray,
+    arrays: dict,
+    cfg: StrategyLabConfig,
+) -> dict:
+    """Precompute the long and short standalone exit for every universe row."""
+
+    n = len(entry_positions)
+    result: dict = {}
+    for tag, is_long in (("long", True), ("short", False)):
+        exit_pos = np.empty(n, dtype=np.int64)
+        gross = np.empty(n, dtype=np.float64)
+        reason = np.empty(n, dtype=object)
+        ambiguous = np.zeros(n, dtype=bool)
+        for row in range(n):
+            ep, rs, am, gr = _single_exit(
+                int(entry_positions[row]),
+                is_long,
+                stop_points[row],
+                target_points[row],
+                arrays,
+                cfg,
+            )
+            exit_pos[row] = ep
+            reason[row] = rs
+            ambiguous[row] = am
+            gross[row] = gr
+        result[tag] = {
+            "exit_position": exit_pos,
+            "gross_r": gross,
+            "exit_reason": reason,
+            "ambiguous": ambiguous,
+        }
+    return result
+
+
+def walk_precomputed(
+    entry_positions: np.ndarray,
+    directions: np.ndarray,
+    precomputed: dict,
+    metadata: pd.DataFrame,
+    stop_ticks: np.ndarray,
+    cfg: StrategyLabConfig,
+) -> pd.DataFrame:
+    """One-position overlap-skip walk using precomputed exits (no inner loop)."""
+
+    fired = np.nonzero(directions != 0)[0]
+    if len(fired) == 0:
+        return pd.DataFrame()
+    order = fired[np.argsort(entry_positions[fired], kind="mergesort")]
+    long_ex = precomputed["long"]
+    short_ex = precomputed["short"]
+    partitions = metadata["research_partition"].to_numpy()
+    sessions = metadata["entry_session"].to_numpy()
+    dates = metadata["trade_date_ny"].to_numpy()
+
+    flat_from = -1
+    records: list[dict] = []
+    for row in order:
+        start = int(entry_positions[row])
+        if start <= flat_from:
+            continue
+        side = long_ex if directions[row] > 0 else short_ex
+        exit_position = int(side["exit_position"][row])
+        records.append(
+            {
+                "research_partition": partitions[row],
+                "entry_session": sessions[row],
+                "trade_date_ny": dates[row],
+                "direction": 1 if directions[row] > 0 else -1,
+                "entry_position": start,
+                "exit_position": exit_position,
+                "holding_minutes": exit_position - start + 1,
+                "exit_reason": side["exit_reason"][row],
+                "ambiguous_bar": bool(side["ambiguous"][row]),
+                "stop_ticks": float(stop_ticks[row]),
+                "gross_r": float(side["gross_r"][row]),
+            }
+        )
+        flat_from = exit_position
+    return pd.DataFrame.from_records(records)
+
+
 def simulate_strategy(
     universe: pd.DataFrame,
     entry_positions: np.ndarray,
@@ -575,8 +733,28 @@ def run_strategy_lab(
         raise ValueError("universe entry prices do not equal the mapped bar opens")
     arrays = _bar_arrays(bars)
 
-    logs = [simulate_strategy(universe, entry_positions, arrays, spec, cfg) for spec in specs]
-    trade_log = pd.concat([log for log in logs if not log.empty], ignore_index=True)
+    # Precompute each observation's long and short exit once, then every
+    # strategy is a cheap overlap-skip over those precomputed exits.
+    stop_points = universe["stop_points"].to_numpy(dtype=np.float64)
+    target_points = universe["target_points"].to_numpy(dtype=np.float64)
+    precomputed = precompute_directional_exits(
+        entry_positions, stop_points, target_points, arrays, cfg
+    )
+    stop_ticks = stop_points / cfg.tick_size
+    metadata = universe[["research_partition", "entry_session", "trade_date_ny"]]
+
+    logs = []
+    for spec in specs:
+        directions = spec.signal(universe, cfg)
+        trades = walk_precomputed(
+            entry_positions, directions, precomputed, metadata, stop_ticks, cfg
+        )
+        if trades.empty:
+            continue
+        trades.insert(0, "strategy", spec.name)
+        trades.insert(1, "family", spec.family)
+        logs.append(trades)
+    trade_log = pd.concat(logs, ignore_index=True)
     performance = score_trades(trade_log, cfg)
 
     # ---- integrity checks --------------------------------------------------
