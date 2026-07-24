@@ -39,13 +39,10 @@ def main() -> None:
 
     # forward_labels_gc carries pandas metadata (a dictionary-encoded column)
     # that pandas 3.0 cannot map on read; take the pyarrow path and drop it.
-    forward_labels = (
-        pq.read_table(
-            SR / "forward_labels_gc.parquet",
-            columns=["observation_id", "entry_price", "decision_atr_20m"],
-        )
-        .to_pandas(ignore_metadata=True)
-    )
+    forward_labels = pq.read_table(
+        SR / "forward_labels_gc.parquet",
+        columns=["observation_id", "entry_price", "decision_atr_20m"],
+    ).to_pandas(ignore_metadata=True)
 
     result = run_verification(
         candidates,

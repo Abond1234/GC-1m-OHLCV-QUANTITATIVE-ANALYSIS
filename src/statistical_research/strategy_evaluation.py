@@ -392,7 +392,9 @@ def evaluate_strategies(
     )
 
 
-def save_strategy_evaluation_outputs(result: EvaluationResult, *, project_root: Path) -> pd.DataFrame:
+def save_strategy_evaluation_outputs(
+    result: EvaluationResult, *, project_root: Path
+) -> pd.DataFrame:
     """Persist evaluation outputs; generated artifacts stay outside Git."""
 
     processed = project_root / "data" / "processed" / "statistical_research"
