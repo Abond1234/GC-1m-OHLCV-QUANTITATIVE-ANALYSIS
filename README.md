@@ -30,7 +30,7 @@ This repository is a research environment, not a live trading system. It does no
 | Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
 | Business timezone | `America/New_York`; UTC timestamps remain immutable join keys |
 | Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
-| Automated tests | 224 tests across 22 modules |
+| Automated tests | 316 tests across 32 modules |
 | Repository state | Research complete for Phase 2; no strategy approved; S7P02 family archived |
 
 ## Project status
@@ -97,6 +97,14 @@ The statistical branch currently contains:
 - A completed sequential backtest of the honest candidate family (benchmark directions, frozen opportunity gate, declared costs): **all four variants rejected** across 86,353 simulated trades. The standalone statistical system has no directional edge.
 
 Branch B standalone research is closed with a defensible rejection, and both of its carry-forward integration forms have now been tested to completion against Branch A's POI events: the gate-filter form (Section 12) adds no confirmed incremental value, and the conditioning forms (Section 12B: quintile-based sizing, exit-horizon selection, bottom-quintile suppression) all fail Validation under the pre-declared contract. The opportunity model demonstrably forecasts movement magnitude, but no tested use of that forecast survives out-of-sample criteria at realistic costs.
+
+### MLAT book-derived feature research
+
+A separate research line ingests a machine-learning-for-trading textbook (858 pages, 23 chapters, all accounted for once) and derives 12 GC-only candidate features grounded in cited book concepts — Bollinger location and bandwidth, a Cutler RSI variant, Chaikin money flow, Amihud illiquidity, Parkinson and Rogers–Satchell volatility, realized-semivariance balance, a bipower jump ratio, a variance ratio, return-sign entropy, and volatility-of-volatility. Construction is causal and continuity-aware, and evaluation reuses Branch B's governance: Development/Validation only, a frozen contract, per-date rank ICs, Benjamini–Hochberg control, Development-fitted quantile spreads, and incremental information beyond `atr_20` and the frozen 15-feature anchor set.
+
+The v1 result is **0 of 12 features authorized — all `RESEARCH_ONLY`**, failing closed. This is *not* a clean empirical rejection of the raw relationships: the frozen v1 horizon-thinning gate is **structurally non-evaluable** — 0 of 384 required 60/180-minute feature-family-session-partition cells (including 0 Development cells) retain finite thinned daily-IC evidence under the ≥10-observations-per-New-York-date rule, so advancement cannot be authorized. The multivariate authorization gate is consequently CLOSED, and a separately governed audit records the plain GARCH(1,1) implementation as `REJECTED_IMPLEMENTATION`, consistent with Branch B's own boundary/explosive fit. The corrective for a v2 is a gate specification that leaves evaluable evidence at the longer horizons, declared before any recomputation. Full record: `project_docs/mlat_feature_research/mlat_final_research_report.md`.
+
+The line's Sharpe-governance and external-figure additions to the statistical notebook are carried at module level (`performance_diagnostics.py`, `research_figures.py`) but not yet wired into the notebook: their cells anchor on the pre-rewrite GARCH section and need reconciliation with the current GARCH implementation first.
 
 ### Execution layer — PRD Phase 4
 
@@ -186,6 +194,16 @@ src/statistical_research/feature_engineering.py
 
 src/statistical_research/feature_validation.py
     Leakage, boundary, numerical, diagnostics, manual-audit, and reload gates
+
+src/statistical_research/mlat_feature_engineering.py, mlat_feature_registry.py,
+mlat_feature_evaluation.py, mlat_feature_validation.py, mlat_volatility_models.py,
+mlat_artifacts.py
+    Book-derived (MLAT) feature research line: GC-only causal construction,
+    frozen-contract univariate/incremental evaluation, and artifact persistence
+
+src/statistical_research/performance_diagnostics.py, research_figures.py
+    Governed Sharpe diagnostics and the external figure pack (module-level;
+    their statistical-notebook wiring is a pending follow-up)
 ~~~
 
 Branch B will remain independent until feature evaluation, selection, and its own research rules are frozen.
@@ -237,7 +255,7 @@ project-1/
 │   ├── features/                  POI construction, refinement, context, and paths
 │   ├── research/                  True POI research pipeline
 │   └── statistical_research/      Independent labels, baselines, and features
-├── tests/                         94 synthetic and unit tests
+├── tests/                         316 synthetic and unit tests
 └── .gitignore                     Excludes data, environments, logs, and outputs
 ~~~
 
@@ -328,7 +346,7 @@ python -m unittest discover -s tests -v
 Current verified result:
 
 ~~~text
-Ran 268 tests
+Ran 316 tests
 OK
 ~~~
 
@@ -453,7 +471,14 @@ Tracked summaries under `reports/statistical_research/summaries/` provide a ligh
 | `test_feature_window_determinism.py` | 8 | Rolling-window oracle, group-key integrity, device independence |
 | `test_shadow_mode.py` | 8 | Hash-chain integrity, tamper detection, stale data, fill reconciliation |
 | `test_mgc_transfer.py` | 7 | Coverage, tick-exact basis, containment, and provisional verdict paths |
-| **Total** | **268** | across 25 modules |
+| `test_mlat_volatility_models.py` | 12 | MLAT forward realized-volatility recursion, run boundaries, and GARCH audit |
+| `test_mlat_feature_evaluation.py` | 11 | MLAT univariate/incremental evaluation, BH, quantiles, thinning, and verdict gates |
+| `test_mlat_feature_engineering.py` | 6 | MLAT causal construction, boundary resets, zero-denominator honesty, and GC scope |
+| `test_mlat_feature_validation.py` | 6 | MLAT matrix validation, overlap audit, deterministic sample hash, and reload gates |
+| `test_performance_diagnostics.py` | 6 | Governed feature-spread and backtest daily-R Sharpe diagnostics |
+| `test_mlat_feature_registry.py` | 5 | MLAT registry definitions, metadata, and validation bounds |
+| `test_mlat_artifacts.py` | 2 | CSV round-trip null/empty distinction and reserved-token rejection |
+| **Total** | **316** | across 32 modules |
 
 ## Research governance
 
