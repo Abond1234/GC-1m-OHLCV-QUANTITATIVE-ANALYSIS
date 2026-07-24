@@ -124,6 +124,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._trade_items: list = []
         self._level_lines: list = []  # draggable stop/target lines (kept across path redraws)
         self._level_proxies: list = []
+        self._replay_items: list = []  # bar-by-bar animation items
         self._on_level_changed = None
         self._ohlc: dict | None = None  # current window arrays, for the crosshair readout
         self._labels: np.ndarray = np.array([])
@@ -142,6 +143,12 @@ class ChartWidget(QtWidgets.QWidget):
             self._price.scene().sigMouseMoved, rateLimit=60, slot=self._on_mouse_moved
         )
 
+    def apply_theme(self) -> None:
+        """Repaint the chart surface with the active palette (light/dark switch)."""
+
+        p = theme.active()
+        self._layout.setBackground(p.bg)
+
     # -- rendering ---------------------------------------------------------
     def set_view(self, ohlc: dict, labels: np.ndarray, start_index: int) -> None:
         """Render a contiguous window.
@@ -157,6 +164,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._trade_items.clear()
         self._level_lines.clear()  # removed by _price.clear(); drop stale references
         self._level_proxies.clear()
+        self._replay_items.clear()
         for line in (self._vline, self._hline):
             line.setVisible(False)
             self._price.addItem(line, ignoreBounds=True)
@@ -310,8 +318,10 @@ class ChartWidget(QtWidgets.QWidget):
         adv_fill = pg.FillBetweenItem(baseline, adv_curve, brush=pg.mkBrush(*p.mae_fill))
         for item in (fav_fill, adv_fill):
             item.setZValue(-5)
+        # Overlays are within the candles' range, so they must not drive autorange
+        # (FillBetweenItem reports a [0,0] bound that would otherwise collapse Y).
         for item in (fav_fill, adv_fill, baseline, fav_curve, adv_curve):
-            self._add_trade_item(item)
+            self._add_trade_item(item, ignore_bounds=True)
         self._add_trade_item(
             pg.ScatterPlotItem(
                 x=[exc.peak_x - self._view_start],
@@ -320,7 +330,8 @@ class ChartWidget(QtWidgets.QWidget):
                 size=12,
                 brush=pg.mkBrush(p.hook if hook else p.target),
                 pen=pg.mkPen(p.bg),
-            )
+            ),
+            ignore_bounds=True,
         )
         self._add_trade_item(
             pg.ScatterPlotItem(
@@ -330,7 +341,8 @@ class ChartWidget(QtWidgets.QWidget):
                 size=11,
                 brush=pg.mkBrush(p.stop),
                 pen=pg.mkPen(p.bg),
-            )
+            ),
+            ignore_bounds=True,
         )
         label = pg.TextItem(
             f"+{exc.mfe_r:.1f} R @ +{exc.time_to_peak_min}m",
@@ -353,7 +365,8 @@ class ChartWidget(QtWidgets.QWidget):
                         held,
                         r.stop_track,
                         pen=pg.mkPen(run.color, width=1.2, style=QtCore.Qt.DashDotLine),
-                    )
+                    ),
+                    ignore_bounds=True,
                 )
             self._add_trade_item(
                 pg.ScatterPlotItem(
@@ -362,7 +375,8 @@ class ChartWidget(QtWidgets.QWidget):
                     symbol="x",
                     size=11,
                     pen=pg.mkPen(run.color, width=2),
-                )
+                ),
+                ignore_bounds=True,
             )
 
     def _add_trade_item(self, item, ignore_bounds: bool = False) -> None:
@@ -413,6 +427,58 @@ class ChartWidget(QtWidgets.QWidget):
         self._level_lines.clear()
         self._level_proxies.clear()
         self._on_level_changed = None
+
+    # -- bar-by-bar replay animation ---------------------------------------
+    def start_replay(self, result) -> None:
+        """Set up the moving marker and stop/target lines for an animated replay."""
+
+        self.stop_replay()
+        p = theme.active()
+        self._replay_marker = pg.ScatterPlotItem(
+            symbol="o", size=13, brush=pg.mkBrush(p.gold), pen=pg.mkPen(p.bg)
+        )
+        self._replay_stop = pg.InfiniteLine(
+            angle=0, movable=False, pen=pg.mkPen(p.stop, width=1.5, style=QtCore.Qt.DashLine)
+        )
+        self._replay_target = pg.InfiniteLine(
+            angle=0, movable=False, pen=pg.mkPen(p.target, width=1.5, style=QtCore.Qt.DashLine)
+        )
+        self._replay_label = pg.TextItem("", color=p.text, anchor=(0, 1))
+        self._replay_items = [
+            self._replay_stop,
+            self._replay_target,
+            self._replay_marker,
+            self._replay_label,
+        ]
+        for item in self._replay_items:
+            self._price.addItem(item, ignoreBounds=True)
+
+    def replay_frame(self, result, t: int) -> None:
+        """Advance the animation to global bar ``t``."""
+
+        if not self._replay_items or self._ohlc is None:
+            return
+        start = int(result.entry_position)
+        idx = max(0, min(int(t) - start, len(result.stop_track) - 1))
+        local = int(t) - self._view_start
+        n = len(self._ohlc["close"])
+        if not (0 <= local < n):
+            return
+        price = float(self._ohlc["close"][local])
+        self._replay_marker.setData([local], [price])
+        if len(result.stop_track):
+            self._replay_stop.setPos(float(result.stop_track[idx]))
+            self._replay_target.setPos(float(result.target_track[idx]))
+        running_r = (price - result.entry_price) / result.initial_stop_points
+        if result.direction < 0:
+            running_r = -running_r
+        self._replay_label.setText(f"+{int(t) - start}m   {running_r:+.2f} R")
+        self._replay_label.setPos(local, price)
+
+    def stop_replay(self) -> None:
+        for item in self._replay_items:
+            self._price.removeItem(item)
+        self._replay_items = []
 
     def center_on(self, local_index: int, pad: int | None = None) -> None:
         pad = theme.CHART_PAD_BARS if pad is None else int(pad)
