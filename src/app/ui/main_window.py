@@ -5,8 +5,10 @@ overlays VWAP and the New York session, and supports two modes:
 
 * Replay - pick any catalog/peer strategy, plot its trades (coloured by outcome),
   click a trade to redraw its exact path and read why it worked or failed.
-* Free-play - click the chart to place an entry (filled next bar), size the exit
-  freely (ATR stop, R target, trailing, breakeven), and watch the outcome path.
+* Free-play - enable free-play, click the chart to place an entry (filled next
+  bar), then size the exit freely in the Exit-rule panel and drag the stop/target
+  on the chart to watch the outcome recompute live. Several trades can sit on the
+  chart at once (the Free-play blotter); select one to make it active.
 
 All fills come from the verified flexible-exit engine, so what you see on screen is
 what the research engine would record.
@@ -18,22 +20,28 @@ import numpy as np
 import pandas as pd
 from PySide6 import QtCore, QtWidgets
 
+from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.paths import project_root
 from ..datalayer.vwap import execution_session_vwap, research_day_vwap, rolling_vwap
-from ..sim.exit_config import ExitConfig, frozen_config
+from ..sim.exit_config import frozen_config
 from ..sim.flex_exit import single_flex_exit
 from ..workers.tasks import Task
+from . import theme
+from .blotter import TradeBlotter, ny_time_label
 from .chart_widget import ChartWidget
+from .exit_panel import ExitPanel
 
 _TRADE_COLUMNS = ["Strategy", "Entry (NY)", "Dir", "Exit", "R", "Held"]
 
 
 def _session_code(minute_ny: np.ndarray) -> np.ndarray:
     code = np.zeros(len(minute_ny), dtype=np.int8)
-    code[(minute_ny >= 180) & (minute_ny < 360)] = 1
-    code[(minute_ny >= 420) & (minute_ny < 720)] = 2
+    a0, a1 = theme.ASIA_WINDOW
+    n0, n1 = theme.NY_WINDOW
+    code[(minute_ny >= a0) & (minute_ny < a1)] = 1
+    code[(minute_ny >= n0) & (minute_ny < n1)] = 2
     return code
 
 
@@ -58,17 +66,30 @@ def load_app_data(root=None, date_floor=None) -> dict:
     }
 
 
+def _fmt(value, fmt="{:+.2f}") -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "n/a"
+    return fmt.format(value)
+
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, data: dict | None = None):
         super().__init__()
         self.setWindowTitle("GC Trade Simulator - Development + Validation")
-        self.resize(1500, 900)
+        self.resize(1600, 940)
         self._pool = QtCore.QThreadPool.globalInstance()
         self._data: dict | None = None
-        self._log: pd.DataFrame | None = None
+        self._log: pd.DataFrame | None = None  # replay trade log
         self._view_start = 0
         self._view_end = 0
         self._replay_cfg = frozen_config()
+        self._cfg = frozen_config()  # current free-play exit rule
+        self._placed: dict[int, object] = {}  # id -> PlacedTrade
+        self._active_id: int | None = None
+        self._focused_result = None  # a clicked replay trade's detailed path
+        self._next_id = 1
+        self._forensics_token = 0
+        self._ny_label = None
 
         self._build_ui()
         if data is not None:
@@ -86,6 +107,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chart = ChartWidget()
         self.chart.bar_clicked.connect(self._on_bar_clicked)
 
+        self._build_topbar()
+        self._build_side()
+        self._build_exit_dock()
+
+        split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        split.addWidget(self.chart)
+        split.addWidget(self._right)
+        split.setSizes([1080, 460])
+
+        central = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(central)
+        outer.setContentsMargins(6, 6, 6, 6)
+        outer.addLayout(self._controls)
+        outer.addWidget(split, 1)
+        self.setCentralWidget(central)
+        self._set_status = self.statusBar().showMessage
+
+    def _build_topbar(self) -> None:
         self.date_combo = QtWidgets.QComboBox()
         self.date_combo.currentTextChanged.connect(lambda _t: self._render_current_date())
         self.vwap_check = QtWidgets.QCheckBox("VWAP 20")
@@ -108,21 +147,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.strategy_combo = QtWidgets.QComboBox()
         self.custom_check = QtWidgets.QCheckBox("Custom exits")
+        self.custom_check.setToolTip(
+            "Replay using the Exit-rule panel instead of the frozen contract."
+        )
         self.replay_btn = QtWidgets.QPushButton("Replay")
         self.replay_btn.clicked.connect(self._on_replay)
         self.freeplay_check = QtWidgets.QCheckBox("Free-play (click to enter)")
+        self.freeplay_check.setToolTip("Click the chart to place a trade at the next bar's open.")
         self.long_radio = QtWidgets.QRadioButton("Long")
         self.long_radio.setChecked(True)
         self.short_radio = QtWidgets.QRadioButton("Short")
 
-        self.stop_spin = self._spin(0.1, 10.0, 1.5, "stop ATR x")
-        self.target_spin = self._spin(0.1, 20.0, 2.0, "target R")
-        self.trail_check = QtWidgets.QCheckBox("trail")
-        self.trail_spin = self._spin(0.1, 10.0, 1.5, "trail ATR x")
-        self.be_check = QtWidgets.QCheckBox("breakeven @R")
-        self.be_spin = self._spin(0.1, 5.0, 1.0, "BE trigger R")
-
-        controls = QtWidgets.QHBoxLayout()
+        self._controls = QtWidgets.QHBoxLayout()
         for w in (
             QtWidgets.QLabel("Date"),
             self.date_combo,
@@ -139,51 +175,46 @@ class MainWindow(QtWidgets.QMainWindow):
             self.freeplay_check,
             self.long_radio,
             self.short_radio,
-            QtWidgets.QLabel("stop"),
-            self.stop_spin,
-            QtWidgets.QLabel("target"),
-            self.target_spin,
-            self.trail_check,
-            self.trail_spin,
-            self.be_check,
-            self.be_spin,
         ):
-            controls.addWidget(w)
-        controls.addStretch(1)
+            self._controls.addWidget(w)
+        self._controls.addStretch(1)
 
+    def _build_side(self) -> None:
         self.trade_table = QtWidgets.QTableWidget(0, len(_TRADE_COLUMNS))
         self.trade_table.setHorizontalHeaderLabels(_TRADE_COLUMNS)
         self.trade_table.horizontalHeader().setStretchLastSection(True)
+        self.trade_table.verticalHeader().setVisible(False)
         self.trade_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.trade_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.trade_table.itemSelectionChanged.connect(self._on_row_selected)
+
+        self.blotter = TradeBlotter()
+        self.blotter.tradeSelected.connect(self._on_placed_selected)
+        self.blotter.tradeRemoved.connect(self._on_placed_removed)
+        self.blotter.cleared.connect(self._on_placed_cleared)
+
+        self._tabs = QtWidgets.QTabWidget()
+        self._tabs.addTab(self.trade_table, "Replay")
+        self._tabs.addTab(self.blotter, "Free-play")
+
         self.forensics = QtWidgets.QTextEdit()
         self.forensics.setReadOnly(True)
 
-        right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        right.addWidget(self.trade_table)
-        right.addWidget(self.forensics)
-        right.setSizes([500, 400])
-        split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        split.addWidget(self.chart)
-        split.addWidget(right)
-        split.setSizes([1050, 450])
+        self._right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self._right.addWidget(self._tabs)
+        self._right.addWidget(self.forensics)
+        self._right.setSizes([520, 380])
 
-        central = QtWidgets.QWidget()
-        outer = QtWidgets.QVBoxLayout(central)
-        outer.addLayout(controls)
-        outer.addWidget(split, 1)
-        self.setCentralWidget(central)
-        self._set_status = self.statusBar().showMessage
-
-    @staticmethod
-    def _spin(lo, hi, val, tip):
-        spin = QtWidgets.QDoubleSpinBox()
-        spin.setRange(lo, hi)
-        spin.setSingleStep(0.1)
-        spin.setValue(val)
-        spin.setToolTip(tip)
-        spin.setFixedWidth(70)
-        return spin
+    def _build_exit_dock(self) -> None:
+        self.exit_panel = ExitPanel()
+        self.exit_panel.configChanged.connect(self._on_config_changed)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.exit_panel)
+        dock = QtWidgets.QDockWidget("Exit rule (no frozen exit)", self)
+        dock.setWidget(scroll)
+        dock.setMinimumWidth(260)
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
 
     # -- loading -----------------------------------------------------------
     def _on_error(self, message: str) -> None:
@@ -192,6 +223,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_loaded(self, data: dict) -> None:
         self._data = data
+        self._ny_label = ny_time_label(data["replay"].bars)
+        self.blotter.set_time_label(self._ny_label)
         self.date_combo.blockSignals(True)
         self.date_combo.addItems([pd.Timestamp(d).strftime("%Y-%m-%d") for d in data["dates"]])
         self.date_combo.blockSignals(False)
@@ -201,10 +234,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._render_current_date()
 
     # -- rendering ---------------------------------------------------------
+    @property
+    def _bars(self):
+        return self._data["replay"].bars
+
     def _render_current_date(self) -> None:
         if self._data is None or not self.date_combo.count():
             return
-        bars = self._data["replay"].bars
+        bars = self._bars
         date = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
         idx = np.nonzero(bars.trade_date == date)[0]
         if len(idx) == 0:
@@ -231,12 +268,58 @@ class MainWindow(QtWidgets.QMainWindow):
             self.chart.add_vwap(self._data["vwap_session"][sl], "session")
         if self.session_check.isChecked():
             self.chart.shade_sessions(self._data["session_code"][sl])
+        self._redraw_overlays()
+
+    def _in_view(self, position: int) -> bool:
+        return self._view_start <= position <= self._view_end
+
+    def _redraw_overlays(self, reset_levels: bool = True) -> None:
+        """Redraw replay markers, a focused replay path, and all placed trades."""
+
+        self.chart.clear_trades()
         self._draw_markers_for_view()
+        if self._focused_result is not None and self._in_view(self._focused_result.entry_position):
+            self._draw_result_path(self._focused_result)
+        active = self._placed.get(self._active_id)
+        for t in self._placed.values():
+            if not self._in_view(t.entry_position):
+                continue
+            if t is active:
+                self._draw_result_path(t.result, color=t.color)
+            else:
+                self._draw_light(t)
+        if reset_levels:
+            self.chart.clear_draggable_levels()
+            if active is not None and self._in_view(active.entry_position):
+                stop_price, target_price = self._level_prices(active)
+                self.chart.set_draggable_levels(stop_price, target_price, self._on_level_dragged)
+
+    def _draw_result_path(self, result, color=None) -> None:
+        self.chart.draw_trade(
+            result.entry_position - self._view_start,
+            result.exit_position - self._view_start,
+            result.entry_price,
+            result.stop_track,
+            result.target_track,
+            result.exit_price,
+            color=color,
+        )
+
+    def _draw_light(self, t) -> None:
+        r = t.result
+        self.chart.light_marker(
+            r.entry_position - self._view_start,
+            r.entry_price,
+            r.exit_position - self._view_start,
+            r.exit_price,
+            r.gross_r,
+            t.color,
+        )
 
     def _draw_markers_for_view(self) -> None:
         if self._log is None or self._log.empty:
             return
-        bars = self._data["replay"].bars
+        bars = self._bars
         inside = self._log[
             (self._log["entry_position"] >= self._view_start)
             & (self._log["entry_position"] <= self._view_end)
@@ -251,20 +334,18 @@ class MainWindow(QtWidgets.QMainWindow):
             inside["gross_r"].to_numpy(),
         )
 
-    # -- replay ------------------------------------------------------------
-    def _exit_config(self) -> ExitConfig:
-        return ExitConfig(
-            stop_mode="atr",
-            stop_value=self.stop_spin.value(),
-            target_mode="r",
-            target_value=self.target_spin.value(),
-            trailing_enabled=self.trail_check.isChecked(),
-            trailing_mode="atr",
-            trailing_value=self.trail_spin.value(),
-            breakeven_enabled=self.be_check.isChecked(),
-            breakeven_trigger_r=self.be_spin.value(),
-        )
+    def _level_prices(self, t) -> tuple[float, float]:
+        entry = t.result.entry_price
+        if t.direction > 0:
+            return entry - t.stop_points, entry + t.target_points
+        return entry + t.stop_points, entry - t.target_points
 
+    def _ensure_date_for(self, position: int) -> None:
+        date = pd.Timestamp(self._bars.trade_date[position]).strftime("%Y-%m-%d")
+        if self.date_combo.currentText() != date:
+            self.date_combo.setCurrentText(date)  # triggers _render_current_date
+
+    # -- replay ------------------------------------------------------------
     def _on_replay(self) -> None:
         if self._data is None:
             return
@@ -272,8 +353,9 @@ class MainWindow(QtWidgets.QMainWindow):
         specs = {s.name: s for s in self._data["replay"].list_strategies()}
         if name not in specs:
             return
-        self._replay_cfg = self._exit_config() if self.custom_check.isChecked() else frozen_config()
-        cfg = self._replay_cfg if self.custom_check.isChecked() else None
+        custom = self.custom_check.isChecked()
+        self._replay_cfg = self.exit_panel.to_config() if custom else frozen_config()
+        cfg = self._replay_cfg if custom else None
         self._set_status(f"Replaying {name} ...")
         task = Task(self._data["replay"].replay, specs[name], cfg)
         task.signals.finished.connect(self._on_replayed)
@@ -289,8 +371,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if not log.empty
             else "No trades fired."
         )
-        for _, row in log.head(500).iterrows():
+        for _, row in log.head(theme.TABLE_ROW_CAP).iterrows():
             self._append_trade_row(row)
+        self._tabs.setCurrentWidget(self.trade_table)
         self._render_current_date()
 
     def _append_trade_row(self, row) -> None:
@@ -298,9 +381,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.trade_table.insertRow(r)
         values = [
             str(row.get("strategy", "")),
-            pd.Timestamp(self._data["replay"].bars.ts[int(row["entry_position"])]).strftime(
-                "%m-%d %H:%M"
-            ),
+            self._ny_label(int(row["entry_position"])),
             "L" if row["direction"] > 0 else "S",
             str(row["exit_reason"]),
             f"{row['gross_r']:+.2f}",
@@ -317,67 +398,131 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         entry_position = self.trade_table.item(rows[0].row(), 0).data(QtCore.Qt.UserRole)
         match = self._log[self._log["entry_position"] == entry_position]
-        if match.empty:
-            return
-        trade = match.iloc[0]
-        self._focus_trade(trade)
+        if not match.empty:
+            self._focus_trade(match.iloc[0])
 
     def _focus_trade(self, trade) -> None:
-        bars = self._data["replay"].bars
-        date = pd.Timestamp(trade["trade_date_ny"]).strftime("%Y-%m-%d")
-        if self.date_combo.currentText() != date:
-            self.date_combo.setCurrentText(date)  # triggers re-render
+        self._ensure_date_for(int(trade["entry_position"]))
         result = single_flex_exit(
             int(trade["entry_position"]),
             int(trade["direction"]),
             float(trade["initial_stop_points"]),
             float(trade["initial_target_points"]),
             self._replay_cfg,
-            bars.bar_arrays(),
+            self._bars.bar_arrays(),
             float(trade.get("trail_points", 0.0)),
         )
-        self._draw_and_explain(result, observation_id=trade.get("observation_id"))
+        self._focused_result = result
+        self._active_id = None  # a replay focus is not a draggable placed trade
+        self._redraw_overlays()
+        self.chart.center_on(result.entry_position - self._view_start)
+        self._explain(result, observation_id=trade.get("observation_id"))
 
     # -- free-play ---------------------------------------------------------
     def _on_bar_clicked(self, global_index: int) -> None:
         if self._data is None or not self.freeplay_check.isChecked():
             return
-        bars = self._data["replay"].bars
+        bars = self._bars
         entry = global_index + 1  # fill on the next bar's open
         if entry >= bars.n_bars:
             return
         direction = 1 if self.long_radio.isChecked() else -1
-        cfg = self._exit_config()
-        atr = float(bars.atr20[max(entry - 1, 0)])
-        stop_pts = cfg.stop_value * atr
-        target_pts = cfg.target_value * stop_pts
-        trail_pts = cfg.trailing_value * atr if cfg.trailing_enabled else 0.0
-        result = single_flex_exit(
-            entry, direction, stop_pts, target_pts, cfg, bars.bar_arrays(), trail_pts
+        cfg = self.exit_panel.to_config()
+        self._cfg = cfg
+        cycle = theme.active().whatif_cycle
+        color = cycle[self._next_id % len(cycle)]
+        trade = place_trade(
+            self._next_id, entry, direction, cfg, bars.atr20, bars.bar_arrays(), color=color
         )
-        self._draw_and_explain(result, observation_id=None)
+        self._placed[trade.id] = trade
+        self._active_id = trade.id
+        self._focused_result = None
+        self._next_id += 1
+        self._show_active_trade(center=True)
 
-    # -- draw + forensics --------------------------------------------------
-    def _draw_and_explain(self, result, observation_id) -> None:
-        bars = self._data["replay"].bars
-        if not (self._view_start <= result.entry_position <= self._view_end):
-            date = pd.Timestamp(bars.trade_date[result.entry_position]).strftime("%Y-%m-%d")
-            self.date_combo.setCurrentText(date)
-        entry_local = result.entry_position - self._view_start
-        exit_local = result.exit_position - self._view_start
-        self.chart.clear_trades()
-        self.chart.draw_trade(
-            entry_local,
-            exit_local,
-            result.entry_price,
-            result.stop_track,
-            result.target_track,
-            result.exit_price,
+    def _show_active_trade(self, center: bool = False) -> None:
+        active = self._placed.get(self._active_id)
+        if active is None:
+            self._redraw_overlays()
+            return
+        self._ensure_date_for(active.entry_position)  # may re-render (and redraw)
+        self._redraw_overlays()
+        if center:
+            self.chart.center_on(active.entry_position - self._view_start)
+        self.blotter.set_trades(list(self._placed.values()))
+        self.blotter.select_trade(active.id)
+        self._tabs.setCurrentWidget(self.blotter)
+        self._explain(active.result, observation_id=None)
+
+    def _on_level_dragged(self, kind: str, price: float) -> None:
+        active = self._placed.get(self._active_id)
+        if active is None:
+            return
+        entry = active.result.entry_price
+        if kind == "stop":
+            pts = (entry - price) if active.direction > 0 else (price - entry)
+            updated = recompute_levels(active, self._bars.bar_arrays(), stop_points=pts)
+        else:
+            pts = (price - entry) if active.direction > 0 else (entry - price)
+            updated = recompute_levels(active, self._bars.bar_arrays(), target_points=pts)
+        self._placed[active.id] = updated
+        self._redraw_overlays(reset_levels=False)  # keep the line the user is dragging
+        self.blotter.update_trade(updated)
+        self._explain(updated.result, observation_id=None)
+
+    def _on_config_changed(self, cfg) -> None:
+        self._cfg = cfg
+        active = self._placed.get(self._active_id)
+        if active is None:
+            return
+        updated = recompute_config(active, cfg, self._bars.atr20, self._bars.bar_arrays())
+        self._placed[active.id] = updated
+        self._redraw_overlays(reset_levels=True)
+        self.blotter.set_trades(list(self._placed.values()))
+        self.blotter.select_trade(active.id)
+        self._explain(updated.result, observation_id=None)
+
+    def _on_placed_selected(self, trade_id: int) -> None:
+        if trade_id in self._placed:
+            self._active_id = trade_id
+            self._focused_result = None
+            self._show_active_trade(center=True)
+
+    def _on_placed_removed(self, trade_id: int) -> None:
+        self._placed.pop(trade_id, None)
+        if self._active_id == trade_id:
+            self._active_id = next(iter(self._placed), None)
+        self.blotter.set_trades(list(self._placed.values()))
+        if self._active_id is not None:
+            self.blotter.select_trade(self._active_id)
+        self._redraw_overlays()
+
+    def _on_placed_cleared(self) -> None:
+        self._placed.clear()
+        self._active_id = None
+        self.blotter.set_trades([])
+        self._redraw_overlays()
+
+    # -- forensics ---------------------------------------------------------
+    def _explain(self, result, observation_id) -> None:
+        self.forensics.setHtml(self._forensics_html(result, ctx=None))
+        if observation_id is None or not self._data["forensics"].available():
+            return
+        self._forensics_token += 1
+        token = self._forensics_token
+        task = Task(self._data["forensics"].context_for, int(observation_id))
+        task.signals.finished.connect(
+            lambda ctx, r=result, t=token: self._on_forensics_ctx(r, ctx, t)
         )
-        self.chart.center_on(entry_local)
-        self.forensics.setHtml(self._forensics_html(result, observation_id))
+        task.signals.error.connect(self._on_error)
+        self._pool.start(task)
 
-    def _forensics_html(self, result, observation_id) -> str:
+    def _on_forensics_ctx(self, result, ctx, token) -> None:
+        if token != self._forensics_token:
+            return  # a newer selection superseded this fetch
+        self.forensics.setHtml(self._forensics_html(result, ctx=ctx))
+
+    def _forensics_html(self, result, ctx=None) -> str:
         side = "Long" if result.direction > 0 else "Short"
         lines = [
             f"<h3>{side} trade &middot; {result.exit_reason}</h3>",
@@ -386,31 +531,30 @@ class MainWindow(QtWidgets.QMainWindow):
             f"<p>Within the trade it reached <b>+{result.mfe_r:.2f} R</b> in favour and "
             f"<b>-{result.mae_r:.2f} R</b> against.</p>",
         ]
-        if result.gross_r <= 0 and result.mfe_r >= 1.0:
+        if result.gross_r <= 0 and result.mfe_r >= theme.HOOK_R:
             lines.append(
                 "<p><i>It was a winner on the hook - reached target-range profit "
                 "before reversing. A trailing stop or breakeven move would have kept some.</i></p>"
             )
-        if observation_id is not None and self._data["forensics"].available():
-            ctx = self._data["forensics"].context_for(int(observation_id))
+        if ctx is not None:
             h = ctx.excursions.get(60, {})
             lines.append("<hr><h4>Registered context (60m horizon)</h4>")
             if h:
                 lines.append(
-                    f"<p>Forward return {h['forward_return_atr']:+.2f} ATR; "
-                    f"MFE {h['mfe_long_atr']:+.2f} / MAE {h['mae_long_atr']:+.2f} ATR; "
+                    f"<p>Forward return {_fmt(h['forward_return_atr'])} ATR; "
+                    f"MFE {_fmt(h['mfe_long_atr'])} / MAE {_fmt(h['mae_long_atr'])} ATR; "
                     f"expanded: {h['expanded']}.</p>"
                 )
             feats = ctx.features
             if feats:
                 lines.append(
                     "<p>Entry context: VWAP dist "
-                    f"{feats['distance_from_execution_session_vwap_atr']:+.2f} ATR, "
-                    f"ATR ratio {feats['atr_ratio_5_20']:.2f}, "
-                    f"efficiency {feats['efficiency_ratio_30']:.2f}, "
-                    f"choppiness {feats['choppiness_14']:.0f}, "
-                    f"session pos {feats['session_range_position']:.2f}, "
-                    f"rel vol {feats['relative_volume_60']:.2f}.</p>"
+                    f"{_fmt(feats['distance_from_execution_session_vwap_atr'])} ATR, "
+                    f"ATR ratio {_fmt(feats['atr_ratio_5_20'], '{:.2f}')}, "
+                    f"efficiency {_fmt(feats['efficiency_ratio_30'], '{:.2f}')}, "
+                    f"choppiness {_fmt(feats['choppiness_14'], '{:.0f}')}, "
+                    f"session pos {_fmt(feats['session_range_position'], '{:.2f}')}, "
+                    f"rel vol {_fmt(feats['relative_volume_60'], '{:.2f}')}.</p>"
                 )
         return "".join(lines)
 

@@ -122,6 +122,9 @@ class ChartWidget(QtWidgets.QWidget):
 
         self._view_start = 0  # global index of the first rendered bar
         self._trade_items: list = []
+        self._level_lines: list = []  # draggable stop/target lines (kept across path redraws)
+        self._level_proxies: list = []
+        self._on_level_changed = None
         self._ohlc: dict | None = None  # current window arrays, for the crosshair readout
         self._labels: np.ndarray = np.array([])
 
@@ -152,6 +155,8 @@ class ChartWidget(QtWidgets.QWidget):
         self._price.clear()
         self._volume.clear()
         self._trade_items.clear()
+        self._level_lines.clear()  # removed by _price.clear(); drop stale references
+        self._level_proxies.clear()
         for line in (self._vline, self._hline):
             line.setVisible(False)
             self._price.addItem(line, ignoreBounds=True)
@@ -229,11 +234,20 @@ class ChartWidget(QtWidgets.QWidget):
         self._trade_items.append(item)
 
     def draw_trade(
-        self, entry_local, exit_local, entry_price, stop_track, target_track, exit_price
+        self,
+        entry_local,
+        exit_local,
+        entry_price,
+        stop_track,
+        target_track,
+        exit_price,
+        *,
+        color: str | None = None,
     ):
-        """Draw one trade: entry/exit markers, stop and target tracks."""
+        """Draw one trade in detail: stop/target tracks and entry/exit markers."""
 
         p = theme.active()
+        marker = color or p.entry
         held = np.arange(entry_local, entry_local + len(stop_track))
         if len(stop_track):
             self._add_trade_item(
@@ -246,12 +260,35 @@ class ChartWidget(QtWidgets.QWidget):
             )
         self._add_trade_item(
             pg.ScatterPlotItem(
-                x=[entry_local], y=[entry_price], symbol="o", size=12, brush=pg.mkBrush(p.entry)
+                x=[entry_local], y=[entry_price], symbol="o", size=12, brush=pg.mkBrush(marker)
             )
         )
         self._add_trade_item(
             pg.ScatterPlotItem(
-                x=[exit_local], y=[exit_price], symbol="x", size=13, pen=pg.mkPen(p.entry, width=2)
+                x=[exit_local], y=[exit_price], symbol="x", size=13, pen=pg.mkPen(marker, width=2)
+            )
+        )
+
+    def light_marker(self, entry_local, entry_price, exit_local, exit_price, gross_r, color):
+        """A faint entry-to-exit connector for a non-active placed trade."""
+
+        p = theme.active()
+        outcome = p.up if gross_r > 0 else p.down
+        self._add_trade_item(
+            pg.PlotDataItem(
+                [entry_local, exit_local],
+                [entry_price, exit_price],
+                pen=pg.mkPen(color, width=1, style=QtCore.Qt.DotLine),
+            )
+        )
+        self._add_trade_item(
+            pg.ScatterPlotItem(
+                x=[entry_local], y=[entry_price], symbol="o", size=8, brush=pg.mkBrush(color)
+            )
+        )
+        self._add_trade_item(
+            pg.ScatterPlotItem(
+                x=[exit_local], y=[exit_price], symbol="x", size=9, pen=pg.mkPen(outcome, width=1)
             )
         )
 
@@ -263,6 +300,46 @@ class ChartWidget(QtWidgets.QWidget):
         for item in self._trade_items:
             self._price.removeItem(item)
         self._trade_items.clear()
+
+    # -- draggable stop/target levels (active free-play trade) --------------
+    def set_draggable_levels(self, stop_price, target_price, on_changed) -> None:
+        """Two draggable horizontal lines; ``on_changed(kind, price)`` on drag."""
+
+        self.clear_draggable_levels()
+        p = theme.active()
+        self._on_level_changed = on_changed
+        specs = (("stop", stop_price, p.stop), ("target", target_price, p.target))
+        for kind, price, colour in specs:
+            line = pg.InfiniteLine(
+                pos=float(price),
+                angle=0,
+                movable=True,
+                pen=pg.mkPen(colour, width=1.5, style=QtCore.Qt.DashLine),
+                hoverPen=pg.mkPen(colour, width=2.5),
+                label=kind,
+                labelOpts={"position": 0.04, "color": colour, "movable": True},
+            )
+            line.setZValue(15)
+            self._price.addItem(line)
+            self._level_lines.append(line)
+            self._level_proxies.append(
+                pg.SignalProxy(
+                    line.sigDragged, rateLimit=60, slot=lambda _e, k=kind: self._emit_level(k)
+                )
+            )
+
+    def _emit_level(self, kind: str) -> None:
+        if self._on_level_changed is None:
+            return
+        line = self._level_lines[0] if kind == "stop" else self._level_lines[1]
+        self._on_level_changed(kind, float(line.value()))
+
+    def clear_draggable_levels(self) -> None:
+        for line in self._level_lines:
+            self._price.removeItem(line)
+        self._level_lines.clear()
+        self._level_proxies.clear()
+        self._on_level_changed = None
 
     def center_on(self, local_index: int, pad: int | None = None) -> None:
         pad = theme.CHART_PAD_BARS if pad is None else int(pad)

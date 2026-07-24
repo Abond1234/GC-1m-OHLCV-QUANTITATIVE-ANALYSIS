@@ -96,6 +96,26 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
         win._focus_trade(first)
         saved.append(_grab(win, out_dir / "03_trade_detail.png", app))
 
+    # 4. Free-play: place a long and a short on the current day; show the exit panel.
+    win.freeplay_check.setChecked(True)
+    win.exit_panel.trail_check.setChecked(True)  # a trailing stop to watch it ratchet
+    lo, hi = win._view_start, win._view_end
+    win.long_radio.setChecked(True)
+    win._on_bar_clicked(lo + (hi - lo) // 3)
+    win.short_radio.setChecked(True)
+    win._on_bar_clicked(lo + (hi - lo) // 2)
+    win.long_radio.setChecked(True)
+    saved.append(_grab(win, out_dir / "04_freeplay_trades.png", app))
+
+    # 5. Drag the active trade's stop further from entry (a simulated live drag).
+    active = win._placed.get(win._active_id)
+    if active is not None:
+        entry = active.result.entry_price
+        widen = active.stop_points * 1.8
+        new_stop = entry - widen if active.direction > 0 else entry + widen
+        win._on_level_dragged("stop", new_stop)
+        saved.append(_grab(win, out_dir / "05_drag_stop.png", app))
+
     for pth in saved:
         print(pth)
     return saved
