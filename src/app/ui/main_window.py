@@ -16,11 +16,14 @@ what the research engine would record.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
+from ..analysis.grid_sweep import default_axes, sweep_entry
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..analysis.whatif import run_whatifs
 from ..datalayer.catalog_service import StrategyReplayService
@@ -35,6 +38,8 @@ from .blotter import TradeBlotter, ny_time_label
 from .chart_widget import ChartWidget
 from .exit_panel import ExitPanel
 from .forensics_panel import ForensicsPanel
+from .heatmap_widget import HeatmapWidget
+from .replay_animator import ReplayAnimator
 
 _WHATIF_COLUMNS = ["Exit rule", "Survived?", "R", "Exit", "Held"]
 
@@ -107,10 +112,15 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_ui(self) -> None:
         self.chart = ChartWidget()
         self.chart.bar_clicked.connect(self._on_bar_clicked)
+        self._animator = ReplayAnimator(self.chart)
+        self._animator.stateChanged.connect(self._on_replay_state)
+        self._animator.positionChanged.connect(self._on_replay_position)
 
+        self._build_menu()
         self._build_topbar()
         self._build_side()
         self._build_exit_dock()
+        self._build_transport()
 
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         split.addWidget(self.chart)
@@ -172,6 +182,12 @@ class MainWindow(QtWidgets.QMainWindow):
             "cap, and a tighter target - to see which exit would have survived."
         )
         self.whatif_btn.clicked.connect(self._on_whatif)
+        self.grid_btn = QtWidgets.QPushButton("Exit grid")
+        self.grid_btn.setToolTip(
+            "Sweep a grid of stop x target exits for the selected trade and heatmap\n"
+            "the outcome. Exploratory - the best cell is partly luck, not an edge."
+        )
+        self.grid_btn.clicked.connect(self._on_exit_grid)
 
         self._controls = QtWidgets.QHBoxLayout()
         for w in (
@@ -193,6 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):
             _sep(),
             self.excursion_check,
             self.whatif_btn,
+            self.grid_btn,
         ):
             self._controls.addWidget(w)
         self._controls.addStretch(1)
@@ -217,10 +234,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.whatif_table.verticalHeader().setVisible(False)
         self.whatif_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
+        self.heatmap = HeatmapWidget()
+        self.heatmap.cellChosen.connect(self._on_grid_cell)
+
         self._tabs = QtWidgets.QTabWidget()
         self._tabs.addTab(self.trade_table, "Replay")
         self._tabs.addTab(self.blotter, "Free-play")
         self._tabs.addTab(self.whatif_table, "What-if")
+        self._tabs.addTab(self.heatmap, "Exit grid")
 
         self.forensics = ForensicsPanel()
 
@@ -239,6 +260,46 @@ class MainWindow(QtWidgets.QMainWindow):
         dock.setWidget(scroll)
         dock.setMinimumWidth(260)
         self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
+
+    def _build_menu(self) -> None:
+        view = self.menuBar().addMenu("View")
+        for label, mode in (("Dark theme", "dark"), ("Light theme", "light")):
+            act = view.addAction(label)
+            act.triggered.connect(lambda _c=False, m=mode: self._set_theme(m))
+
+    def _build_transport(self) -> None:
+        bar = QtWidgets.QToolBar("Replay")
+        bar.setMovable(False)
+        self.animate_btn = QtWidgets.QPushButton("Animate trade")
+        self.animate_btn.setToolTip("Step the selected trade bar by bar from entry to exit.")
+        self.animate_btn.clicked.connect(self._animate_current)
+        self.play_btn = QtWidgets.QPushButton("Play")
+        self.play_btn.clicked.connect(self._animator.toggle)
+        step_back = QtWidgets.QPushButton("<")
+        step_back.clicked.connect(lambda: self._animator.step(-1))
+        step_fwd = QtWidgets.QPushButton(">")
+        step_fwd.clicked.connect(lambda: self._animator.step(1))
+        stop_btn = QtWidgets.QPushButton("Stop")
+        stop_btn.clicked.connect(self._animator.stop)
+        self.speed = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.speed.setRange(20, 400)  # ms per bar (right = slower)
+        self.speed.setValue(120)
+        self.speed.setFixedWidth(120)
+        self.speed.setToolTip("Playback speed (left = faster).")
+        self.speed.valueChanged.connect(self._animator.set_interval)
+        self.replay_pos = QtWidgets.QLabel("")
+        for w in (
+            self.animate_btn,
+            step_back,
+            self.play_btn,
+            step_fwd,
+            stop_btn,
+            QtWidgets.QLabel(" speed"),
+            self.speed,
+            self.replay_pos,
+        ):
+            bar.addWidget(w)
+        self.addToolBar(QtCore.Qt.BottomToolBarArea, bar)
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
@@ -273,6 +334,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _render_current_date(self) -> None:
         if self._data is None or not self.date_combo.count():
             return
+        self._animator.stop()  # leaving a day ends any running animation
         bars = self._bars
         date = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
         idx = np.nonzero(bars.trade_date == date)[0]
@@ -618,6 +680,71 @@ class MainWindow(QtWidgets.QMainWindow):
                 elif c == 2:
                     item.setForeground(QtGui.QColor(p.up if r.gross_r > 0 else p.down))
                 self.whatif_table.setItem(row, c, item)
+
+    # -- exit-grid explorer ------------------------------------------------
+    def _on_exit_grid(self) -> None:
+        result, cfg = self._current()
+        if result is None:
+            return
+        stop_mults, target_rs = default_axes()
+        self._set_status("Sweeping exit grid ...")
+        task = Task(
+            sweep_entry,
+            result.entry_position,
+            result.direction,
+            cfg,
+            self._bars.atr20,
+            self._bars.bar_arrays(),
+            stop_mults,
+            target_rs,
+        )
+        task.signals.finished.connect(self._on_grid_ready)
+        task.signals.error.connect(self._on_error)
+        self._start(task)
+
+    def _on_grid_ready(self, grid) -> None:
+        self.heatmap.set_grid(grid)
+        self._tabs.setCurrentWidget(self.heatmap)
+        self._set_status(f"Exit grid: {grid.trials} exits swept on one entry (exploratory).")
+
+    def _on_grid_cell(self, stop_mult: float, target_r: float) -> None:
+        cfg = replace(
+            self.exit_panel.to_config(),
+            stop_mode="atr",
+            stop_value=stop_mult,
+            target_mode="r",
+            target_value=target_r,
+        )
+        self.exit_panel.from_config(cfg)  # emits configChanged -> recompute the active trade
+
+    # -- animated replay ---------------------------------------------------
+    def _animate_current(self) -> None:
+        result, _cfg = self._current()
+        if result is None:
+            return
+        self._ensure_date_for(result.entry_position)
+        self.chart.center_on(result.entry_position - self._view_start)
+        self._animator.load(result)
+        self._animator.play()
+
+    def _on_replay_state(self, playing: bool) -> None:
+        self.play_btn.setText("Pause" if playing else "Play")
+
+    def _on_replay_position(self, offset: int, total: int) -> None:
+        self.replay_pos.setText(f"  +{offset} / {total} min")
+
+    # -- theme -------------------------------------------------------------
+    def _set_theme(self, mode: str) -> None:
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            theme.apply(app, mode)
+        self.chart.apply_theme()
+        self._render_current_date()
+        result, _cfg = self._current()
+        if result is not None:
+            self._explain(result, observation_id=None)
+            if self._in_view(result.entry_position):
+                self.chart.center_on(result.entry_position - self._view_start)
 
 
 def _sep() -> QtWidgets.QFrame:

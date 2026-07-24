@@ -123,6 +123,22 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     win._on_whatif()
     saved.append(_grab(win, out_dir / "06_whatif.png", app))
 
+    # 7. Exit-grid heatmap for the current trade.
+    win._on_exit_grid()
+    saved.append(_grab(win, out_dir / "07_exit_grid.png", app))
+
+    # 8. Animated replay: load and step to a mid-frame.
+    result, _cfg = win._current()
+    if result is not None:
+        win._animator.load(result)
+        win._animator.step((result.exit_position - result.entry_position) // 2)
+        saved.append(_grab(win, out_dir / "08_replay_frame.png", app))
+
+    # 9. Light theme.
+    win._set_theme("light")
+    saved.append(_grab(win, out_dir / "09_light_theme.png", app))
+    win._set_theme("dark")
+
     for pth in saved:
         print(pth)
     return saved
