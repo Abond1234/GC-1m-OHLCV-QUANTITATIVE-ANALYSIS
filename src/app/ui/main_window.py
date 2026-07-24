@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
+from ..analysis.whatif import run_whatifs
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.paths import project_root
@@ -32,6 +34,9 @@ from . import theme
 from .blotter import TradeBlotter, ny_time_label
 from .chart_widget import ChartWidget
 from .exit_panel import ExitPanel
+from .forensics_panel import ForensicsPanel
+
+_WHATIF_COLUMNS = ["Exit rule", "Survived?", "R", "Exit", "Held"]
 
 _TRADE_COLUMNS = ["Strategy", "Entry (NY)", "Dir", "Exit", "R", "Held"]
 
@@ -66,18 +71,13 @@ def load_app_data(root=None, date_floor=None) -> dict:
     }
 
 
-def _fmt(value, fmt="{:+.2f}") -> str:
-    if value is None or (isinstance(value, float) and np.isnan(value)):
-        return "n/a"
-    return fmt.format(value)
-
-
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, data: dict | None = None):
         super().__init__()
         self.setWindowTitle("GC Trade Simulator - Development + Validation")
         self.resize(1600, 940)
         self._pool = QtCore.QThreadPool.globalInstance()
+        self._tasks: set = set()  # keep runnables alive until they finish (PySide6 GC)
         self._data: dict | None = None
         self._log: pd.DataFrame | None = None  # replay trade log
         self._view_start = 0
@@ -87,6 +87,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._placed: dict[int, object] = {}  # id -> PlacedTrade
         self._active_id: int | None = None
         self._focused_result = None  # a clicked replay trade's detailed path
+        self._whatif_runs = []  # alternative-exit overlays for the current trade
         self._next_id = 1
         self._forensics_token = 0
         self._ny_label = None
@@ -100,7 +101,7 @@ class MainWindow(QtWidgets.QMainWindow):
         task = Task(load_app_data)
         task.signals.finished.connect(self._on_loaded)
         task.signals.error.connect(self._on_error)
-        self._pool.start(task)
+        self._start(task)
 
     # -- construction ------------------------------------------------------
     def _build_ui(self) -> None:
@@ -158,6 +159,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.long_radio.setChecked(True)
         self.short_radio = QtWidgets.QRadioButton("Short")
 
+        self.excursion_check = QtWidgets.QCheckBox("Excursion")
+        self.excursion_check.setChecked(True)
+        self.excursion_check.setToolTip(
+            "Shade how far the selected trade ran in your favour (green) and against\n"
+            "you (red), with the peak marked - so you can see a winner on the hook."
+        )
+        self.excursion_check.stateChanged.connect(lambda _s: self._redraw_overlays())
+        self.whatif_btn = QtWidgets.QPushButton("What-if exits")
+        self.whatif_btn.setToolTip(
+            "Re-run the selected trade under a wider stop, a trailing stop, a longer\n"
+            "cap, and a tighter target - to see which exit would have survived."
+        )
+        self.whatif_btn.clicked.connect(self._on_whatif)
+
         self._controls = QtWidgets.QHBoxLayout()
         for w in (
             QtWidgets.QLabel("Date"),
@@ -175,6 +190,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.freeplay_check,
             self.long_radio,
             self.short_radio,
+            _sep(),
+            self.excursion_check,
+            self.whatif_btn,
         ):
             self._controls.addWidget(w)
         self._controls.addStretch(1)
@@ -193,17 +211,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.blotter.tradeRemoved.connect(self._on_placed_removed)
         self.blotter.cleared.connect(self._on_placed_cleared)
 
+        self.whatif_table = QtWidgets.QTableWidget(0, len(_WHATIF_COLUMNS))
+        self.whatif_table.setHorizontalHeaderLabels(_WHATIF_COLUMNS)
+        self.whatif_table.horizontalHeader().setStretchLastSection(True)
+        self.whatif_table.verticalHeader().setVisible(False)
+        self.whatif_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
         self._tabs = QtWidgets.QTabWidget()
         self._tabs.addTab(self.trade_table, "Replay")
         self._tabs.addTab(self.blotter, "Free-play")
+        self._tabs.addTab(self.whatif_table, "What-if")
 
-        self.forensics = QtWidgets.QTextEdit()
-        self.forensics.setReadOnly(True)
+        self.forensics = ForensicsPanel()
 
         self._right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self._right.addWidget(self._tabs)
         self._right.addWidget(self.forensics)
-        self._right.setSizes([520, 380])
+        self._right.setSizes([460, 440])
 
     def _build_exit_dock(self) -> None:
         self.exit_panel = ExitPanel()
@@ -215,6 +239,14 @@ class MainWindow(QtWidgets.QMainWindow):
         dock.setWidget(scroll)
         dock.setMinimumWidth(260)
         self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
+
+    def _start(self, task) -> None:
+        """Start a worker, retaining a reference so PySide6 does not GC it early."""
+
+        self._tasks.add(task)
+        task.signals.finished.connect(lambda *_a: self._tasks.discard(task))
+        task.signals.error.connect(lambda *_a: self._tasks.discard(task))
+        self._pool.start(task)
 
     # -- loading -----------------------------------------------------------
     def _on_error(self, message: str) -> None:
@@ -288,11 +320,34 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._draw_result_path(t.result, color=t.color)
             else:
                 self._draw_light(t)
+        self._draw_analysis_overlays()
         if reset_levels:
             self.chart.clear_draggable_levels()
             if active is not None and self._in_view(active.entry_position):
                 stop_price, target_price = self._level_prices(active)
                 self.chart.set_draggable_levels(stop_price, target_price, self._on_level_dragged)
+
+    def _draw_analysis_overlays(self) -> None:
+        """Excursion ribbon and any what-if overlays for the current trade."""
+
+        result, _cfg = self._current()
+        if result is None or not self._in_view(result.entry_position):
+            return
+        if self.excursion_check.isChecked():
+            exc = compute_excursion(result, self._bars.high, self._bars.low)
+            self.chart.draw_excursion(exc, hook=is_winner_on_the_hook(result, theme.HOOK_R))
+        if self._whatif_runs:
+            self.chart.draw_whatif(self._whatif_runs)
+
+    def _current(self):
+        """The trade currently being explained: (result, cfg) or (None, None)."""
+
+        if self._focused_result is not None:
+            return self._focused_result, self._replay_cfg
+        active = self._placed.get(self._active_id)
+        if active is not None:
+            return active.result, active.cfg
+        return None, None
 
     def _draw_result_path(self, result, color=None) -> None:
         self.chart.draw_trade(
@@ -360,7 +415,7 @@ class MainWindow(QtWidgets.QMainWindow):
         task = Task(self._data["replay"].replay, specs[name], cfg)
         task.signals.finished.connect(self._on_replayed)
         task.signals.error.connect(self._on_error)
-        self._pool.start(task)
+        self._start(task)
 
     def _on_replayed(self, log: pd.DataFrame) -> None:
         self._log = log
@@ -414,6 +469,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self._focused_result = result
         self._active_id = None  # a replay focus is not a draggable placed trade
+        self._whatif_runs = []
         self._redraw_overlays()
         self.chart.center_on(result.entry_position - self._view_start)
         self._explain(result, observation_id=trade.get("observation_id"))
@@ -437,6 +493,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._placed[trade.id] = trade
         self._active_id = trade.id
         self._focused_result = None
+        self._whatif_runs = []
         self._next_id += 1
         self._show_active_trade(center=True)
 
@@ -486,6 +543,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if trade_id in self._placed:
             self._active_id = trade_id
             self._focused_result = None
+            self._whatif_runs = []
             self._show_active_trade(center=True)
 
     def _on_placed_removed(self, trade_id: int) -> None:
@@ -505,7 +563,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- forensics ---------------------------------------------------------
     def _explain(self, result, observation_id) -> None:
-        self.forensics.setHtml(self._forensics_html(result, ctx=None))
+        self.forensics.show_realized(result)
         if observation_id is None or not self._data["forensics"].available():
             return
         self._forensics_token += 1
@@ -515,48 +573,51 @@ class MainWindow(QtWidgets.QMainWindow):
             lambda ctx, r=result, t=token: self._on_forensics_ctx(r, ctx, t)
         )
         task.signals.error.connect(self._on_error)
-        self._pool.start(task)
+        self._start(task)
 
     def _on_forensics_ctx(self, result, ctx, token) -> None:
         if token != self._forensics_token:
             return  # a newer selection superseded this fetch
-        self.forensics.setHtml(self._forensics_html(result, ctx=ctx))
+        self.forensics.show_context(result, ctx)
 
-    def _forensics_html(self, result, ctx=None) -> str:
-        side = "Long" if result.direction > 0 else "Short"
-        lines = [
-            f"<h3>{side} trade &middot; {result.exit_reason}</h3>",
-            f"<p>Net path: <b>{result.gross_r:+.2f} R</b> over {result.holding_minutes} min "
-            f"(stop {result.stop_ticks:.0f} ticks).</p>",
-            f"<p>Within the trade it reached <b>+{result.mfe_r:.2f} R</b> in favour and "
-            f"<b>-{result.mae_r:.2f} R</b> against.</p>",
-        ]
-        if result.gross_r <= 0 and result.mfe_r >= theme.HOOK_R:
-            lines.append(
-                "<p><i>It was a winner on the hook - reached target-range profit "
-                "before reversing. A trailing stop or breakeven move would have kept some.</i></p>"
-            )
-        if ctx is not None:
-            h = ctx.excursions.get(60, {})
-            lines.append("<hr><h4>Registered context (60m horizon)</h4>")
-            if h:
-                lines.append(
-                    f"<p>Forward return {_fmt(h['forward_return_atr'])} ATR; "
-                    f"MFE {_fmt(h['mfe_long_atr'])} / MAE {_fmt(h['mae_long_atr'])} ATR; "
-                    f"expanded: {h['expanded']}.</p>"
-                )
-            feats = ctx.features
-            if feats:
-                lines.append(
-                    "<p>Entry context: VWAP dist "
-                    f"{_fmt(feats['distance_from_execution_session_vwap_atr'])} ATR, "
-                    f"ATR ratio {_fmt(feats['atr_ratio_5_20'], '{:.2f}')}, "
-                    f"efficiency {_fmt(feats['efficiency_ratio_30'], '{:.2f}')}, "
-                    f"choppiness {_fmt(feats['choppiness_14'], '{:.0f}')}, "
-                    f"session pos {_fmt(feats['session_range_position'], '{:.2f}')}, "
-                    f"rel vol {_fmt(feats['relative_volume_60'], '{:.2f}')}.</p>"
-                )
-        return "".join(lines)
+    # -- what-if -----------------------------------------------------------
+    def _on_whatif(self) -> None:
+        result, cfg = self._current()
+        if result is None:
+            return
+        self._whatif_runs = run_whatifs(
+            result.entry_position,
+            result.direction,
+            cfg,
+            self._bars.atr20,
+            self._bars.bar_arrays(),
+            theme.active().whatif_cycle,
+        )
+        self._fill_whatif_table(self._whatif_runs)
+        self._tabs.setCurrentWidget(self.whatif_table)
+        self._redraw_overlays(reset_levels=False)
+
+    def _fill_whatif_table(self, runs) -> None:
+        p = theme.active()
+        self.whatif_table.setRowCount(0)
+        for run in runs:
+            r = run.result
+            row = self.whatif_table.rowCount()
+            self.whatif_table.insertRow(row)
+            values = [
+                run.label,
+                "yes" if run.survived else "no",
+                f"{r.gross_r:+.2f}",
+                str(r.exit_reason),
+                str(r.holding_minutes),
+            ]
+            for c, v in enumerate(values):
+                item = QtWidgets.QTableWidgetItem(v)
+                if c == 0:
+                    item.setForeground(QtGui.QColor(run.color))
+                elif c == 2:
+                    item.setForeground(QtGui.QColor(p.up if r.gross_r > 0 else p.down))
+                self.whatif_table.setItem(row, c, item)
 
 
 def _sep() -> QtWidgets.QFrame:

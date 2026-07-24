@@ -37,8 +37,11 @@ DEFAULT_DATE_FLOOR = pd.Timestamp("2024-12-01")
 
 
 def _settle(app: QtWidgets.QApplication, rounds: int = 8) -> None:
-    """Flush pyqtgraph's deferred paints so a grab captures the final frame."""
+    """Drain worker threads and pyqtgraph's deferred paints before a grab."""
 
+    from PySide6 import QtCore
+
+    QtCore.QThreadPool.globalInstance().waitForDone(3000)
     for _ in range(rounds):
         app.processEvents()
 
@@ -115,6 +118,10 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
         new_stop = entry - widen if active.direction > 0 else entry + widen
         win._on_level_dragged("stop", new_stop)
         saved.append(_grab(win, out_dir / "05_drag_stop.png", app))
+
+    # 6. What-if exits: overlay alternative exits and the comparison table.
+    win._on_whatif()
+    saved.append(_grab(win, out_dir / "06_whatif.png", app))
 
     for pth in saved:
         print(pth)
