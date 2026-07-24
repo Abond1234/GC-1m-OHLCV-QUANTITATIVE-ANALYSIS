@@ -145,10 +145,10 @@ notebooks\exploration\statistical_feature_research.ipynb
 Virtual environment:
 
 ```text
-.venv-1
+.venv
 ```
 
-Active interpreter: `.venv-1/Scripts/python.exe` (Windows) or `.venv-1/bin/python` (POSIX) inside the repository. Install dependencies from `requirements.txt`; `requirements.lock.txt` pins the exact executed environment.
+Active interpreter: `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (POSIX) inside the repository. Install dependencies from `requirements.txt`; `requirements.lock.txt` pins the exact executed environment.
 
 Existing core packages include:
 
@@ -1370,7 +1370,7 @@ Long and short signed returns are paired algebraic transformations, not independ
 
 The fixed sensitivity grid is **0, 1, 2, 3, 4, 5, and 10 ticks**. At a five-tick hurdle, combined absolute exit-to-exit exceedance rises from **63.49%** at 5 minutes to **93.34%** at 180 minutes. Five-tick long directional exceedance rises from **32.11% to 48.06%** and short directional exceedance from **31.38% to 45.29%**. Exit-to-exit, MFE, MAE, and range hurdle results remain separate movement diagnostics and are not PnL or a cost backtest.
 
-The notebook passed **120/120** Section 5 checks: 8 input/identity, 19 availability, 54 outcome-invariant, 12 path-boundary, 8 aggregation-reconciliation, 2 sampled statistical/visual audit, and 17 save/reload checks. Stable keys, schemas, null behavior, counts, quantile ordering, tick/bps/ATR transformations, classifications, session/time/weekday/year/partition reconciliation, forced-exit boundaries, and deterministic early/late London/New York samples all passed. The notebook was restarted and executed top-to-bottom with `.venv-1`; all **36/36 code cells** executed in order with no error output, ending in `SECTION 5 STATUS: READY`.
+The notebook passed **120/120** Section 5 checks: 8 input/identity, 19 availability, 54 outcome-invariant, 12 path-boundary, 8 aggregation-reconciliation, 2 sampled statistical/visual audit, and 17 save/reload checks. Stable keys, schemas, null behavior, counts, quantile ordering, tick/bps/ATR transformations, classifications, session/time/weekday/year/partition reconciliation, forced-exit boundaries, and deterministic early/late London/New York samples all passed. The notebook was restarted and executed top-to-bottom with `.venv`; all **36/36 code cells** executed in order with no error output, ending in `SECTION 5 STATUS: READY`.
 
 Final-test governance: Section 5 used a metric and code contract frozen before its one-time descriptive Final-test exposure. The exposed Final-test information includes return center, direction rates, magnitude, excursions, range, realized volatility, tails, availability, sessions, time-of-day, weekdays, symmetry, and fixed hurdle sensitivity. Later work must not describe the Final test as completely unseen and must not tune feature definitions, bins, horizons, thresholds, or models to these baseline values. Development and Validation remain the primary interpretation samples.
 
@@ -1436,7 +1436,7 @@ Validation results:
 - **40/40** fixed-seed manual reconstructions passed across five timing/boundary cases and all eight feature families.
 - No infinity, exact duplicate, constant, near-constant, invalid-range, extreme, or excessive-missingness feature was found.
 - Maximum all-sample feature missingness is **0.966873%**; maximum Development missingness is **1.396989%**, explained by continuity resets, zero denominators, or complete-window requirements.
-- The fresh `.venv-1` notebook execution completed **51/51 code cells** sequentially with zero error outputs and recorded `C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv-1\Scripts\python.exe` as the active interpreter. Full-notebook runtime was **488.4 seconds**; the Section 6 block took **49.25 seconds**, including a **34.26-second** feature build.
+- The fresh `.venv` notebook execution completed **51/51 code cells** sequentially with zero error outputs and recorded `C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv\Scripts\python.exe` as the active interpreter. Full-notebook runtime was **488.4 seconds**; the Section 6 block took **49.25 seconds**, including a **34.26-second** feature build.
 
 Saved generated artifacts (Parquet files remain excluded from Git):
 
