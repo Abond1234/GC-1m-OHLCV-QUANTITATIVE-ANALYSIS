@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -70,7 +70,9 @@ class FeatureSpreadSharpeTests(unittest.TestCase):
 
         self.assertEqual(set(result["development_orientation"]), {"high_minus_low"})
         self.assertTrue(result["mean_daily_spread_ticks"].gt(0).all())
-        self.assertEqual(result.set_index("research_partition").loc["Validation", "trading_dates"], 25)
+        self.assertEqual(
+            result.set_index("research_partition").loc["Validation", "trading_dates"], 25
+        )
 
     def test_collapsed_discrete_buckets_return_nan_without_failing(self) -> None:
         dates = pd.date_range("2022-01-03", periods=25, freq="B")
@@ -143,11 +145,7 @@ class BacktestSharpeTests(unittest.TestCase):
         self.assertEqual(frictionless["active_days"], 20)
         self.assertEqual(len(daily.loc[daily["cost_scenario"].eq("frictionless")]), 25)
         self.assertEqual(
-            int(
-                daily.loc[daily["cost_scenario"].eq("frictionless"), "daily_net_r"]
-                .eq(0.0)
-                .sum()
-            ),
+            int(daily.loc[daily["cost_scenario"].eq("frictionless"), "daily_net_r"].eq(0.0).sum()),
             5,
         )
 

@@ -58,7 +58,9 @@ class MLATFeatureRegistryTests(unittest.TestCase):
         self.assertEqual(frame["formula_id"].tolist(), [f"MLAT-F{i:03d}" for i in range(2, 14)])
         self.assertTrue(frame["output_dtype"].eq("float32").all())
         self.assertTrue(frame["is_experimental"].all())
-        self.assertFalse(frame.astype(str).apply(lambda column: column.str.strip().eq("").any()).any())
+        self.assertFalse(
+            frame.astype(str).apply(lambda column: column.str.strip().eq("").any()).any()
+        )
         self.assertEqual(frame.loc[3, "input_columns"], "high|low|close|volume")
 
     def test_registry_validation_rejects_membership_order_and_schema_drift(self):
@@ -98,9 +100,7 @@ class MLATFeatureRegistryTests(unittest.TestCase):
             "instrument_id": pd.Series([101, 101], dtype="uint32"),
             "continuous_segment_id": pd.Series([1, 1], dtype="int32"),
         }
-        features = {
-            name: np.array([np.nan, 0.0], dtype=np.float32) for name in MLAT_FEATURE_NAMES
-        }
+        features = {name: np.array([np.nan, 0.0], dtype=np.float32) for name in MLAT_FEATURE_NAMES}
         frame = pd.DataFrame({**metadata, **features})
         frame = frame.loc[:, MLAT_METADATA_COLUMNS + MLAT_FEATURE_NAMES]
         validate_mlat_feature_frame(frame)

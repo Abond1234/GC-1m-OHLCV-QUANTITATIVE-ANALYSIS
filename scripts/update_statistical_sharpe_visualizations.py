@@ -10,7 +10,6 @@ from pathlib import Path
 
 import nbformat
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOK_PATH = PROJECT_ROOT / "notebooks" / "exploration" / "statistical_feature_research.ipynb"
 
@@ -64,7 +63,9 @@ def _replace_once(
     if new in source:
         return
     if old not in source:
-        raise RuntimeError(f"Cell containing {anchor!r} does not contain replacement target {old!r}")
+        raise RuntimeError(
+            f"Cell containing {anchor!r} does not contain replacement target {old!r}"
+        )
     notebook.cells[index].source = source.replace(old, new, 1)
 
 
@@ -418,7 +419,9 @@ def main() -> None:
     update_notebook(notebook)
     nbformat.validate(notebook)
     nbformat.write(notebook, NOTEBOOK_PATH)
-    print(f"Updated {NOTEBOOK_PATH.relative_to(PROJECT_ROOT)}: {before} -> {len(notebook.cells)} cells")
+    print(
+        f"Updated {NOTEBOOK_PATH.relative_to(PROJECT_ROOT)}: {before} -> {len(notebook.cells)} cells"
+    )
 
 
 if __name__ == "__main__":

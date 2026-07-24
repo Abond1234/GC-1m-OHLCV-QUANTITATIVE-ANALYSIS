@@ -269,9 +269,7 @@ def audit_feature_overlap(
     comparisons: list[tuple[str, str, str, str, str]] = []
     for index, left_name in enumerate(candidate_names):
         for right_name in candidate_names[index + 1 :]:
-            comparisons.append(
-                (left_name, right_name, "candidate", left_name, right_name)
-            )
+            comparisons.append((left_name, right_name, "candidate", left_name, right_name))
         for display_name in existing_names:
             comparisons.append(
                 (
@@ -291,10 +289,7 @@ def audit_feature_overlap(
         valid = np.isfinite(left) & np.isfinite(right)
         count = int(valid.sum())
         sufficient = count >= minimum_observations
-        exact = bool(
-            sufficient
-            and np.array_equal(left[valid], right[valid], equal_nan=True)
-        )
+        exact = bool(sufficient and np.array_equal(left[valid], right[valid], equal_nan=True))
         record = {
             "candidate_feature": left_name,
             "reference_feature": right_name,
@@ -337,9 +332,7 @@ def audit_feature_overlap(
         correlations = np.corrcoef(ranked, rowvar=False)
         correlations = np.atleast_2d(correlations)
         for pair_index, left_key, right_key in group["pairs"]:
-            correlation = correlations[
-                column_positions[left_key], column_positions[right_key]
-            ]
+            correlation = correlations[column_positions[left_key], column_positions[right_key]]
             if not np.isfinite(correlation):
                 continue
             absolute = abs(float(correlation))
@@ -381,12 +374,16 @@ def _feature_diagnostics(
         missing_rate = float(raw_null.mean())
         expected_dtype = indexed.at[name, "output_dtype"] if "output_dtype" in indexed else pd.NA
         lower = (
-            pd.to_numeric(pd.Series([indexed.at[name, "validation_minimum"]]), errors="coerce").iloc[0]
+            pd.to_numeric(
+                pd.Series([indexed.at[name, "validation_minimum"]]), errors="coerce"
+            ).iloc[0]
             if "validation_minimum" in indexed
             else np.nan
         )
         upper = (
-            pd.to_numeric(pd.Series([indexed.at[name, "validation_maximum"]]), errors="coerce").iloc[0]
+            pd.to_numeric(
+                pd.Series([indexed.at[name, "validation_maximum"]]), errors="coerce"
+            ).iloc[0]
             if "validation_maximum" in indexed
             else np.nan
         )
@@ -423,9 +420,7 @@ def _feature_diagnostics(
 
 def _coverage_table(matrix: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     group_columns = [
-        column
-        for column in ("research_partition", "entry_session")
-        if column in matrix.columns
+        column for column in ("research_partition", "entry_session") if column in matrix.columns
     ]
     if not group_columns:
         groups = [((), matrix)]
@@ -652,9 +647,7 @@ def validate_mlat_feature_matrix(
         expected=[],
     )
     hash_columns = [column for column in expected_columns if column in matrix]
-    digest = deterministic_sample_hash(
-        matrix, columns=hash_columns, sample_size=sample_size
-    )
+    digest = deterministic_sample_hash(matrix, columns=hash_columns, sample_size=sample_size)
     sample_hash = pd.DataFrame(
         [
             {
@@ -736,9 +729,7 @@ def verify_reloaded_feature_matrix(
         observed=null_mismatches,
         expected=[],
     )
-    metadata_columns = [
-        column for column in DEFAULT_METADATA_COLUMNS if column in shared
-    ]
+    metadata_columns = [column for column in DEFAULT_METADATA_COLUMNS if column in shared]
     unequal_metadata = []
     for column in metadata_columns:
         left = original[column].reset_index(drop=True)
@@ -777,12 +768,8 @@ def verify_reloaded_feature_matrix(
         else original.columns.tolist()
     )
     columns = [column for column in columns if column in original and column in reloaded]
-    original_hash = deterministic_sample_hash(
-        original, columns=columns, sample_size=sample_size
-    )
-    reloaded_hash = deterministic_sample_hash(
-        reloaded, columns=columns, sample_size=sample_size
-    )
+    original_hash = deterministic_sample_hash(original, columns=columns, sample_size=sample_size)
+    reloaded_hash = deterministic_sample_hash(reloaded, columns=columns, sample_size=sample_size)
     _check(
         rows,
         "reload_deterministic_sample_hash",

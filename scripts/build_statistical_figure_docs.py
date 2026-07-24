@@ -11,14 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from PIL import Image
 from docx import Document
 from docx.enum.section import WD_SECTION_START
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
-
+from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIGURE_ROOT = PROJECT_ROOT / "reports" / "figures" / "statistical_feature_research"
@@ -438,7 +437,9 @@ def _set_table_geometry(table, widths_dxa: Iterable[int]) -> None:
             _set_cell_width(cell, width)
 
 
-def _set_cell_margins(cell, top: int = 80, start: int = 120, bottom: int = 80, end: int = 120) -> None:
+def _set_cell_margins(
+    cell, top: int = 80, start: int = 120, bottom: int = 80, end: int = 120
+) -> None:
     tc_pr = cell._tc.get_or_add_tcPr()
     tc_mar = tc_pr.first_child_found_in("w:tcMar")
     if tc_mar is None:
@@ -453,7 +454,14 @@ def _set_cell_margins(cell, top: int = 80, start: int = 120, bottom: int = 80, e
         node.set(qn("w:type"), "dxa")
 
 
-def _set_font(run, *, size: float | None = None, color: RGBColor | None = None, bold: bool | None = None, italic: bool | None = None) -> None:
+def _set_font(
+    run,
+    *,
+    size: float | None = None,
+    color: RGBColor | None = None,
+    bold: bool | None = None,
+    italic: bool | None = None,
+) -> None:
     run.font.name = "Calibri"
     run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:ascii"), "Calibri")
     run._element.get_or_add_rPr().get_or_add_rFonts().set(qn("w:hAnsi"), "Calibri")
@@ -603,7 +611,9 @@ def _add_title_block(doc: Document, brief: FigureBrief) -> None:
     _set_font(body, size=10.5, color=NAVY)
 
 
-def _image_dimensions(path: Path, max_width: float = 6.35, max_height: float = 4.75) -> tuple[float, float]:
+def _image_dimensions(
+    path: Path, max_width: float = 6.35, max_height: float = 4.75
+) -> tuple[float, float]:
     with Image.open(path) as image:
         width_px, height_px = image.size
     aspect = width_px / height_px

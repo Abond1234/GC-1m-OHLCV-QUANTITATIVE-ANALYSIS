@@ -602,7 +602,9 @@ def build_mlat_notebook() -> nbformat.NotebookNode:
             feature_summary
             """
         ),
-        _md("## 7.0 Engineering and Leakage Validation\n\n### 7.1 Timestamp and Next-Bar Alignment"),
+        _md(
+            "## 7.0 Engineering and Leakage Validation\n\n### 7.1 Timestamp and Next-Bar Alignment"
+        ),
         _code(
             """
             validation_result = validate_mlat_feature_matrix(
@@ -931,7 +933,9 @@ def build_mlat_notebook() -> nbformat.NotebookNode:
             }
             """
         ),
-        _md("## 11.0 Multivariate Research Authorization Gate\n\n### 11.1 Evidence Required to Proceed"),
+        _md(
+            "## 11.0 Multivariate Research Authorization Gate\n\n### 11.1 Evidence Required to Proceed"
+        ),
         _code(
             """
             advancing = preliminary_verdicts["verdict"].isin({

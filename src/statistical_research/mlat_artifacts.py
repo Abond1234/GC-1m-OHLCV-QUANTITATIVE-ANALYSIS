@@ -55,9 +55,7 @@ class ArtifactVerificationError(RuntimeError):
         self.path = Path(path)
         self.diagnostics = diagnostics.copy()
         failed = diagnostics.loc[~diagnostics["passed"], "check_name"].astype(str).tolist()
-        super().__init__(
-            f"Artifact verification failed for {self.path}: failed_checks={failed}"
-        )
+        super().__init__(f"Artifact verification failed for {self.path}: failed_checks={failed}")
 
 
 def _safe_component(value: str, *, label: str) -> str:
@@ -111,11 +109,7 @@ class MLATArtifactPaths:
         """Return the versioned figure directory."""
 
         return (
-            Path(self.project_root)
-            / "reports"
-            / "figures"
-            / "mlat_feature_research"
-            / self.version
+            Path(self.project_root) / "reports" / "figures" / "mlat_feature_research" / self.version
         )
 
     @property
@@ -183,9 +177,7 @@ class ArtifactManifestEntry:
     arrow_types: Mapping[str, str] = field(default_factory=dict)
     schema_fingerprint: str | None = None
     null_counts: Mapping[str, int] = field(default_factory=dict)
-    timestamp_metadata: Mapping[str, Mapping[str, str | None]] = field(
-        default_factory=dict
-    )
+    timestamp_metadata: Mapping[str, Mapping[str, str | None]] = field(default_factory=dict)
     id_columns: tuple[str, ...] = ()
     sample_positions: tuple[int, ...] = ()
     sample_sha256: str | None = None
@@ -284,9 +276,7 @@ def _sample_positions(length: int, sample_size: int = DEFAULT_SAMPLE_SIZE) -> tu
     count = min(length, sample_size)
     return tuple(
         int(position)
-        for position in np.unique(
-            np.linspace(0, length - 1, num=count, dtype=np.int64)
-        )
+        for position in np.unique(np.linspace(0, length - 1, num=count, dtype=np.int64))
     )
 
 
@@ -324,14 +314,8 @@ def _schema_payload(frame: pd.DataFrame) -> dict[str, Any]:
         import pyarrow as pa
 
         arrow_schema = pa.Schema.from_pandas(frame, preserve_index=False)
-        arrow_types = {
-            str(field.name): str(field.type)
-            for field in arrow_schema
-        }
-        arrow_nullable = {
-            str(field.name): bool(field.nullable)
-            for field in arrow_schema
-        }
+        arrow_types = {str(field.name): str(field.type) for field in arrow_schema}
+        arrow_nullable = {str(field.name): bool(field.nullable) for field in arrow_schema}
     except (ImportError, TypeError, ValueError):
         arrow_types = {column: "unavailable" for column in frame.columns}
         arrow_nullable = {column: True for column in frame.columns}
@@ -366,10 +350,7 @@ def _sample_hash(
         "schema_fingerprint": _schema_fingerprint(frame),
         "positions": list(selected),
         "rows": [
-            {
-                column: _scalar_token(frame.iloc[position][column])
-                for column in frame.columns
-            }
+            {column: _scalar_token(frame.iloc[position][column]) for column in frame.columns}
             for position in selected
         ],
     }
@@ -419,15 +400,9 @@ def _table_entry(
         column_count=len(frame.columns),
         columns=tuple(frame.columns),
         pandas_dtypes={column: str(frame[column].dtype) for column in frame.columns},
-        arrow_types={
-            str(item["name"]): str(item["arrow_type"])
-            for item in schema["columns"]
-        },
+        arrow_types={str(item["name"]): str(item["arrow_type"]) for item in schema["columns"]},
         schema_fingerprint=_schema_fingerprint(frame),
-        null_counts={
-            column: int(frame[column].isna().sum())
-            for column in frame.columns
-        },
+        null_counts={column: int(frame[column].isna().sum()) for column in frame.columns},
         timestamp_metadata=_timestamp_metadata(frame),
         id_columns=tuple(id_columns),
         sample_positions=positions,
@@ -504,15 +479,11 @@ def save_csv(
 
     frame = _require_table(table)
     for column in frame.columns:
-        if (
-            is_object_dtype(frame[column].dtype)
-            or is_string_dtype(frame[column].dtype)
-        ) and frame[column].map(
-            lambda value: isinstance(value, str) and value == _CSV_NULL_TOKEN
-        ).any():
+        if (is_object_dtype(frame[column].dtype) or is_string_dtype(frame[column].dtype)) and frame[
+            column
+        ].map(lambda value: isinstance(value, str) and value == _CSV_NULL_TOKEN).any():
             raise ValueError(
-                f"CSV column {column!r} contains the reserved null token "
-                f"{_CSV_NULL_TOKEN!r}"
+                f"CSV column {column!r} contains the reserved null token {_CSV_NULL_TOKEN!r}"
             )
     destination = Path(path)
     manifest = None if manifest_path is None else Path(manifest_path)
@@ -609,12 +580,14 @@ def _restore_csv_dtypes(loaded: pd.DataFrame, expected: pd.DataFrame) -> pd.Data
             )
         elif is_bool_dtype(dtype):
             if is_extension_array_dtype(dtype):
-                result[column] = result[column].astype(str).replace(
-                    {"nan": pd.NA, "None": pd.NA, "<NA>": pd.NA}
+                result[column] = (
+                    result[column].astype(str).replace({"nan": pd.NA, "None": pd.NA, "<NA>": pd.NA})
                 )
-                result[column] = result[column].map(
-                    {"True": True, "False": False, True: True, False: False}
-                ).astype(dtype)
+                result[column] = (
+                    result[column]
+                    .map({"True": True, "False": False, True: True, False: False})
+                    .astype(dtype)
+                )
             else:
                 result[column] = result[column].astype(dtype)
         elif is_integer_dtype(dtype) or is_extension_array_dtype(dtype):
@@ -653,9 +626,7 @@ def load_saved_table(
 
 def _exact_timestamp_match(expected: pd.DataFrame, actual: pd.DataFrame) -> tuple[bool, str]:
     timestamp_columns = [
-        column
-        for column in expected.columns
-        if is_datetime64_any_dtype(expected[column].dtype)
+        column for column in expected.columns if is_datetime64_any_dtype(expected[column].dtype)
     ]
     for column in timestamp_columns:
         expected_series = expected[column]
@@ -770,14 +741,8 @@ def verify_saved_table(
     expected_dtypes = {column: str(frame[column].dtype) for column in frame.columns}
     actual_dtypes = {column: str(actual[column].dtype) for column in actual.columns}
     add("pandas_dtypes", actual_dtypes == expected_dtypes, expected_dtypes, actual_dtypes)
-    expected_nulls = {
-        column: int(frame[column].isna().sum())
-        for column in frame.columns
-    }
-    actual_nulls = {
-        column: int(actual[column].isna().sum())
-        for column in actual.columns
-    }
+    expected_nulls = {column: int(frame[column].isna().sum()) for column in frame.columns}
+    actual_nulls = {column: int(actual[column].isna().sum()) for column in actual.columns}
     add("null_counts", actual_nulls == expected_nulls, expected_nulls, actual_nulls)
 
     if set(id_columns).issubset(frame.columns) and set(id_columns).issubset(actual.columns):

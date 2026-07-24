@@ -124,9 +124,7 @@ class GARCHParameters:
                 "initial_variance": np.array([self.initial_variance], dtype=np.float64),
                 "return_scale": np.array([self.return_scale], dtype=np.float64),
                 "fit_end_utc": pd.DatetimeIndex([_as_utc_timestamp(self.fit_end_utc)]),
-                "n_fit_observations": np.array(
-                    [self.n_fit_observations], dtype=np.int64
-                ),
+                "n_fit_observations": np.array([self.n_fit_observations], dtype=np.int64),
                 "n_fit_segments": np.array([self.n_fit_segments], dtype=np.int64),
                 "optimizer_method": [self.optimizer_method],
                 "optimizer_success": np.array([self.optimizer_success], dtype=bool),
@@ -236,9 +234,7 @@ def _strict_runs(
     source_runs: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     timestamp_ns = (
-        pd.to_datetime(timestamps, utc=True)
-        .to_numpy(dtype="datetime64[ns]")
-        .view(np.int64)
+        pd.to_datetime(timestamps, utc=True).to_numpy(dtype="datetime64[ns]").view(np.int64)
     )
     source_runs = np.asarray(source_runs, dtype=np.int64)
     starts = np.ones(len(source_runs), dtype=bool)
@@ -366,9 +362,7 @@ def _coerce_returns_frame(
 
     gc = _ordered_gc(data, timestamp_column=timestamp_column)
     if segment_column not in gc.columns:
-        raise GARCHInputError(
-            f"Prepared returns require segment column {segment_column!r}."
-        )
+        raise GARCHInputError(f"Prepared returns require segment column {segment_column!r}.")
     source_runs_series = pd.to_numeric(gc[segment_column], errors="coerce")
     if source_runs_series.isna().any():
         raise GARCHInputError(f"{segment_column} must be complete and numeric.")
@@ -555,9 +549,7 @@ def fit_segmented_garch(
     ]
 
     def objective(theta: np.ndarray) -> float:
-        mean, omega, alpha, beta = _decode_parameters(
-            theta, max_persistence=max_persistence
-        )
+        mean, omega, alpha, beta = _decode_parameters(theta, max_persistence=max_persistence)
         persistence = alpha + beta
         initial = omega / max(1.0 - persistence, 1.0e-12)
         if not np.isfinite(initial) or initial <= 0.0:
@@ -765,12 +757,8 @@ def _period_labels(
     values = pd.to_datetime(timestamp, utc=True)
     labels = np.full(len(values), "out_of_scope", dtype=object)
     labels[(values <= fit_end).to_numpy()] = "fit"
-    labels[((values >= audit_start) & (values <= audit_end)).to_numpy()] = (
-        "development_audit"
-    )
-    labels[
-        ((values >= validation_start) & (values <= validation_end)).to_numpy()
-    ] = "validation"
+    labels[((values >= audit_start) & (values <= audit_end)).to_numpy()] = "development_audit"
+    labels[((values >= validation_start) & (values <= validation_end)).to_numpy()] = "validation"
     return labels
 
 
@@ -809,7 +797,7 @@ def _forward_realized_volatility(
     returns = np.asarray(returns, dtype=np.float64)
     runs = np.asarray(runs, dtype=np.int64)
     realized = np.full(len(returns), np.nan, dtype=np.float64)
-    end_ns = np.full(len(returns), np.datetime64("NaT"), dtype="datetime64[ns]")
+    end_ns = np.full(len(returns), np.datetime64("NaT", "ns"), dtype="datetime64[ns]")
     timestamp_ns = (
         pd.to_datetime(timestamps, utc=True)
         .to_numpy(dtype="datetime64[ns]")
@@ -829,9 +817,7 @@ def _forward_realized_volatility(
         selected = local_start[complete]
         sums = cumulative[target_end[complete]] - cumulative[target_start[complete]]
         realized[start + selected] = np.sqrt(np.maximum(sums, 0.0))
-        end_ns[start + selected] = timestamp_ns[
-            start + target_end[complete] - 1
-        ]
+        end_ns[start + selected] = timestamp_ns[start + target_end[complete] - 1]
     end_timestamp = pd.Series(pd.to_datetime(end_ns, utc=True), name="target_end_timestamp_utc")
     return realized, end_timestamp
 
@@ -854,9 +840,9 @@ def _atr_anchor(
         high = pd.to_numeric(frame["high"], errors="coerce").to_numpy(dtype=np.float64)
         low = pd.to_numeric(frame["low"], errors="coerce").to_numpy(dtype=np.float64)
         close = pd.to_numeric(frame["close"], errors="coerce").to_numpy(dtype=np.float64)
-        previous = pd.Series(close).groupby(
-            frame["continuity_run_id"].to_numpy(), sort=False
-        ).shift(1)
+        previous = (
+            pd.Series(close).groupby(frame["continuity_run_id"].to_numpy(), sort=False).shift(1)
+        )
         previous_close = previous.to_numpy(dtype=np.float64, na_value=np.nan)
         true_range = np.maximum.reduce(
             [high - low, np.abs(high - previous_close), np.abs(low - previous_close)]
@@ -931,9 +917,7 @@ def forecast_segmented_garch(
             absolute = start + block
             conditional[absolute] = variance
             next_variance[absolute] = (
-                parameter.omega
-                + parameter.alpha * np.square(residuals)
-                + parameter.beta * variance
+                parameter.omega + parameter.alpha * np.square(residuals) + parameter.beta * variance
             )
             standardized[absolute] = residuals / np.sqrt(variance)
 
@@ -969,9 +953,7 @@ def forecast_segmented_garch(
         runs,
         window=horizon_minutes,
     )
-    output[f"rv_anchor_sigma_{horizon_minutes}m"] = np.sqrt(
-        np.maximum(trailing_variance, 0.0)
-    )
+    output[f"rv_anchor_sigma_{horizon_minutes}m"] = np.sqrt(np.maximum(trailing_variance, 0.0))
     output[f"atr_anchor_sigma_{horizon_minutes}m"] = _atr_anchor(
         output,
         horizon=horizon_minutes,
@@ -1026,23 +1008,14 @@ def fit_volatility_calibration(
         dtype=np.float64, na_value=np.nan
     )
     base_scope = (
-        (timestamps >= start)
-        & (timestamps <= end)
-        & (target_end <= end)
-        & target_end.notna()
+        (timestamps >= start) & (timestamps <= end) & (target_end <= end) & target_end.notna()
     ).to_numpy()
     records: list[dict[str, object]] = []
     for method, column in method_columns.items():
         raw = pd.to_numeric(forecasts[column], errors="coerce").to_numpy(
             dtype=np.float64, na_value=np.nan
         )
-        valid = (
-            base_scope
-            & np.isfinite(raw)
-            & np.isfinite(target)
-            & (raw > 0.0)
-            & (target >= 0.0)
-        )
+        valid = base_scope & np.isfinite(raw) & np.isfinite(target) & (raw > 0.0) & (target >= 0.0)
         n_fit = int(valid.sum())
         denominator = float(np.dot(raw[valid], raw[valid])) if n_fit else np.nan
         if n_fit >= min_observations and np.isfinite(denominator) and denominator > 0.0:
@@ -1052,16 +1025,14 @@ def fit_volatility_calibration(
         else:
             multiplier = np.nan
             success = False
-            message = (
-                f"insufficient calibration support: n={n_fit}, required={min_observations}"
-            )
+            message = f"insufficient calibration support: n={n_fit}, required={min_observations}"
         records.append(
             {
                 "method": method,
                 "raw_forecast_column": column,
-                "calibrated_forecast_column": column.replace(
-                    "_forecast_", "_calibrated_"
-                ).replace("_anchor_sigma_", "_anchor_sigma_calibrated_"),
+                "calibrated_forecast_column": column.replace("_forecast_", "_calibrated_").replace(
+                    "_anchor_sigma_", "_anchor_sigma_calibrated_"
+                ),
                 "calibration_method": "nonnegative_zero_intercept_least_squares",
                 "calibration_start_utc": start,
                 "calibration_end_utc": end,
@@ -1146,8 +1117,7 @@ def _ljung_box_segmented(
         autocorrelations.append(numerator / denominator if denominator > 0.0 else 0.0)
         pair_counts.append(pairs)
     terms = [
-        rho**2 / max(pairs, 1)
-        for rho, pairs in zip(autocorrelations, pair_counts, strict=True)
+        rho**2 / max(pairs, 1) for rho, pairs in zip(autocorrelations, pair_counts, strict=True)
     ]
     statistic = float(n_obs * (n_obs + 2.0) * np.sum(terms))
     return statistic, float(chi2.sf(statistic, lags)), n_obs
@@ -1291,9 +1261,7 @@ def _benchmark_metrics(
                 qlike = float(np.mean(ratio - np.log(ratio) - 1.0))
                 correlation = (
                     float(np.corrcoef(predicted[valid], target[valid])[0, 1])
-                    if n_obs > 2
-                    and np.std(predicted[valid]) > 0.0
-                    and np.std(target[valid]) > 0.0
+                    if n_obs > 2 and np.std(predicted[valid]) > 0.0 and np.std(target[valid]) > 0.0
                     else np.nan
                 )
                 record = {
@@ -1349,15 +1317,10 @@ def _audit_checks(
 
     add("fit_critical_checks", fit.usable, "all optimizer and parameter gates")
     for period in ("fit", "development_audit", "validation"):
-        period_residual = residual_diagnostics.loc[
-            residual_diagnostics["period"].eq(period)
-        ]
+        period_residual = residual_diagnostics.loc[residual_diagnostics["period"].eq(period)]
         add(
             f"{period}_residual_diagnostics",
-            bool(
-                not period_residual.empty
-                and period_residual["passed"].astype(bool).all()
-            ),
+            bool(not period_residual.empty and period_residual["passed"].astype(bool).all()),
             "segment-aware Ljung-Box on residuals/squares and ARCH LM",
         )
     add(
@@ -1365,22 +1328,18 @@ def _audit_checks(
         bool(not calibration.empty and calibration["success"].astype(bool).all()),
         "multipliers fitted on 2023 only and frozen",
     )
-    validation = benchmark_metrics.loc[
-        benchmark_metrics["period"].eq("validation")
-    ].set_index("method")
+    validation = benchmark_metrics.loc[benchmark_metrics["period"].eq("validation")].set_index(
+        "method"
+    )
     garch_rmse = (
-        float(validation.loc["garch", "rmse_sigma"])
-        if "garch" in validation.index
-        else np.nan
+        float(validation.loc["garch", "rmse_sigma"]) if "garch" in validation.index else np.nan
     )
     anchor_rmse = pd.to_numeric(
         validation.reindex(["realized_volatility_anchor", "atr_anchor"])["rmse_sigma"],
         errors="coerce",
     ).dropna()
     improves = bool(
-        np.isfinite(garch_rmse)
-        and not anchor_rmse.empty
-        and garch_rmse < float(anchor_rmse.min())
+        np.isfinite(garch_rmse) and not anchor_rmse.empty and garch_rmse < float(anchor_rmse.min())
     )
     add(
         "validation_improves_best_simple_anchor",

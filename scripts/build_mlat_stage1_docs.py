@@ -162,12 +162,8 @@ def _documented_visual_pages(path: Path) -> set[int]:
     if not path.exists():
         return set()
     lines = path.read_text(encoding="utf-8").splitlines()
-    canonical = [
-        line for line in lines if "**visual inspection pages:**" in line.lower()
-    ]
-    candidates = canonical or [
-        line for line in lines if "visually inspected" in line.lower()
-    ]
+    canonical = [line for line in lines if "**visual inspection pages:**" in line.lower()]
+    candidates = canonical or [line for line in lines if "visually inspected" in line.lower()]
     pages: set[int] = set()
     for line in candidates:
         expressions = re.findall(
@@ -202,19 +198,13 @@ def _manifest_validation() -> tuple[bool, list[str]]:
                 f"{coverage_id} begins at {start}; expected contiguous page {expected_start}"
             )
         if count != end - start + 1:
-            issues.append(
-                f"{coverage_id} page_count {count} disagrees with range {start}-{end}"
-            )
+            issues.append(f"{coverage_id} page_count {count} disagrees with range {start}-{end}")
         if row["text_extraction_status"] != "COMPLETE":
-            issues.append(
-                f"{coverage_id} extraction is {row['text_extraction_status']}"
-            )
+            issues.append(f"{coverage_id} extraction is {row['text_extraction_status']}")
         expected_start = end + 1
     if expected_start != 859:
         issues.append(f"manifest ends at page {expected_start - 1}, not 858")
-    substantive = [
-        row for row in rows if row["section_type"] in {"chapter", "appendix"}
-    ]
+    substantive = [row for row in rows if row["section_type"] in {"chapter", "appendix"}]
     if len(substantive) != 24:
         issues.append(f"expected 24 chapter/appendix rows; found {len(substantive)}")
     expected_units = {
@@ -257,9 +247,7 @@ def _manifest_validation() -> tuple[bool, list[str]]:
         if row["status"] != "COMPLETE":
             issues.append(f"{coverage_id} status is {row['status']}")
         visual = [
-            int(value)
-            for value in row["visual_inspection_pages"].split(",")
-            if value.strip()
+            int(value) for value in row["visual_inspection_pages"].split(",") if value.strip()
         ]
         if not visual:
             issues.append(f"{coverage_id} has no visual inspection page")
@@ -275,9 +263,7 @@ def _manifest_validation() -> tuple[bool, list[str]]:
             )
         summary_text = summary.read_text(encoding="utf-8") if summary.exists() else ""
         if "confidence: medium" in summary_text.lower() and row["extraction_uncertainty"] == "LOW":
-            issues.append(
-                f"{coverage_id} is LOW uncertainty despite a medium-confidence note"
-            )
+            issues.append(f"{coverage_id} is LOW uncertainty despite a medium-confidence note")
     return not issues, issues
 
 
@@ -343,15 +329,11 @@ def _stage1_artifact_validation() -> tuple[bool, list[str]]:
         with path.open(encoding="utf-8", newline="") as handle:
             rows = list(csv.DictReader(handle))
         if len(rows) != expected_rows:
-            issues.append(
-                f"{relative} has {len(rows)} rows; expected {expected_rows}"
-            )
+            issues.append(f"{relative} has {len(rows)} rows; expected {expected_rows}")
         for row_number, row in enumerate(rows, start=2):
             missing = [field for field in required_fields if not row.get(field, "").strip()]
             if missing:
-                issues.append(
-                    f"{relative}:{row_number} has empty required fields {missing}"
-                )
+                issues.append(f"{relative}:{row_number} has empty required fields {missing}")
     formulas = DOCS / "mlat_formulas_and_definitions.md"
     if formulas.exists():
         text = formulas.read_text(encoding="utf-8")
@@ -381,11 +363,7 @@ def _stage1_artifact_validation() -> tuple[bool, list[str]]:
 
 def _outcome_artifacts_exist() -> bool:
     roots = (
-        ROOT
-        / "data"
-        / "processed"
-        / "statistical_research"
-        / "mlat_feature_research",
+        ROOT / "data" / "processed" / "statistical_research" / "mlat_feature_research",
         ROOT / "reports" / "statistical_research" / "mlat_feature_research",
         ROOT / "reports" / "figures" / "mlat_feature_research",
     )
@@ -1135,35 +1113,644 @@ FORMULAS = [
 
 
 HYPOTHESES = [
-    ("MLAT-H001", "bollinger_zscore_20", "4 / Appendix", "131-133; 740-742", "MLAT-ADAPTED", "Standardized local price displacement may identify reversal/continuation states.", "Bollinger z-score in formula registry", "20 bars", "close", "close of t", "continuity run", "direction", "nonlinear or monotone", "range position, OLS slope", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H002", "bollinger_bandwidth_20", "Appendix", "740-742", "MLAT-DIRECT", "Narrow bands may precede expansion while wide bands may mean-revert.", "Normalized four-sigma band width", "20 bars", "close", "close of t", "continuity run", "expansion", "possibly negative at short horizons and nonlinear", "compression ratio, ATR ratios", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H003", "cutler_rsi_14", "4", "132", "MLAT-ADAPTED", "Bounded gain/loss balance may distinguish exhausted from persistent moves.", "Simple-rolling Cutler RSI", "15 bars", "close", "close of t", "continuity run", "direction / risk state", "no fixed 30/70 sign assumed", "momentum, persistence", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H004", "chaikin_money_flow_20", "Appendix", "752-753", "MLAT-ADAPTED", "Close location weighted by volume may reveal pressure not present in either input alone.", "Rolling normalized money-flow volume", "20 bars", "OHLCV", "close of t", "continuity run", "direction / risk state", "positive may indicate buying pressure", "CLV, signed volume, alignment", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H005", "amihud_illiquidity_60", "20 / Appendix", "656; 752", "MLAT-ADAPTED", "Movement per unit activity may identify fragile/liquidity-vacuum states.", "Mean absolute return divided by close-volume proxy", "60 returns (61 bars)", "close, volume", "close of t", "continuity run", "expansion / risk state", "higher may imply greater future risk", "volume_per_tick_range, liquidity_vacuum", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H006", "parkinson_volatility_30", "9", "297-301", "PROJECT-ORIGINAL-EXTENSION", "High-low information may estimate latent volatility more efficiently than close-only RV.", "Parkinson estimator", "30 bars", "high, low", "close of t", "continuity run", "volatility / expansion", "positive monotone", "ATR, RV, range", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H007", "rogers_satchell_volatility_30", "9", "297-301", "PROJECT-ORIGINAL-EXTENSION", "Drift-robust OHLC variation may retain information beyond ATR and close-only RV.", "Rogers-Satchell estimator", "30 bars", "OHLC", "close of t", "continuity run", "volatility / expansion", "positive monotone", "ATR, RV, range", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H008", "realized_semivariance_balance_60", "5 / 9", "169-178; 297-301", "PROJECT-ORIGINAL-EXTENSION", "Asymmetry in recent signed variation may distinguish downside/upside risk state.", "Signed semivariance difference over total RV", "60 returns (61 bars)", "close", "close of t", "continuity run", "risk state / direction", "shape unknown", "directional energy balance", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H009", "bipower_jump_ratio_60", "9", "297-301", "PROJECT-ORIGINAL-EXTENSION", "The share of local variation attributable to jumps may alter subsequent expansion and risk.", "Positive RV-minus-bipower share", "61 returns (62 bars)", "close", "close of t", "continuity run", "risk state / expansion", "higher may mark stress then mean reversion or persistence", "current range/ATR, liquidity vacuum", "LOW", "MEDIUM", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H010", "variance_ratio_60_5", "9", "280-296", "MLAT-ADAPTED", "Deviation from local random-walk variance scaling may identify persistence or mean reversion.", "Five-minute to one-minute variance ratio", "64 returns (65 bars)", "close", "close of t", "continuity run", "direction / risk state", "below 1 mean-reverting; above 1 persistent", "return autocorrelation, sign change", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H011", "return_sign_entropy_60", "6", "192", "PROJECT-ORIGINAL-EXTENSION", "Low sign entropy may reflect directional organization; high entropy may reflect chop.", "Normalized three-state Shannon entropy", "60 returns (61 bars)", "close", "close of t", "continuity run", "risk state / expansion", "shape unknown", "choppiness, sign change", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H012", "volatility_of_volatility_60", "9", "297-301", "PROJECT-ORIGINAL-EXTENSION", "Instability of volatility, rather than its level, may identify transition risk.", "CV of trailing RV15 over 60 values", "74 returns (75 bars)", "close", "close of t", "continuity run", "risk state / expansion", "higher may imply unstable expansion", "ATR/RV ratios", "LOW", "LOW", "LOW", "HIGH", "SELECT_V1", ""),
-    ("MLAT-H013", "kalman_innovation_state", "4", "133-136", "MLAT-ADAPTED", "Sequential innovations may capture filtered state surprises.", "State-space innovation", "expanding", "close", "close of t", "continuity run", "direction / risk state", "unknown", "EMA/trend states", "HIGH", "HIGH", "MEDIUM", "MEDIUM", "DEFER", "Noise parameters and Development cross-fitting are not justified in v1."),
-    ("MLAT-H014", "wavelet_denoised_return", "4", "137-140", "MLAT-ADAPTED", "Multiscale denoising may isolate trend.", "Wavelet threshold and inverse transform", "transform dependent", "close", "uncertain", "continuity run", "direction", "unknown", "trend features", "VERY HIGH", "HIGH", "HIGH", "LOW", "REJECT", "Book example uses a two-sided transform; causal reconstruction is not established."),
-    ("MLAT-H015", "garch_variance_forecast", "9", "297-301", "MLAT-DIRECT", "Conditional variance may forecast future expansion beyond ATR.", "GARCH(1,1)", "expanding", "close", "before forecast bar", "continuity run", "volatility / risk state", "positive monotone", "ATR/RV anchors", "HIGH", "HIGH", "HIGH", "MEDIUM", "AUDIT_ONLY", "Prior implementation is invalid; keep outside frozen matrix pending segmented audit."),
-    ("MLAT-H016", "ppo_12_26", "11 / Appendix", "355; 748-749", "MLAT-DIRECT", "Normalized EMA spread captures trend.", "PPO/MACD family", "26+ bars", "close", "close of t", "continuity run", "direction", "trend-following", "multi-horizon momentum/OLS", "LOW", "MEDIUM", "LOW", "HIGH", "REJECT", "High formula and monotonic overlap with existing momentum/trend features."),
-    ("MLAT-H017", "normalized_atr_14", "11 / Appendix", "355; 754-755", "MLAT-DIRECT", "Price-normalized ATR measures volatility.", "ATR divided by price", "15 bars", "OHLC", "close of t", "continuity run", "expansion", "positive", "atr_20 and existing ATR family", "LOW", "LOW", "LOW", "HIGH", "REJECT", "Existing ATR anchors already dominate this hypothesis."),
-    ("MLAT-H018", "kama_gap", "Appendix", "738-740", "MLAT-DIRECT", "Adaptive smoothing may distinguish efficient trends from noise.", "KAMA gap", "adaptive", "close", "close of t", "continuity run", "direction / risk state", "unknown", "efficiency ratios and slopes", "MEDIUM", "HIGH", "MEDIUM", "MEDIUM", "DEFER", "Recursive cost and near-direct overlap with existing efficiency ratios."),
-    ("MLAT-H019", "on_balance_volume", "Appendix", "753", "MLAT-DIRECT", "Cumulative signed volume may lead price.", "OBV cumulative sum", "expanding", "close, volume", "close of t", "contract/session reset unresolved", "direction", "trend-following", "signed volume proxy", "MEDIUM", "MEDIUM", "LOW", "MEDIUM", "REJECT", "Cumulative scale/reset ambiguity and overlap with existing signed-volume features."),
-    ("MLAT-H020", "rolling_ar1_coefficient", "9", "290-296", "MLAT-DIRECT", "Local AR coefficient estimates serial persistence.", "Rolling OLS r_t on r_t-1", "60 returns", "close", "close of t", "continuity run", "direction / regime", "sign indicates persistence/reversion", "return_autocorrelation_15", "LOW", "MEDIUM", "LOW", "HIGH", "REJECT", "Formula-equivalent family already exists; variance ratio is the distinct selected adaptation."),
-    ("MLAT-H021", "williams_r_14", "Appendix", "751", "MLAT-DIRECT", "Price location in trailing high-low range may identify overbought/oversold state.", "Williams percent range", "14 bars", "HLC", "close of t", "continuity run", "direction", "unknown", "rolling_range_position_15", "LOW", "LOW", "LOW", "HIGH", "REJECT", "Near formula-equivalent to existing rolling range position."),
-    ("MLAT-H022", "intraday_seasonal_state", "4", "130-131", "MLAT-ADAPTED", "Clock time may forecast volatility/activity.", "clock indicators", "none", "timestamp", "known at t", "NY date/session", "expansion", "session dependent", "existing clock calendar family", "LOW", "LOW", "LOW", "HIGH", "REJECT", "Existing clock features are already strong frozen expansion representatives."),
-    ("MLAT-H023", "cross_sectional_risk_factor", "4 / 13", "115-130; 429-460", "MLAT-DIRECT", "Cross-sectional factor exposure predicts relative returns.", "cross-sectional factor score", "multi-asset", "universe", "point in time", "universe membership", "portfolio", "relative", "none", "HIGH", "HIGH", "HIGH", "LOW", "DEFER_DIFFERENT_DATA", "Single-instrument GC discovery has no cross-section."),
-    ("MLAT-H024", "news_sentiment", "14-16", "461-532", "MLAT-DIRECT", "Text sentiment or semantic content may predict futures response.", "NLP feature", "publication history", "text", "publication timestamp", "source dependent", "direction / risk", "unknown", "none", "HIGH", "HIGH", "HIGH", "LOW", "DEFER_DIFFERENT_DATA", "No point-in-time news/text source is in the current OHLCV dataset."),
-    ("MLAT-H025", "pca_regime_state", "13", "429-460", "MLAT-ADAPTED", "Low-dimensional components may summarize correlated states.", "Development-fitted PCA", "feature history", "feature matrix", "close of t", "continuity inherited", "risk state", "unknown", "existing clustering/frozen set", "MEDIUM", "HIGH", "LOW", "MEDIUM", "LATER_PHASE", "Requires frozen engineered inputs and stability analysis first."),
-    ("MLAT-H026", "tree_or_boosted_feature_importance", "11-12", "350-428", "MLAT-DIRECT", "Nonlinear models may rank interactions.", "model importance", "training sample", "feature matrix", "after training", "n/a", "model validation", "n/a", "none", "HIGH", "HIGH", "HIGH", "LOW", "LATER_PHASE", "Importance is not a feature and cannot prove economic value."),
-    ("MLAT-H027", "deep_sequence_model", "17-21", "533-690", "MLAT-DIRECT", "Neural models may learn nonlinear temporal representations.", "NN/CNN/RNN/AE/GAN", "large sample", "various", "model dependent", "model dependent", "later modelling", "unknown", "none", "VERY HIGH", "VERY HIGH", "HIGH", "LOW", "LATER_PHASE", "Simple features and linear benchmarks have not established directional information."),
-    ("MLAT-H028", "reinforcement_learning_policy", "22", "691-723", "MLAT-DIRECT", "An agent may optimize sequential actions.", "MDP policy", "environment", "state/actions/rewards", "sequential", "environment", "execution", "n/a", "none", "VERY HIGH", "VERY HIGH", "VERY HIGH", "LOW", "REJECT_GOVERNANCE", "No approved signal, reward, or validated simulator for this feature task."),
-    ("MLAT-H029", "mgc_transfer_check", "1-2", "42-94", "PROJECT-ORIGINAL-EXTENSION", "A frozen GC feature may transfer to MGC.", "same frozen feature on MGC", "same as GC", "MGC OHLCV", "close of t", "MGC continuity", "transfer validation", "same expected shape", "n/a", "MEDIUM", "HIGH", "LOW", "HIGH", "LATER_PHASE", "MGC is locked until GC definitions and verdicts are frozen."),
+    (
+        "MLAT-H001",
+        "bollinger_zscore_20",
+        "4 / Appendix",
+        "131-133; 740-742",
+        "MLAT-ADAPTED",
+        "Standardized local price displacement may identify reversal/continuation states.",
+        "Bollinger z-score in formula registry",
+        "20 bars",
+        "close",
+        "close of t",
+        "continuity run",
+        "direction",
+        "nonlinear or monotone",
+        "range position, OLS slope",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H002",
+        "bollinger_bandwidth_20",
+        "Appendix",
+        "740-742",
+        "MLAT-DIRECT",
+        "Narrow bands may precede expansion while wide bands may mean-revert.",
+        "Normalized four-sigma band width",
+        "20 bars",
+        "close",
+        "close of t",
+        "continuity run",
+        "expansion",
+        "possibly negative at short horizons and nonlinear",
+        "compression ratio, ATR ratios",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H003",
+        "cutler_rsi_14",
+        "4",
+        "132",
+        "MLAT-ADAPTED",
+        "Bounded gain/loss balance may distinguish exhausted from persistent moves.",
+        "Simple-rolling Cutler RSI",
+        "15 bars",
+        "close",
+        "close of t",
+        "continuity run",
+        "direction / risk state",
+        "no fixed 30/70 sign assumed",
+        "momentum, persistence",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H004",
+        "chaikin_money_flow_20",
+        "Appendix",
+        "752-753",
+        "MLAT-ADAPTED",
+        "Close location weighted by volume may reveal pressure not present in either input alone.",
+        "Rolling normalized money-flow volume",
+        "20 bars",
+        "OHLCV",
+        "close of t",
+        "continuity run",
+        "direction / risk state",
+        "positive may indicate buying pressure",
+        "CLV, signed volume, alignment",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H005",
+        "amihud_illiquidity_60",
+        "20 / Appendix",
+        "656; 752",
+        "MLAT-ADAPTED",
+        "Movement per unit activity may identify fragile/liquidity-vacuum states.",
+        "Mean absolute return divided by close-volume proxy",
+        "60 returns (61 bars)",
+        "close, volume",
+        "close of t",
+        "continuity run",
+        "expansion / risk state",
+        "higher may imply greater future risk",
+        "volume_per_tick_range, liquidity_vacuum",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H006",
+        "parkinson_volatility_30",
+        "9",
+        "297-301",
+        "PROJECT-ORIGINAL-EXTENSION",
+        "High-low information may estimate latent volatility more efficiently than close-only RV.",
+        "Parkinson estimator",
+        "30 bars",
+        "high, low",
+        "close of t",
+        "continuity run",
+        "volatility / expansion",
+        "positive monotone",
+        "ATR, RV, range",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H007",
+        "rogers_satchell_volatility_30",
+        "9",
+        "297-301",
+        "PROJECT-ORIGINAL-EXTENSION",
+        "Drift-robust OHLC variation may retain information beyond ATR and close-only RV.",
+        "Rogers-Satchell estimator",
+        "30 bars",
+        "OHLC",
+        "close of t",
+        "continuity run",
+        "volatility / expansion",
+        "positive monotone",
+        "ATR, RV, range",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H008",
+        "realized_semivariance_balance_60",
+        "5 / 9",
+        "169-178; 297-301",
+        "PROJECT-ORIGINAL-EXTENSION",
+        "Asymmetry in recent signed variation may distinguish downside/upside risk state.",
+        "Signed semivariance difference over total RV",
+        "60 returns (61 bars)",
+        "close",
+        "close of t",
+        "continuity run",
+        "risk state / direction",
+        "shape unknown",
+        "directional energy balance",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H009",
+        "bipower_jump_ratio_60",
+        "9",
+        "297-301",
+        "PROJECT-ORIGINAL-EXTENSION",
+        "The share of local variation attributable to jumps may alter subsequent expansion and risk.",
+        "Positive RV-minus-bipower share",
+        "61 returns (62 bars)",
+        "close",
+        "close of t",
+        "continuity run",
+        "risk state / expansion",
+        "higher may mark stress then mean reversion or persistence",
+        "current range/ATR, liquidity vacuum",
+        "LOW",
+        "MEDIUM",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H010",
+        "variance_ratio_60_5",
+        "9",
+        "280-296",
+        "MLAT-ADAPTED",
+        "Deviation from local random-walk variance scaling may identify persistence or mean reversion.",
+        "Five-minute to one-minute variance ratio",
+        "64 returns (65 bars)",
+        "close",
+        "close of t",
+        "continuity run",
+        "direction / risk state",
+        "below 1 mean-reverting; above 1 persistent",
+        "return autocorrelation, sign change",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H011",
+        "return_sign_entropy_60",
+        "6",
+        "192",
+        "PROJECT-ORIGINAL-EXTENSION",
+        "Low sign entropy may reflect directional organization; high entropy may reflect chop.",
+        "Normalized three-state Shannon entropy",
+        "60 returns (61 bars)",
+        "close",
+        "close of t",
+        "continuity run",
+        "risk state / expansion",
+        "shape unknown",
+        "choppiness, sign change",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H012",
+        "volatility_of_volatility_60",
+        "9",
+        "297-301",
+        "PROJECT-ORIGINAL-EXTENSION",
+        "Instability of volatility, rather than its level, may identify transition risk.",
+        "CV of trailing RV15 over 60 values",
+        "74 returns (75 bars)",
+        "close",
+        "close of t",
+        "continuity run",
+        "risk state / expansion",
+        "higher may imply unstable expansion",
+        "ATR/RV ratios",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "SELECT_V1",
+        "",
+    ),
+    (
+        "MLAT-H013",
+        "kalman_innovation_state",
+        "4",
+        "133-136",
+        "MLAT-ADAPTED",
+        "Sequential innovations may capture filtered state surprises.",
+        "State-space innovation",
+        "expanding",
+        "close",
+        "close of t",
+        "continuity run",
+        "direction / risk state",
+        "unknown",
+        "EMA/trend states",
+        "HIGH",
+        "HIGH",
+        "MEDIUM",
+        "MEDIUM",
+        "DEFER",
+        "Noise parameters and Development cross-fitting are not justified in v1.",
+    ),
+    (
+        "MLAT-H014",
+        "wavelet_denoised_return",
+        "4",
+        "137-140",
+        "MLAT-ADAPTED",
+        "Multiscale denoising may isolate trend.",
+        "Wavelet threshold and inverse transform",
+        "transform dependent",
+        "close",
+        "uncertain",
+        "continuity run",
+        "direction",
+        "unknown",
+        "trend features",
+        "VERY HIGH",
+        "HIGH",
+        "HIGH",
+        "LOW",
+        "REJECT",
+        "Book example uses a two-sided transform; causal reconstruction is not established.",
+    ),
+    (
+        "MLAT-H015",
+        "garch_variance_forecast",
+        "9",
+        "297-301",
+        "MLAT-DIRECT",
+        "Conditional variance may forecast future expansion beyond ATR.",
+        "GARCH(1,1)",
+        "expanding",
+        "close",
+        "before forecast bar",
+        "continuity run",
+        "volatility / risk state",
+        "positive monotone",
+        "ATR/RV anchors",
+        "HIGH",
+        "HIGH",
+        "HIGH",
+        "MEDIUM",
+        "AUDIT_ONLY",
+        "Prior implementation is invalid; keep outside frozen matrix pending segmented audit.",
+    ),
+    (
+        "MLAT-H016",
+        "ppo_12_26",
+        "11 / Appendix",
+        "355; 748-749",
+        "MLAT-DIRECT",
+        "Normalized EMA spread captures trend.",
+        "PPO/MACD family",
+        "26+ bars",
+        "close",
+        "close of t",
+        "continuity run",
+        "direction",
+        "trend-following",
+        "multi-horizon momentum/OLS",
+        "LOW",
+        "MEDIUM",
+        "LOW",
+        "HIGH",
+        "REJECT",
+        "High formula and monotonic overlap with existing momentum/trend features.",
+    ),
+    (
+        "MLAT-H017",
+        "normalized_atr_14",
+        "11 / Appendix",
+        "355; 754-755",
+        "MLAT-DIRECT",
+        "Price-normalized ATR measures volatility.",
+        "ATR divided by price",
+        "15 bars",
+        "OHLC",
+        "close of t",
+        "continuity run",
+        "expansion",
+        "positive",
+        "atr_20 and existing ATR family",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "REJECT",
+        "Existing ATR anchors already dominate this hypothesis.",
+    ),
+    (
+        "MLAT-H018",
+        "kama_gap",
+        "Appendix",
+        "738-740",
+        "MLAT-DIRECT",
+        "Adaptive smoothing may distinguish efficient trends from noise.",
+        "KAMA gap",
+        "adaptive",
+        "close",
+        "close of t",
+        "continuity run",
+        "direction / risk state",
+        "unknown",
+        "efficiency ratios and slopes",
+        "MEDIUM",
+        "HIGH",
+        "MEDIUM",
+        "MEDIUM",
+        "DEFER",
+        "Recursive cost and near-direct overlap with existing efficiency ratios.",
+    ),
+    (
+        "MLAT-H019",
+        "on_balance_volume",
+        "Appendix",
+        "753",
+        "MLAT-DIRECT",
+        "Cumulative signed volume may lead price.",
+        "OBV cumulative sum",
+        "expanding",
+        "close, volume",
+        "close of t",
+        "contract/session reset unresolved",
+        "direction",
+        "trend-following",
+        "signed volume proxy",
+        "MEDIUM",
+        "MEDIUM",
+        "LOW",
+        "MEDIUM",
+        "REJECT",
+        "Cumulative scale/reset ambiguity and overlap with existing signed-volume features.",
+    ),
+    (
+        "MLAT-H020",
+        "rolling_ar1_coefficient",
+        "9",
+        "290-296",
+        "MLAT-DIRECT",
+        "Local AR coefficient estimates serial persistence.",
+        "Rolling OLS r_t on r_t-1",
+        "60 returns",
+        "close",
+        "close of t",
+        "continuity run",
+        "direction / regime",
+        "sign indicates persistence/reversion",
+        "return_autocorrelation_15",
+        "LOW",
+        "MEDIUM",
+        "LOW",
+        "HIGH",
+        "REJECT",
+        "Formula-equivalent family already exists; variance ratio is the distinct selected adaptation.",
+    ),
+    (
+        "MLAT-H021",
+        "williams_r_14",
+        "Appendix",
+        "751",
+        "MLAT-DIRECT",
+        "Price location in trailing high-low range may identify overbought/oversold state.",
+        "Williams percent range",
+        "14 bars",
+        "HLC",
+        "close of t",
+        "continuity run",
+        "direction",
+        "unknown",
+        "rolling_range_position_15",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "REJECT",
+        "Near formula-equivalent to existing rolling range position.",
+    ),
+    (
+        "MLAT-H022",
+        "intraday_seasonal_state",
+        "4",
+        "130-131",
+        "MLAT-ADAPTED",
+        "Clock time may forecast volatility/activity.",
+        "clock indicators",
+        "none",
+        "timestamp",
+        "known at t",
+        "NY date/session",
+        "expansion",
+        "session dependent",
+        "existing clock calendar family",
+        "LOW",
+        "LOW",
+        "LOW",
+        "HIGH",
+        "REJECT",
+        "Existing clock features are already strong frozen expansion representatives.",
+    ),
+    (
+        "MLAT-H023",
+        "cross_sectional_risk_factor",
+        "4 / 13",
+        "115-130; 429-460",
+        "MLAT-DIRECT",
+        "Cross-sectional factor exposure predicts relative returns.",
+        "cross-sectional factor score",
+        "multi-asset",
+        "universe",
+        "point in time",
+        "universe membership",
+        "portfolio",
+        "relative",
+        "none",
+        "HIGH",
+        "HIGH",
+        "HIGH",
+        "LOW",
+        "DEFER_DIFFERENT_DATA",
+        "Single-instrument GC discovery has no cross-section.",
+    ),
+    (
+        "MLAT-H024",
+        "news_sentiment",
+        "14-16",
+        "461-532",
+        "MLAT-DIRECT",
+        "Text sentiment or semantic content may predict futures response.",
+        "NLP feature",
+        "publication history",
+        "text",
+        "publication timestamp",
+        "source dependent",
+        "direction / risk",
+        "unknown",
+        "none",
+        "HIGH",
+        "HIGH",
+        "HIGH",
+        "LOW",
+        "DEFER_DIFFERENT_DATA",
+        "No point-in-time news/text source is in the current OHLCV dataset.",
+    ),
+    (
+        "MLAT-H025",
+        "pca_regime_state",
+        "13",
+        "429-460",
+        "MLAT-ADAPTED",
+        "Low-dimensional components may summarize correlated states.",
+        "Development-fitted PCA",
+        "feature history",
+        "feature matrix",
+        "close of t",
+        "continuity inherited",
+        "risk state",
+        "unknown",
+        "existing clustering/frozen set",
+        "MEDIUM",
+        "HIGH",
+        "LOW",
+        "MEDIUM",
+        "LATER_PHASE",
+        "Requires frozen engineered inputs and stability analysis first.",
+    ),
+    (
+        "MLAT-H026",
+        "tree_or_boosted_feature_importance",
+        "11-12",
+        "350-428",
+        "MLAT-DIRECT",
+        "Nonlinear models may rank interactions.",
+        "model importance",
+        "training sample",
+        "feature matrix",
+        "after training",
+        "n/a",
+        "model validation",
+        "n/a",
+        "none",
+        "HIGH",
+        "HIGH",
+        "HIGH",
+        "LOW",
+        "LATER_PHASE",
+        "Importance is not a feature and cannot prove economic value.",
+    ),
+    (
+        "MLAT-H027",
+        "deep_sequence_model",
+        "17-21",
+        "533-690",
+        "MLAT-DIRECT",
+        "Neural models may learn nonlinear temporal representations.",
+        "NN/CNN/RNN/AE/GAN",
+        "large sample",
+        "various",
+        "model dependent",
+        "model dependent",
+        "later modelling",
+        "unknown",
+        "none",
+        "VERY HIGH",
+        "VERY HIGH",
+        "HIGH",
+        "LOW",
+        "LATER_PHASE",
+        "Simple features and linear benchmarks have not established directional information.",
+    ),
+    (
+        "MLAT-H028",
+        "reinforcement_learning_policy",
+        "22",
+        "691-723",
+        "MLAT-DIRECT",
+        "An agent may optimize sequential actions.",
+        "MDP policy",
+        "environment",
+        "state/actions/rewards",
+        "sequential",
+        "environment",
+        "execution",
+        "n/a",
+        "none",
+        "VERY HIGH",
+        "VERY HIGH",
+        "VERY HIGH",
+        "LOW",
+        "REJECT_GOVERNANCE",
+        "No approved signal, reward, or validated simulator for this feature task.",
+    ),
+    (
+        "MLAT-H029",
+        "mgc_transfer_check",
+        "1-2",
+        "42-94",
+        "PROJECT-ORIGINAL-EXTENSION",
+        "A frozen GC feature may transfer to MGC.",
+        "same frozen feature on MGC",
+        "same as GC",
+        "MGC OHLCV",
+        "close of t",
+        "MGC continuity",
+        "transfer validation",
+        "same expected shape",
+        "n/a",
+        "MEDIUM",
+        "HIGH",
+        "LOW",
+        "HIGH",
+        "LATER_PHASE",
+        "MGC is locked until GC definitions and verdicts are frozen.",
+    ),
 ]
 
 
@@ -1171,35 +1758,284 @@ SELECTED_FEATURES = [row[1] for row in HYPOTHESES if row[18] == "SELECT_V1"]
 
 
 OVERLAP = [
-    ("MLAT-H001", "bollinger_zscore_20", "rolling_range_position_15; normalized_ols_slope_30", "related but not formula-equivalent", "MEDIUM", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H002", "bollinger_bandwidth_20", "range_compression_ratio_5_30; atr_ratio_20_60", "same broad compression target; different close-standard-deviation formula", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H003", "cutler_rsi_14", "return_15m_bps; directional_persistence_15", "bounded gain/loss transform is distinct", "MEDIUM", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H004", "chaikin_money_flow_20", "close_location_value; signed_volume_proxy; volume_price_alignment_10", "interaction/aggregation is distinct but likely correlated", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H005", "amihud_illiquidity_60", "volume_per_tick_range; liquidity_vacuum_score_exp", "inverse activity-impact form is distinct", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H006", "parkinson_volatility_30", "atr_20; realized_volatility_30; current_range_over_atr", "high-low quadratic estimator is distinct", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H007", "rogers_satchell_volatility_30", "atr_20; realized_volatility_30", "OHLC drift-robust estimator is distinct", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H008", "realized_semivariance_balance_60", "directional_energy_balance_15_exp", "related signed-energy idea at a different definition/horizon", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H009", "bipower_jump_ratio_60", "current_range_over_atr; liquidity_vacuum_score_exp", "jump share is distinct", "MEDIUM", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H010", "variance_ratio_60_5", "return_autocorrelation_15; return_sign_change_rate_30", "same persistence family but non-equivalent variance scaling", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H011", "return_sign_entropy_60", "return_sign_change_rate_30; choppiness_14", "distributional sign disorder versus transition rate/path choppiness", "HIGH", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
-    ("MLAT-H012", "volatility_of_volatility_60", "realized_volatility_ratio_15_60; atr_ratio_20_60", "volatility instability versus level ratio", "MEDIUM", "ELIGIBLE_PENDING_EMPIRICAL", "", "", "", ""),
+    (
+        "MLAT-H001",
+        "bollinger_zscore_20",
+        "rolling_range_position_15; normalized_ols_slope_30",
+        "related but not formula-equivalent",
+        "MEDIUM",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H002",
+        "bollinger_bandwidth_20",
+        "range_compression_ratio_5_30; atr_ratio_20_60",
+        "same broad compression target; different close-standard-deviation formula",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H003",
+        "cutler_rsi_14",
+        "return_15m_bps; directional_persistence_15",
+        "bounded gain/loss transform is distinct",
+        "MEDIUM",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H004",
+        "chaikin_money_flow_20",
+        "close_location_value; signed_volume_proxy; volume_price_alignment_10",
+        "interaction/aggregation is distinct but likely correlated",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H005",
+        "amihud_illiquidity_60",
+        "volume_per_tick_range; liquidity_vacuum_score_exp",
+        "inverse activity-impact form is distinct",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H006",
+        "parkinson_volatility_30",
+        "atr_20; realized_volatility_30; current_range_over_atr",
+        "high-low quadratic estimator is distinct",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H007",
+        "rogers_satchell_volatility_30",
+        "atr_20; realized_volatility_30",
+        "OHLC drift-robust estimator is distinct",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H008",
+        "realized_semivariance_balance_60",
+        "directional_energy_balance_15_exp",
+        "related signed-energy idea at a different definition/horizon",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H009",
+        "bipower_jump_ratio_60",
+        "current_range_over_atr; liquidity_vacuum_score_exp",
+        "jump share is distinct",
+        "MEDIUM",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H010",
+        "variance_ratio_60_5",
+        "return_autocorrelation_15; return_sign_change_rate_30",
+        "same persistence family but non-equivalent variance scaling",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H011",
+        "return_sign_entropy_60",
+        "return_sign_change_rate_30; choppiness_14",
+        "distributional sign disorder versus transition rate/path choppiness",
+        "HIGH",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
+    (
+        "MLAT-H012",
+        "volatility_of_volatility_60",
+        "realized_volatility_ratio_15_60; atr_ratio_20_60",
+        "volatility instability versus level ratio",
+        "MEDIUM",
+        "ELIGIBLE_PENDING_EMPIRICAL",
+        "",
+        "",
+        "",
+        "",
+    ),
 ]
 
 
 SOURCE_TRACE = [
-    ("MLAT-H001", "bollinger_zscore_20", "4; Appendix", "131-133; 740-742", "Bollinger mean/bands and examples", "Adapted standardized z-score", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H002", "bollinger_bandwidth_20", "Appendix", "740-742", "Normalized band width/squeeze", "Direct formula adaptation", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H003", "cutler_rsi_14", "4", "132", "RSI with 14-period example", "Cutler rolling convention declared by project", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H004", "chaikin_money_flow_20", "Appendix", "752-753", "Money-flow multiplier and volume", "Rolling normalized adaptation", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H005", "amihud_illiquidity_60", "20; Appendix", "656; 752", "Absolute return / dollar volume rolling measure", "Within-GC close-volume proxy", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H006", "parkinson_volatility_30", "9", "297-301", "Volatility modelling motivation and anchor comparison", "Project-original estimator; formula not claimed as book formula", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H007", "rogers_satchell_volatility_30", "9", "297-301", "Volatility modelling motivation and anchor comparison", "Project-original estimator; formula not claimed as book formula", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H008", "realized_semivariance_balance_60", "5; 9", "169-178; 297-301", "Downside risk and changing variance", "Project-original signed variation state", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H009", "bipower_jump_ratio_60", "9", "297-301", "Changing variance and residual diagnostics", "Project-original jump-state estimator", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H010", "variance_ratio_60_5", "9", "280-296", "Stationarity, AR dependence, forecast diagnostics", "Adapted local random-walk diagnostic", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H011", "return_sign_entropy_60", "6", "192", "Entropy and mutual information", "Project-original rolling sign entropy", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H012", "volatility_of_volatility_60", "9", "297-301", "Volatility clustering and forecasting", "Project-original second-order volatility state", "mlat_feature_engineering.py", "FROZEN"),
-    ("MLAT-H015", "garch_variance_forecast", "9", "297-301", "ARCH/GARCH equations and diagnostics", "Independent segmented audit only", "mlat_volatility_models.py", "AUDIT_ONLY"),
+    (
+        "MLAT-H001",
+        "bollinger_zscore_20",
+        "4; Appendix",
+        "131-133; 740-742",
+        "Bollinger mean/bands and examples",
+        "Adapted standardized z-score",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H002",
+        "bollinger_bandwidth_20",
+        "Appendix",
+        "740-742",
+        "Normalized band width/squeeze",
+        "Direct formula adaptation",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H003",
+        "cutler_rsi_14",
+        "4",
+        "132",
+        "RSI with 14-period example",
+        "Cutler rolling convention declared by project",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H004",
+        "chaikin_money_flow_20",
+        "Appendix",
+        "752-753",
+        "Money-flow multiplier and volume",
+        "Rolling normalized adaptation",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H005",
+        "amihud_illiquidity_60",
+        "20; Appendix",
+        "656; 752",
+        "Absolute return / dollar volume rolling measure",
+        "Within-GC close-volume proxy",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H006",
+        "parkinson_volatility_30",
+        "9",
+        "297-301",
+        "Volatility modelling motivation and anchor comparison",
+        "Project-original estimator; formula not claimed as book formula",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H007",
+        "rogers_satchell_volatility_30",
+        "9",
+        "297-301",
+        "Volatility modelling motivation and anchor comparison",
+        "Project-original estimator; formula not claimed as book formula",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H008",
+        "realized_semivariance_balance_60",
+        "5; 9",
+        "169-178; 297-301",
+        "Downside risk and changing variance",
+        "Project-original signed variation state",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H009",
+        "bipower_jump_ratio_60",
+        "9",
+        "297-301",
+        "Changing variance and residual diagnostics",
+        "Project-original jump-state estimator",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H010",
+        "variance_ratio_60_5",
+        "9",
+        "280-296",
+        "Stationarity, AR dependence, forecast diagnostics",
+        "Adapted local random-walk diagnostic",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H011",
+        "return_sign_entropy_60",
+        "6",
+        "192",
+        "Entropy and mutual information",
+        "Project-original rolling sign entropy",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H012",
+        "volatility_of_volatility_60",
+        "9",
+        "297-301",
+        "Volatility clustering and forecasting",
+        "Project-original second-order volatility state",
+        "mlat_feature_engineering.py",
+        "FROZEN",
+    ),
+    (
+        "MLAT-H015",
+        "garch_variance_forecast",
+        "9",
+        "297-301",
+        "ARCH/GARCH equations and diagnostics",
+        "Independent segmented audit only",
+        "mlat_volatility_models.py",
+        "AUDIT_ONLY",
+    ),
 ]
 
 
@@ -1366,31 +2202,256 @@ def build_patterns() -> None:
 
 def build_applicability() -> None:
     rows = [
-        ("Lagged returns", "4:130-132", "OHLCV", "existing return ladder", "None", "direction", "REDUNDANT WITH EXISTING FEATURES", "Already represented at frozen horizons."),
-        ("Bollinger location", "4:131-133; App:740-742", "close", "range/trend state", "Use causal 20-bar z-score; no trading thresholds", "direction", "APPLICABLE AFTER MODIFICATION", "Distinct continuous hypothesis; empirical overlap required."),
-        ("Bollinger bandwidth", "App:740-742", "close", "compression features", "Normalize by trailing mean", "expansion", "APPLICABLE AFTER MODIFICATION", "Direct squeeze concept but likely redundant."),
-        ("RSI", "4:132", "close", "momentum/persistence", "Declare Cutler rolling convention", "direction / state", "APPLICABLE AFTER MODIFICATION", "Avoid arbitrary 30/70 rule."),
-        ("Kalman filter", "4:133-136", "close/returns", "trend filters", "Segmented online filter and chronological parameter fit", "state", "LATER RESEARCH PHASE", "Noise parameters and overlap are unresolved."),
-        ("Wavelet denoising", "4:137-140", "returns", "none", "Would require one-sided online transform", "state", "REJECTED DUE TO LEAKAGE", "Book demonstration uses full-window decomposition/reconstruction."),
-        ("Mutual information", "6:192", "features/labels", "rank IC", "Chronological resampling and multiple-test control", "screening", "LATER RESEARCH PHASE", "Estimator cost/bias adds little to the first batch."),
-        ("Purging and embargo", "6:199-200", "label spans", "date blocks", "Use for any trained multivariate model", "validation", "DIRECTLY APPLICABLE", "Mandatory if modelling is authorized."),
-        ("Linear/regularized model", "7:203-248", "frozen features", "ridge benchmark", "Chronological nested fit", "direction/expansion", "LATER RESEARCH PHASE", "Requires a surviving shortlist."),
-        ("Event-driven backtest", "8:249-279", "signals/orders/costs", "sequential backtester", "Use only after feature and signal gates", "execution", "LATER RESEARCH PHASE", "No policy is authorized in v1."),
-        ("AR/variance dependence", "9:280-296", "returns", "autocorrelation/sign change", "Use variance-ratio adaptation", "direction/state", "APPLICABLE AFTER MODIFICATION", "Distinct formula but high overlap risk."),
-        ("GARCH", "9:297-301", "segmented returns", "ATR/RV and old exploratory cells", "GC-only segmented fit and diagnostics", "volatility/risk", "LATER RESEARCH PHASE", "Audit separately; not a frozen v1 predictor."),
-        ("Cointegration/pairs", "9-10:301-349", "multi-asset prices", "none", "Would require a defensible instrument basket", "portfolio", "REQUIRES DIFFERENT DATA", "Single GC series cannot supply a pair."),
-        ("Tree/boosting models", "11-12:350-428", "frozen features/labels", "none", "Chronological tuning after linear gate", "model", "LATER RESEARCH PHASE", "Premature complexity."),
-        ("PCA/clustering", "13:429-460", "feature matrix/universe", "hierarchical feature clustering", "Use Development-only clustering for redundancy", "risk/redundancy", "APPLICABLE AFTER MODIFICATION", "No new PCA factor in v1."),
-        ("Sentiment/topics/embeddings", "14-16:461-532", "point-in-time text", "none", "Obtain governed publication data", "alternative data", "REQUIRES DIFFERENT DATA", "Unavailable in OHLCV."),
-        ("Deep/CNN/RNN/autoencoder", "17-20:533-662", "large model-ready corpus", "none", "Establish simpler evidence first", "model", "LATER RESEARCH PHASE", "Not justified by current results."),
-        ("Amihud illiquidity", "20:656; App:752", "close/volume", "liquidity proxies", "Within-GC 60-minute notional proxy", "risk/expansion", "APPLICABLE AFTER MODIFICATION", "Distinct formula with high overlap risk."),
-        ("GAN synthetic data", "21:663-690", "training sequences", "none", "Fidelity/tail validation", "data augmentation", "REJECTED DUE TO GOVERNANCE", "Could manufacture or erase rare risk behavior."),
-        ("Reinforcement learning", "22:691-723", "validated environment/reward", "none", "Requires approved sequential policy", "execution", "REJECTED DUE TO GOVERNANCE", "No signal or simulator authorization."),
-        ("Chaikin A/D", "App:752-753", "OHLCV", "CLV/signed-volume features", "Use rolling normalized money flow, reset boundaries", "direction/state", "APPLICABLE AFTER MODIFICATION", "Cumulative raw A/D has reset/scale problems."),
-        ("ATR/NATR", "App:754-755", "OHLC", "atr_20 anchor", "None", "volatility", "REDUNDANT WITH EXISTING FEATURES", "Use frozen anchor rather than add another ATR."),
-        ("Quotes/trades/order book/MBO", "2:59-94", "quotes/trades/depth/MBO", "none", "Acquire different Databento schemas", "execution/microstructure", "REQUIRES DIFFERENT DATA", "Not present in one-minute OHLCV."),
-        ("Macro/fundamental factors", "2-4:59-152", "point-in-time macro/fundamentals", "none", "Build release/vintage-aware sources", "direction/risk", "REQUIRES DIFFERENT DATA", "Unavailable and often equity-specific."),
-        ("Satellite/imagery", "3/18:95-114;569-606", "images", "none", "Define economically linked imagery", "alternative data", "IMPRACTICAL WITH CURRENT OHLCV", "No relevant image source."),
+        (
+            "Lagged returns",
+            "4:130-132",
+            "OHLCV",
+            "existing return ladder",
+            "None",
+            "direction",
+            "REDUNDANT WITH EXISTING FEATURES",
+            "Already represented at frozen horizons.",
+        ),
+        (
+            "Bollinger location",
+            "4:131-133; App:740-742",
+            "close",
+            "range/trend state",
+            "Use causal 20-bar z-score; no trading thresholds",
+            "direction",
+            "APPLICABLE AFTER MODIFICATION",
+            "Distinct continuous hypothesis; empirical overlap required.",
+        ),
+        (
+            "Bollinger bandwidth",
+            "App:740-742",
+            "close",
+            "compression features",
+            "Normalize by trailing mean",
+            "expansion",
+            "APPLICABLE AFTER MODIFICATION",
+            "Direct squeeze concept but likely redundant.",
+        ),
+        (
+            "RSI",
+            "4:132",
+            "close",
+            "momentum/persistence",
+            "Declare Cutler rolling convention",
+            "direction / state",
+            "APPLICABLE AFTER MODIFICATION",
+            "Avoid arbitrary 30/70 rule.",
+        ),
+        (
+            "Kalman filter",
+            "4:133-136",
+            "close/returns",
+            "trend filters",
+            "Segmented online filter and chronological parameter fit",
+            "state",
+            "LATER RESEARCH PHASE",
+            "Noise parameters and overlap are unresolved.",
+        ),
+        (
+            "Wavelet denoising",
+            "4:137-140",
+            "returns",
+            "none",
+            "Would require one-sided online transform",
+            "state",
+            "REJECTED DUE TO LEAKAGE",
+            "Book demonstration uses full-window decomposition/reconstruction.",
+        ),
+        (
+            "Mutual information",
+            "6:192",
+            "features/labels",
+            "rank IC",
+            "Chronological resampling and multiple-test control",
+            "screening",
+            "LATER RESEARCH PHASE",
+            "Estimator cost/bias adds little to the first batch.",
+        ),
+        (
+            "Purging and embargo",
+            "6:199-200",
+            "label spans",
+            "date blocks",
+            "Use for any trained multivariate model",
+            "validation",
+            "DIRECTLY APPLICABLE",
+            "Mandatory if modelling is authorized.",
+        ),
+        (
+            "Linear/regularized model",
+            "7:203-248",
+            "frozen features",
+            "ridge benchmark",
+            "Chronological nested fit",
+            "direction/expansion",
+            "LATER RESEARCH PHASE",
+            "Requires a surviving shortlist.",
+        ),
+        (
+            "Event-driven backtest",
+            "8:249-279",
+            "signals/orders/costs",
+            "sequential backtester",
+            "Use only after feature and signal gates",
+            "execution",
+            "LATER RESEARCH PHASE",
+            "No policy is authorized in v1.",
+        ),
+        (
+            "AR/variance dependence",
+            "9:280-296",
+            "returns",
+            "autocorrelation/sign change",
+            "Use variance-ratio adaptation",
+            "direction/state",
+            "APPLICABLE AFTER MODIFICATION",
+            "Distinct formula but high overlap risk.",
+        ),
+        (
+            "GARCH",
+            "9:297-301",
+            "segmented returns",
+            "ATR/RV and old exploratory cells",
+            "GC-only segmented fit and diagnostics",
+            "volatility/risk",
+            "LATER RESEARCH PHASE",
+            "Audit separately; not a frozen v1 predictor.",
+        ),
+        (
+            "Cointegration/pairs",
+            "9-10:301-349",
+            "multi-asset prices",
+            "none",
+            "Would require a defensible instrument basket",
+            "portfolio",
+            "REQUIRES DIFFERENT DATA",
+            "Single GC series cannot supply a pair.",
+        ),
+        (
+            "Tree/boosting models",
+            "11-12:350-428",
+            "frozen features/labels",
+            "none",
+            "Chronological tuning after linear gate",
+            "model",
+            "LATER RESEARCH PHASE",
+            "Premature complexity.",
+        ),
+        (
+            "PCA/clustering",
+            "13:429-460",
+            "feature matrix/universe",
+            "hierarchical feature clustering",
+            "Use Development-only clustering for redundancy",
+            "risk/redundancy",
+            "APPLICABLE AFTER MODIFICATION",
+            "No new PCA factor in v1.",
+        ),
+        (
+            "Sentiment/topics/embeddings",
+            "14-16:461-532",
+            "point-in-time text",
+            "none",
+            "Obtain governed publication data",
+            "alternative data",
+            "REQUIRES DIFFERENT DATA",
+            "Unavailable in OHLCV.",
+        ),
+        (
+            "Deep/CNN/RNN/autoencoder",
+            "17-20:533-662",
+            "large model-ready corpus",
+            "none",
+            "Establish simpler evidence first",
+            "model",
+            "LATER RESEARCH PHASE",
+            "Not justified by current results.",
+        ),
+        (
+            "Amihud illiquidity",
+            "20:656; App:752",
+            "close/volume",
+            "liquidity proxies",
+            "Within-GC 60-minute notional proxy",
+            "risk/expansion",
+            "APPLICABLE AFTER MODIFICATION",
+            "Distinct formula with high overlap risk.",
+        ),
+        (
+            "GAN synthetic data",
+            "21:663-690",
+            "training sequences",
+            "none",
+            "Fidelity/tail validation",
+            "data augmentation",
+            "REJECTED DUE TO GOVERNANCE",
+            "Could manufacture or erase rare risk behavior.",
+        ),
+        (
+            "Reinforcement learning",
+            "22:691-723",
+            "validated environment/reward",
+            "none",
+            "Requires approved sequential policy",
+            "execution",
+            "REJECTED DUE TO GOVERNANCE",
+            "No signal or simulator authorization.",
+        ),
+        (
+            "Chaikin A/D",
+            "App:752-753",
+            "OHLCV",
+            "CLV/signed-volume features",
+            "Use rolling normalized money flow, reset boundaries",
+            "direction/state",
+            "APPLICABLE AFTER MODIFICATION",
+            "Cumulative raw A/D has reset/scale problems.",
+        ),
+        (
+            "ATR/NATR",
+            "App:754-755",
+            "OHLC",
+            "atr_20 anchor",
+            "None",
+            "volatility",
+            "REDUNDANT WITH EXISTING FEATURES",
+            "Use frozen anchor rather than add another ATR.",
+        ),
+        (
+            "Quotes/trades/order book/MBO",
+            "2:59-94",
+            "quotes/trades/depth/MBO",
+            "none",
+            "Acquire different Databento schemas",
+            "execution/microstructure",
+            "REQUIRES DIFFERENT DATA",
+            "Not present in one-minute OHLCV.",
+        ),
+        (
+            "Macro/fundamental factors",
+            "2-4:59-152",
+            "point-in-time macro/fundamentals",
+            "none",
+            "Build release/vintage-aware sources",
+            "direction/risk",
+            "REQUIRES DIFFERENT DATA",
+            "Unavailable and often equity-specific.",
+        ),
+        (
+            "Satellite/imagery",
+            "3/18:95-114;569-606",
+            "images",
+            "none",
+            "Define economically linked imagery",
+            "alternative data",
+            "IMPRACTICAL WITH CURRENT OHLCV",
+            "No relevant image source.",
+        ),
     ]
     lines = [
         "# MLAT Project Applicability Matrix",
@@ -1444,7 +2505,9 @@ def build_hypotheses() -> None:
             f"{row['leakage_risk']} | {row['computational_cost']} | {row['recommendation']} |"
         )
         if row["rejection_reason"]:
-            lines.append(f"|  | Rejection/defer reason |  |  |  |  |  |  | {row['rejection_reason']} |")
+            lines.append(
+                f"|  | Rejection/defer reason |  |  |  |  |  |  | {row['rejection_reason']} |"
+            )
     lines.extend(["", "## Full definitions", ""])
     for values in HYPOTHESES:
         row = dict(zip(headers, values, strict=True))
@@ -1720,9 +2783,7 @@ def build_coverage_log() -> None:
         for number, start, end in CHAPTER_RANGES
     }
     appendix = "appendix_alpha_factor_library.md"
-    validations[appendix] = _summary_validation(
-        CHAPTERS / appendix, *APPENDIX_RANGE
-    )
+    validations[appendix] = _summary_validation(CHAPTERS / appendix, *APPENDIX_RANGE)
     lines = [
         "# MLAT Book Coverage Log",
         "",
@@ -1748,9 +2809,7 @@ def build_coverage_log() -> None:
         f"| Appendix | 735-764 | `chapter_summaries/{appendix}` | "
         f"{'COMPLETE' if appendix_passed else 'IN_PROGRESS'} |"
     )
-    failed_issues = {
-        name: issues for name, (passed, issues) in validations.items() if not passed
-    }
+    failed_issues = {name: issues for name, (passed, issues) in validations.items() if not passed}
     if failed_issues:
         lines.extend(["", "## Outstanding summary validation issues", ""])
         for name, issues in sorted(failed_issues.items()):
@@ -1775,21 +2834,17 @@ def build_stage1_report() -> None:
         for number, start, end in CHAPTER_RANGES
     ]
     validations.append(
-        _summary_validation(
-            CHAPTERS / "appendix_alpha_factor_library.md", *APPENDIX_RANGE
-        )
+        _summary_validation(CHAPTERS / "appendix_alpha_factor_library.md", *APPENDIX_RANGE)
     )
     manifest_passed, manifest_issues = _manifest_validation()
     artifacts_passed, artifact_issues = _stage1_artifact_validation()
-    complete = (
-        all(passed for passed, _ in validations)
-        and manifest_passed
-        and artifacts_passed
-    )
+    complete = all(passed for passed, _ in validations) and manifest_passed and artifacts_passed
     batch = DOCS / "mlat_feature_batch_v1.md"
     contract = DOCS / "mlat_feature_research_contract_v1.md"
     batch_hash = hashlib.sha256(batch.read_bytes()).hexdigest() if batch.exists() else "MISSING"
-    contract_hash = hashlib.sha256(contract.read_bytes()).hexdigest() if contract.exists() else "MISSING"
+    contract_hash = (
+        hashlib.sha256(contract.read_bytes()).hexdigest() if contract.exists() else "MISSING"
+    )
     status = "COMPLETE" if complete else "IN PROGRESS - CHAPTER SUMMARIES PENDING"
     text = f"""# MLAT Stage 1 Completion Report
 
@@ -1803,8 +2858,8 @@ Status: {status}
 - Chapter summaries passing structural/page-reference QA: {sum(passed for passed, _ in validations)} of 24
   (23 chapters plus Appendix).
 - Front matter, references, and index are recorded in the ingestion manifest.
-- Ingestion-manifest validation: {'PASS' if manifest_passed else 'FAIL'}.
-- Required durable-artifact validation: {'PASS' if artifacts_passed else 'FAIL'}.
+- Ingestion-manifest validation: {"PASS" if manifest_passed else "FAIL"}.
+- Required durable-artifact validation: {"PASS" if artifacts_passed else "FAIL"}.
 
 ## Frozen research artifacts
 
@@ -1826,8 +2881,8 @@ script. The script does not load forward labels or MLAT feature/outcome results.
   PDF page citations.
 - Every chapter/Appendix manifest row must be `COMPLETE`, name at least one
   visually inspected page, and keep those pages inside its assigned range.
-- Manifest issues: {('; '.join(manifest_issues)) if manifest_issues else 'none'}.
-- Durable-artifact issues: {('; '.join(artifact_issues)) if artifact_issues else 'none'}.
+- Manifest issues: {("; ".join(manifest_issues)) if manifest_issues else "none"}.
+- Durable-artifact issues: {("; ".join(artifact_issues)) if artifact_issues else "none"}.
 
 ## Completion condition
 
@@ -1848,23 +2903,15 @@ def main(*, verify_only: bool = False, rebuild_frozen: bool = False) -> bool:
         )
     if verify_only:
         summary_results = [
-            _summary_validation(
-                CHAPTERS / f"chapter_{number:02d}.md", start, end
-            )
+            _summary_validation(CHAPTERS / f"chapter_{number:02d}.md", start, end)
             for number, start, end in CHAPTER_RANGES
         ]
         summary_results.append(
-            _summary_validation(
-                CHAPTERS / "appendix_alpha_factor_library.md", *APPENDIX_RANGE
-            )
+            _summary_validation(CHAPTERS / "appendix_alpha_factor_library.md", *APPENDIX_RANGE)
         )
         manifest_passed, _ = _manifest_validation()
         artifacts_passed, _ = _stage1_artifact_validation()
-        return (
-            all(passed for passed, _ in summary_results)
-            and manifest_passed
-            and artifacts_passed
-        )
+        return all(passed for passed, _ in summary_results) and manifest_passed and artifacts_passed
     should_rebuild = not verify_only and (rebuild_frozen or not outcome_locked)
     if should_rebuild:
         build_concept_registry()
@@ -1883,17 +2930,11 @@ def main(*, verify_only: bool = False, rebuild_frozen: bool = False) -> bool:
         for number, start, end in CHAPTER_RANGES
     ]
     summary_results.append(
-        _summary_validation(
-            CHAPTERS / "appendix_alpha_factor_library.md", *APPENDIX_RANGE
-        )
+        _summary_validation(CHAPTERS / "appendix_alpha_factor_library.md", *APPENDIX_RANGE)
     )
     manifest_passed, _ = _manifest_validation()
     artifacts_passed, _ = _stage1_artifact_validation()
-    return (
-        all(passed for passed, _ in summary_results)
-        and manifest_passed
-        and artifacts_passed
-    )
+    return all(passed for passed, _ in summary_results) and manifest_passed and artifacts_passed
 
 
 if __name__ == "__main__":

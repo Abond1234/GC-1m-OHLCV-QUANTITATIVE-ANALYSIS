@@ -24,14 +24,7 @@ DOCS = ROOT / "project_docs" / "mlat_feature_research"
 NOTEBOOK = ROOT / "notebooks" / "exploration" / "mlat_feature_research.ipynb"
 REPORT_ROOT = ROOT / "reports" / "statistical_research" / "mlat_feature_research" / "v1"
 TABLE_ROOT = REPORT_ROOT / "tables"
-DATA_ROOT = (
-    ROOT
-    / "data"
-    / "processed"
-    / "statistical_research"
-    / "mlat_feature_research"
-    / "v1"
-)
+DATA_ROOT = ROOT / "data" / "processed" / "statistical_research" / "mlat_feature_research" / "v1"
 FIGURE_ROOT = ROOT / "reports" / "figures" / "mlat_feature_research" / "v1"
 EXECUTION_MANIFEST = REPORT_ROOT / "execution_manifest.json"
 ARTIFACT_MANIFEST = REPORT_ROOT / "table_manifest.json"
@@ -200,9 +193,7 @@ def _bool_series(series: pd.Series) -> pd.Series:
     if pd.api.types.is_bool_dtype(series):
         return series.fillna(False).astype(bool)
     normalized = series.astype("string").str.strip().str.lower()
-    unknown = normalized.notna() & ~normalized.isin(
-        {"true", "false", "1", "0", "yes", "no"}
-    )
+    unknown = normalized.notna() & ~normalized.isin({"true", "false", "1", "0", "yes", "no"})
     if unknown.any():
         values = sorted(normalized.loc[unknown].dropna().unique().tolist())
         raise ValueError(f"Cannot interpret boolean values: {values}")
@@ -252,8 +243,7 @@ def _markdown_table(
         missing_boolean_columns = sorted(set(boolean_labels).difference(selected.columns))
         if missing_boolean_columns:
             raise ValueError(
-                "Cannot render boolean labels; columns are absent: "
-                f"{missing_boolean_columns}"
+                f"Cannot render boolean labels; columns are absent: {missing_boolean_columns}"
             )
         for column, (true_label, false_label) in boolean_labels.items():
             selected[column] = selected[column].map(
@@ -271,9 +261,7 @@ def _markdown_table(
     header = "| " + " | ".join(_format_value(name) for name in display_names) + " |"
     divider = "| " + " | ".join("---" for _ in display_names) + " |"
     rows = [
-        "| "
-        + " | ".join(_format_value(value) for value in row)
-        + " |"
+        "| " + " | ".join(_format_value(value) for value in row) + " |"
         for row in selected.itertuples(index=False, name=None)
     ]
     return "\n".join([header, divider, *rows])
@@ -369,14 +357,14 @@ def _verify_book_coverage(coverage: pd.DataFrame) -> dict[str, int]:
     for start, end in zip(starts, ends, strict=True):
         pages.extend(range(start, end + 1))
     if sorted(pages) != list(range(1, 859)):
-        raise ValueError("Book-ingestion manifest must account for physical PDF pages 1-858 exactly")
+        raise ValueError(
+            "Book-ingestion manifest must account for physical PDF pages 1-858 exactly"
+        )
     if not coverage["status"].astype(str).eq("COMPLETE").all():
         raise ValueError("Book-ingestion manifest contains incomplete rows")
     if not coverage["text_extraction_status"].astype(str).eq("COMPLETE").all():
         raise ValueError("Book-ingestion manifest contains incomplete text extraction")
-    substantive = coverage.loc[
-        coverage["section_type"].isin(["preface", "chapter", "appendix"])
-    ]
+    substantive = coverage.loc[coverage["section_type"].isin(["preface", "chapter", "appendix"])]
     chapters = coverage.loc[coverage["section_type"].eq("chapter")]
     appendix = coverage.loc[coverage["section_type"].eq("appendix")]
     if len(chapters) != 23 or len(appendix) != 1:
@@ -447,8 +435,7 @@ def _verify_artifact_manifest() -> tuple[dict[str, Any], list[Path]]:
     manifest = _read_json(ARTIFACT_MANIFEST)
     if manifest.get("layout_version") != "mlat-artifacts-v1":
         raise ValueError(
-            "Unsupported MLAT artifact-manifest layout: "
-            f"{manifest.get('layout_version')!r}"
+            f"Unsupported MLAT artifact-manifest layout: {manifest.get('layout_version')!r}"
         )
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, dict) or not artifacts:
@@ -549,7 +536,9 @@ def _verify_execution_manifest(execution: Mapping[str, Any]) -> None:
         try:
             path.relative_to(ROOT.resolve())
         except ValueError as error:
-            raise ValueError(f"Execution-manifest path escapes the repository: {relative}") from error
+            raise ValueError(
+                f"Execution-manifest path escapes the repository: {relative}"
+            ) from error
         if not path.is_file():
             raise FileNotFoundError(f"Execution-manifest artifact is absent: {path}")
 
@@ -633,8 +622,7 @@ def _load_tables() -> dict[str, pd.DataFrame]:
         if not _bool_series(tables[name]["passed"]).all():
             failures = tables[name].loc[~_bool_series(tables[name]["passed"])]
             raise ValueError(
-                f"{name}.csv contains failed completion checks: "
-                f"{failures.to_dict('records')}"
+                f"{name}.csv contains failed completion checks: {failures.to_dict('records')}"
             )
     return tables
 
@@ -670,9 +658,9 @@ def _top_cells(cells: pd.DataFrame, partition: str, *, max_rows: int = 12) -> pd
     selected["absolute_mean_daily_ic"] = pd.to_numeric(
         selected["mean_daily_ic"], errors="coerce"
     ).abs()
-    return selected.sort_values(
-        "absolute_mean_daily_ic", ascending=False, na_position="last"
-    ).head(max_rows)
+    return selected.sort_values("absolute_mean_daily_ic", ascending=False, na_position="last").head(
+        max_rows
+    )
 
 
 def _family_cells(
@@ -685,11 +673,15 @@ def _family_cells(
     selected["absolute_mean_daily_ic"] = pd.to_numeric(
         selected["mean_daily_ic"], errors="coerce"
     ).abs()
-    return selected.sort_values(
-        ["research_partition", "absolute_mean_daily_ic"],
-        ascending=[True, False],
-        na_position="last",
-    ).groupby("research_partition", observed=True, sort=False).head(max_rows // 2)
+    return (
+        selected.sort_values(
+            ["research_partition", "absolute_mean_daily_ic"],
+            ascending=[True, False],
+            na_position="last",
+        )
+        .groupby("research_partition", observed=True, sort=False)
+        .head(max_rows // 2)
+    )
 
 
 def _verdict_summary(verdicts: pd.DataFrame) -> pd.DataFrame:
@@ -710,9 +702,10 @@ def _numeric_column_sum(frame: pd.DataFrame, column: str) -> int:
 
 
 def _inventory() -> list[tuple[str, list[Path]]]:
-    documentation = {
-        path for path in DOCS.rglob("*") if path.is_file()
-    } | {FINAL_REPORT, CONTEXT_REPORT}
+    documentation = {path for path in DOCS.rglob("*") if path.is_file()} | {
+        FINAL_REPORT,
+        CONTEXT_REPORT,
+    }
     groups = [
         ("Documentation", sorted(documentation)),
         ("Notebook", [NOTEBOOK] if NOTEBOOK.is_file() else []),
@@ -741,10 +734,7 @@ def _inventory() -> list[tuple[str, list[Path]]]:
 def _inventory_markdown(groups: Sequence[tuple[str, Sequence[Path]]]) -> str:
     sections = []
     for label, paths in groups:
-        entries = [
-            f"- `{path.relative_to(ROOT).as_posix()}`"
-            for path in paths
-        ]
+        entries = [f"- `{path.relative_to(ROOT).as_posix()}`" for path in paths]
         sections.append(f"### {label}\n\n" + "\n".join(entries))
     return "\n\n".join(sections)
 
@@ -861,16 +851,10 @@ def _report_inputs() -> dict[str, Any]:
     if verdicts["final_decision"].astype(str).str.startswith("ADVANCE_").any():
         raise ValueError("Closed advancement gate cannot contain an advancing verdict")
     authorization_reasons = (
-        verdicts["authorization_gate_reason"]
-        .dropna()
-        .astype(str)
-        .drop_duplicates()
-        .tolist()
+        verdicts["authorization_gate_reason"].dropna().astype(str).drop_duplicates().tolist()
     )
     if authorization_reasons != [str(execution["advancement_gate_reason"])]:
-        raise ValueError(
-            "Feature-verdict authorization reason differs from the execution manifest"
-        )
+        raise ValueError("Feature-verdict authorization reason differs from the execution manifest")
     if execution["batch_sha256"] != (
         "8c8b74267635566f07011c2789ad4d323647f19eba1f1f3426a154c1a850acc0"
     ):
@@ -935,9 +919,7 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
         | concepts["applicability"].astype(str).isin(["DIRECT", "ADAPTED"])
     ].head(12)
 
-    applicability = _parse_first_markdown_table(
-        DOCS / "mlat_project_applicability_matrix.md"
-    )
+    applicability = _parse_first_markdown_table(DOCS / "mlat_project_applicability_matrix.md")
     rejected_applicability = applicability.loc[
         applicability["Classification"].str.contains(
             "REJECTED|REQUIRES DIFFERENT DATA|IMPRACTICAL|REDUNDANT",
@@ -951,20 +933,15 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
     existing_overlap["absolute_correlation"] = pd.to_numeric(
         existing_overlap["absolute_correlation"], errors="coerce"
     )
-    existing_overlap["is_exact_duplicate"] = _bool_series(
-        existing_overlap["is_exact_duplicate"]
-    )
+    existing_overlap["is_exact_duplicate"] = _bool_series(existing_overlap["is_exact_duplicate"])
     nearest_overlap = (
-        existing_overlap.sort_values(
-            "absolute_correlation", ascending=False, na_position="last"
-        )
+        existing_overlap.sort_values("absolute_correlation", ascending=False, na_position="last")
         .groupby("candidate_feature", observed=True, sort=False)
         .head(1)
         .sort_values("absolute_correlation", ascending=False, na_position="last")
     )
     vetoes = existing_overlap.loc[
-        existing_overlap["is_exact_duplicate"]
-        | existing_overlap["absolute_correlation"].ge(0.995)
+        existing_overlap["is_exact_duplicate"] | existing_overlap["absolute_correlation"].ge(0.995)
     ]
 
     frozen_registry = registry[
@@ -1058,13 +1035,15 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
         )
         .reset_index()
     )
-    top_incremental = incremental.assign(
-        absolute_development_partial_ic=pd.to_numeric(
-            incremental["mean_daily_partial_ic_development"], errors="coerce"
-        ).abs()
-    ).sort_values(
-        "absolute_development_partial_ic", ascending=False, na_position="last"
-    ).head(16)
+    top_incremental = (
+        incremental.assign(
+            absolute_development_partial_ic=pd.to_numeric(
+                incremental["mean_daily_partial_ic_development"], errors="coerce"
+            ).abs()
+        )
+        .sort_values("absolute_development_partial_ic", ascending=False, na_position="last")
+        .head(16)
+    )
 
     garch_benchmarks = tables["garch_benchmarks"]
     garch_parameters = tables["garch_parameters"]
@@ -1092,9 +1071,7 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
     )
 
     sections: dict[str, str] = {
-        "Executive conclusion": executive
-        + "\n\n"
-        + _markdown_table(verdict_counts),
+        "Executive conclusion": executive + "\n\n" + _markdown_table(verdict_counts),
         "Book-ingestion completion status": (
             "Stage 1 is `COMPLETE`. The persisted completion report, ingestion manifest, "
             "24 chapter/Appendix summaries, concept registry, formula registry, hypothesis "
@@ -1123,7 +1100,8 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
                         "page_count",
                         "status",
                     ]
-                ].groupby("section_type", observed=True, as_index=False)
+                ]
+                .groupby("section_type", observed=True, as_index=False)
                 .agg(
                     pdf_page_start=("pdf_page_start", "min"),
                     pdf_page_end=("pdf_page_end", "max"),
@@ -1182,8 +1160,7 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
         ),
         "Frozen MLAT feature batch": (
             "Membership and parameters were frozen before any MLAT feature/outcome "
-            "relationship was calculated.\n\n"
-            + _markdown_table(frozen_registry)
+            "relationship was calculated.\n\n" + _markdown_table(frozen_registry)
         ),
         "Exact formulas and sources": (
             _markdown_table(exact_formulas)
@@ -1257,16 +1234,14 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
             "The tick-spread field is retained because a statistically detectable rank "
             "relationship was not allowed to substitute for the preregistered two-GC-tick "
             "economic screen. The closed structural advancement gate also prevents any "
-            "v1 authorization.\n\n"
-            + _markdown_table(directional, columns=cell_columns)
+            "v1 authorization.\n\n" + _markdown_table(directional, columns=cell_columns)
         ),
         "Expansion findings": (
             f"Expansion advancement cells across final feature verdicts: "
             f"{_numeric_column_sum(verdicts, 'expansion_cells_passed')}. "
             "Expansion evidence is interpreted separately from signed direction and "
             "remains descriptive because the v1 advancement gate is structurally "
-            "non-evaluable.\n\n"
-            + _markdown_table(expansion, columns=cell_columns)
+            "non-evaluable.\n\n" + _markdown_table(expansion, columns=cell_columns)
         ),
         "Risk-state findings": (
             f"Volatility/path-risk advancement cells across final feature verdicts: "
@@ -1279,8 +1254,7 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
         "Session stability": (
             "London and New York were evaluated separately. The verdict-level session "
             "gate requires eligible evidence and Development-sign consistency across "
-            "both sessions for the relevant family/horizon.\n\n"
-            + _markdown_table(session_summary)
+            "both sessions for the relevant family/horizon.\n\n" + _markdown_table(session_summary)
         ),
         "Year stability": (
             "Annual sign agreement is evaluated against each corresponding full-period "
@@ -1380,11 +1354,7 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
                     "final_decision",
                     "verdict_reason",
                 ),
-                labels={
-                    "pre_authorization_verdict": (
-                        "descriptive_pre_authorization_verdict"
-                    )
-                },
+                labels={"pre_authorization_verdict": ("descriptive_pre_authorization_verdict")},
             )
         ),
         "Limitations": (
@@ -1429,8 +1399,7 @@ def _build_final_report(inputs: Mapping[str, Any]) -> str:
             "builder. Their hashes at report time were "
             f"`{inputs['old_hashes']['statistical_feature_research.ipynb']}` and "
             f"`{inputs['old_hashes']['statistical_feature_research_context_report.md']}`, "
-            "respectively.\n\n"
-            + _inventory_markdown(inventory)
+            "respectively.\n\n" + _inventory_markdown(inventory)
         ),
     }
 
@@ -1573,8 +1542,7 @@ def _build_context_report(inputs: Mapping[str, Any]) -> str:
             "empirical rejection of their descriptive evidence. The frozen v1 "
             f"advancement gate is `{execution['advancement_gate_feasible']}` because "
             f"{authorization_reason} The multivariate authorization gate is "
-            f"`{execution['multivariate_authorized']}`.\n\n"
-            + _markdown_table(verdict_counts)
+            f"`{execution['multivariate_authorized']}`.\n\n" + _markdown_table(verdict_counts)
         ),
         "GARCH decision": (
             f"`{execution['garch_verdict']}`. GARCH is audit-only and is not a v1 matrix "
@@ -1588,11 +1556,7 @@ def _build_context_report(inputs: Mapping[str, Any]) -> str:
                 "final_decision",
                 "verdict_reason",
             ),
-            labels={
-                "pre_authorization_verdict": (
-                    "descriptive_pre_authorization_verdict"
-                )
-            },
+            labels={"pre_authorization_verdict": ("descriptive_pre_authorization_verdict")},
         ),
         "Artifact paths": _bullet_list(f"`{path}`" for path in artifact_paths),
         "Unresolved issues": _bullet_list(issues),

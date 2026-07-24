@@ -136,9 +136,7 @@ def _as_frame(value: pd.DataFrame | MlatEvaluationFrameResult) -> pd.DataFrame:
             failed = value.checks.loc[
                 ~value.checks["passed"].fillna(False).astype(bool), "check"
             ].astype(str)
-            raise ValueError(
-                "evaluation frame checks failed: " + ", ".join(failed.tolist())
-            )
+            raise ValueError("evaluation frame checks failed: " + ", ".join(failed.tolist()))
         return value.frame
     return value
 
@@ -196,9 +194,7 @@ def _target_catalog(horizons: Sequence[int]) -> pd.DataFrame:
                     "horizon_minutes": horizon,
                     "target_column": _target_name(family, horizon),
                     "tick_effect_column": (
-                        f"forward_return_{horizon}_ticks"
-                        if family == "direction"
-                        else pd.NA
+                        f"forward_return_{horizon}_ticks" if family == "direction" else pd.NA
                     ),
                     "atr_normalized": family in {"direction", "expansion", "path_risk"},
                     "primary_statistic": "mean New-York-date Spearman IC",
@@ -221,9 +217,7 @@ def _check_frame_scope(
         "entry_session",
     }
     if require_family_masks:
-        required.update(
-            f"{family}_complete_sample" for family in MLAT_TARGET_FAMILIES
-        )
+        required.update(f"{family}_complete_sample" for family in MLAT_TARGET_FAMILIES)
     missing = sorted(required.difference(frame.columns))
     if missing:
         raise KeyError(f"evaluation frame scope columns missing: {missing}")
@@ -247,8 +241,7 @@ def _check_frame_scope(
     disallowed_sessions = sessions.difference(settings.sessions)
     if not sessions or disallowed_sessions:
         raise ValueError(
-            f"evaluation sessions must be drawn from {settings.sessions}; "
-            f"found {sorted(sessions)}"
+            f"evaluation sessions must be drawn from {settings.sessions}; found {sorted(sessions)}"
         )
     dates = pd.to_datetime(frame["trade_date_ny"], errors="coerce")
     if dates.isna().any() or not dates.eq(dates.dt.normalize()).all():
@@ -315,12 +308,8 @@ def build_mlat_evaluation_frame(
     for horizon in settings.horizons:
         column = f"label_available_{horizon}"
         _strict_boolean(forward_labels[column], column)
-    feature_products = sorted(
-        feature_matrix["product"].dropna().astype(str).unique().tolist()
-    )
-    label_products = sorted(
-        forward_labels["product"].dropna().astype(str).unique().tolist()
-    )
+    feature_products = sorted(feature_matrix["product"].dropna().astype(str).unique().tolist())
+    label_products = sorted(forward_labels["product"].dropna().astype(str).unique().tolist())
     if feature_products != ["GC"] or label_products != ["GC"]:
         raise ValueError(
             "MLAT evaluation is GC-only; "
@@ -334,24 +323,14 @@ def build_mlat_evaluation_frame(
     feature_unknown = ~feature_partition_values.isin(allowed_partitions)
     label_unknown = ~label_partition_values.isin(allowed_partitions)
     other_rows = int(feature_unknown.sum() + label_unknown.sum())
-    feature_scope = feature_matrix.loc[
-        feature_partition_values.isin(settings.partitions)
-    ].copy()
-    label_scope = forward_labels.loc[
-        label_partition_values.isin(settings.partitions)
-    ].copy()
+    feature_scope = feature_matrix.loc[feature_partition_values.isin(settings.partitions)].copy()
+    label_scope = forward_labels.loc[label_partition_values.isin(settings.partitions)].copy()
     feature_ids = set(feature_scope["observation_id"].tolist())
     label_ids = set(label_scope["observation_id"].tolist())
     feature_only_ids = feature_ids.difference(label_ids)
     label_only_ids = label_ids.difference(feature_ids)
-    provenance_columns = [
-        column
-        for column in MLAT_METADATA_COLUMNS
-        if column != "observation_id"
-    ]
-    aligned = feature_scope[
-        ["observation_id", *provenance_columns]
-    ].merge(
+    provenance_columns = [column for column in MLAT_METADATA_COLUMNS if column != "observation_id"]
+    aligned = feature_scope[["observation_id", *provenance_columns]].merge(
         label_scope[["observation_id", *provenance_columns]],
         on="observation_id",
         how="inner",
@@ -369,9 +348,7 @@ def build_mlat_evaluation_frame(
     label_columns = [
         column
         for column in label_scope.columns
-        if column not in feature_names
-        and column != "observation_id"
-        and column not in base_columns
+        if column not in feature_names and column != "observation_id" and column not in base_columns
     ]
     frame = feature_scope[base_columns].merge(
         label_scope[["observation_id", *label_columns]],
@@ -419,22 +396,19 @@ def build_mlat_evaluation_frame(
         short_mae = pd.to_numeric(frame[f"mae_short_{horizon}_atr"], errors="coerce")
         frame[f"path_risk_{horizon}_atr"] = np.maximum(long_mae, short_mae)
 
-    atr_valid = (
-        _strict_boolean(
-            frame["atr_normalization_available"],
-            "atr_normalization_available",
-        )
-        & pd.to_numeric(frame["decision_atr_20m"], errors="coerce").gt(0)
-    )
+    atr_valid = _strict_boolean(
+        frame["atr_normalization_available"],
+        "atr_normalization_available",
+    ) & pd.to_numeric(frame["decision_atr_20m"], errors="coerce").gt(0)
     coverage_rows = []
     for family in MLAT_TARGET_FAMILIES:
         targets = [_target_name(family, horizon) for horizon in settings.horizons]
         if family == "direction":
-            targets.extend(
-                f"forward_return_{horizon}_ticks" for horizon in settings.horizons
-            )
-        complete = frame[targets].apply(pd.to_numeric, errors="coerce").apply(
-            lambda series: np.isfinite(series)
+            targets.extend(f"forward_return_{horizon}_ticks" for horizon in settings.horizons)
+        complete = (
+            frame[targets]
+            .apply(pd.to_numeric, errors="coerce")
+            .apply(lambda series: np.isfinite(series))
         )
         family_complete = complete.all(axis=1)
         for horizon in settings.horizons:
@@ -590,12 +564,8 @@ def calculate_daily_spearman(
         raise KeyError(f"daily IC columns missing: {missing}")
     rows = []
     for date, group in frame.groupby(date_column, observed=True, sort=True):
-        x = pd.to_numeric(group[feature], errors="coerce").to_numpy(
-            dtype=float, na_value=np.nan
-        )
-        y = pd.to_numeric(group[target], errors="coerce").to_numpy(
-            dtype=float, na_value=np.nan
-        )
+        x = pd.to_numeric(group[feature], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
+        y = pd.to_numeric(group[target], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
         valid = np.isfinite(x) & np.isfinite(y)
         count = int(valid.sum())
         correlation = (
@@ -656,9 +626,7 @@ def _quintile_summary(
     tick_target: str | None,
     edges: np.ndarray,
 ) -> dict[str, float | int]:
-    values = pd.to_numeric(group[feature], errors="coerce").to_numpy(
-        dtype=float, na_value=np.nan
-    )
+    values = pd.to_numeric(group[feature], errors="coerce").to_numpy(dtype=float, na_value=np.nan)
     target_values = pd.to_numeric(group[target], errors="coerce").to_numpy(
         dtype=float, na_value=np.nan
     )
@@ -681,13 +649,17 @@ def _quintile_summary(
     low = target_values[valid & (bins == 1)]
     high = target_values[valid & (bins == 5)]
     pooled_denominator = max(len(low) + len(high) - 2, 1)
-    pooled = np.sqrt(
-        (
-            max(len(low) - 1, 0) * np.var(low, ddof=1)
-            + max(len(high) - 1, 0) * np.var(high, ddof=1)
+    pooled = (
+        np.sqrt(
+            (
+                max(len(low) - 1, 0) * np.var(low, ddof=1)
+                + max(len(high) - 1, 0) * np.var(high, ddof=1)
+            )
+            / pooled_denominator
         )
-        / pooled_denominator
-    ) if len(low) > 1 and len(high) > 1 else np.nan
+        if len(low) > 1 and len(high) > 1
+        else np.nan
+    )
     effect = (
         float((np.mean(high) - np.mean(low)) / pooled)
         if np.isfinite(pooled) and pooled > 0
@@ -701,8 +673,7 @@ def _quintile_summary(
         tick_valid = np.isfinite(ticks) & (bins > 0)
         if np.any(tick_valid & (bins == 1)) and np.any(tick_valid & (bins == 5)):
             tick_spread = float(
-                np.mean(ticks[tick_valid & (bins == 5)])
-                - np.mean(ticks[tick_valid & (bins == 1)])
+                np.mean(ticks[tick_valid & (bins == 5)]) - np.mean(ticks[tick_valid & (bins == 1)])
             )
     return {
         "observations": int(valid.sum()),
@@ -751,9 +722,7 @@ def horizon_thinning_mask(
         ordered_timestamp_ns = valid_timestamp_ns[order]
         last_ns: int | None = None
         minimum_gap_ns = horizon_minutes * 60_000_000_000
-        for position, current_ns_value in zip(
-            ordered_positions, ordered_timestamp_ns, strict=True
-        ):
+        for position, current_ns_value in zip(ordered_positions, ordered_timestamp_ns, strict=True):
             current_ns = int(current_ns_value)
             if last_ns is None or current_ns - last_ns >= minimum_gap_ns:
                 keep[position] = True
@@ -769,11 +738,7 @@ def _evaluate_thinned_cell(
     config: MlatEvaluationConfig,
     thinning_mask: np.ndarray | None = None,
 ) -> tuple[float, int, int]:
-    mask = (
-        horizon_thinning_mask(group, horizon)
-        if thinning_mask is None
-        else thinning_mask
-    )
+    mask = horizon_thinning_mask(group, horizon) if thinning_mask is None else thinning_mask
     if len(mask) != len(group):
         raise ValueError("cached thinning mask length does not match cell group")
     daily = calculate_daily_spearman(
@@ -821,9 +786,7 @@ def evaluate_mlat_feature_cells(
                 session_frame["research_partition"].astype(str).eq("Development"),
                 feature,
             ]
-            edges = fit_development_quintiles(
-                pd.to_numeric(development_values, errors="coerce")
-            )
+            edges = fit_development_quintiles(pd.to_numeric(development_values, errors="coerce"))
             edge_rows.append(
                 {
                     "feature_name": feature,
@@ -843,9 +806,7 @@ def evaluate_mlat_feature_cells(
                 for horizon in settings.horizons:
                     target = _target_name(family, horizon)
                     tick_target = (
-                        f"forward_return_{horizon}_ticks"
-                        if family == "direction"
-                        else None
+                        f"forward_return_{horizon}_ticks" if family == "direction" else None
                     )
                     for partition in settings.partitions:
                         group = family_frame.loc[
@@ -867,21 +828,15 @@ def evaluate_mlat_feature_cells(
                         daily_rows.append(daily)
                         eligible = daily.loc[daily["eligible_date"]]
                         mean_ic = (
-                            float(eligible["daily_spearman_ic"].mean())
-                            if len(eligible)
-                            else np.nan
+                            float(eligible["daily_spearman_ic"].mean()) if len(eligible) else np.nan
                         )
                         bootstrap = date_block_bootstrap(
                             eligible["daily_spearman_ic"],
                             iterations=settings.bootstrap_iterations,
-                            seed=_cell_seed(
-                                settings, feature, family, horizon, session, partition
-                            ),
+                            seed=_cell_seed(settings, feature, family, horizon, session, partition),
                             confidence_level=settings.confidence_level,
                         )
-                        quintiles = _quintile_summary(
-                            group, feature, target, tick_target, edges
-                        )
+                        quintiles = _quintile_summary(group, feature, target, tick_target, edges)
                         quintile_rows.append(
                             {
                                 "feature_name": feature,
@@ -899,9 +854,7 @@ def evaluate_mlat_feature_cells(
                         if run_horizon_thinning and len(group):
                             cache_key = (family, horizon, session, partition)
                             if cache_key not in thinning_cache:
-                                thinning_cache[cache_key] = horizon_thinning_mask(
-                                    group, horizon
-                                )
+                                thinning_cache[cache_key] = horizon_thinning_mask(group, horizon)
                             (
                                 thinned_ic,
                                 thinning_dates,
@@ -940,9 +893,7 @@ def evaluate_mlat_feature_cells(
                                 "horizon_minutes": horizon,
                                 "entry_session": session,
                                 "research_partition": partition,
-                                "finite_observations": int(
-                                    eligible["observations"].sum()
-                                ),
+                                "finite_observations": int(eligible["observations"].sum()),
                                 "eligible_dates": int(len(eligible)),
                                 "mean_daily_ic": mean_ic,
                                 "bootstrap_ci_lower": bootstrap["lower"],
@@ -981,12 +932,12 @@ def evaluate_mlat_feature_cells(
     cells = pd.DataFrame(cell_rows)
     cells["q_value"] = np.nan
     development = cells["research_partition"].eq("Development")
-    for _, indices in cells.loc[development].groupby(
-        ["target_family", "entry_session"], observed=True, sort=False
-    ).groups.items():
-        cells.loc[indices, "q_value"] = benjamini_hochberg(
-            cells.loc[indices, "p_value"]
-        )
+    for _, indices in (
+        cells.loc[development]
+        .groupby(["target_family", "entry_session"], observed=True, sort=False)
+        .groups.items()
+    ):
+        cells.loc[indices, "q_value"] = benjamini_hochberg(cells.loc[indices, "p_value"])
     return MlatCellEvaluationResult(
         cell_results=cells,
         daily_ic=pd.concat(daily_rows, ignore_index=True) if daily_rows else pd.DataFrame(),
@@ -1057,10 +1008,7 @@ def _rank_design(controls: np.ndarray) -> np.ndarray:
     """Build the exact ranked-control design used by ``_rank_residual``."""
 
     ranked_controls = np.column_stack(
-        [
-            rankdata(controls[:, index], method="average")
-            for index in range(controls.shape[1])
-        ]
+        [rankdata(controls[:, index], method="average") for index in range(controls.shape[1])]
     )
     return np.column_stack([np.ones(len(controls)), ranked_controls])
 
@@ -1090,37 +1038,20 @@ def _batched_daily_partial_ic(
     ]
     unique_features = list(dict.fromkeys(features))
     unique_targets = list(dict.fromkeys(targets))
-    pairs = [
-        (feature, target)
-        for feature in unique_features
-        for target in unique_targets
-    ]
+    pairs = [(feature, target) for feature in unique_features for target in unique_targets]
     if group.empty:
-        return {
-            pair: pd.DataFrame(columns=result_columns)
-            for pair in pairs
-        }
+        return {pair: pd.DataFrame(columns=result_columns) for pair in pairs}
 
     numeric_columns = [*unique_features, *unique_targets, *controls]
-    values = (
-        group[numeric_columns]
-        .apply(pd.to_numeric, errors="coerce")
-        .to_numpy(float)
-    )
-    date_groups = group.groupby(
-        "trade_date_ny", observed=True, sort=True
-    ).indices
+    values = group[numeric_columns].apply(pd.to_numeric, errors="coerce").to_numpy(float)
+    date_groups = group.groupby("trade_date_ny", observed=True, sort=True).indices
     dates = list(date_groups)
     feature_count = len(unique_features)
     target_count = len(unique_targets)
     target_start = feature_count
     control_start = feature_count + target_count
-    observations = np.zeros(
-        (len(dates), feature_count, target_count), dtype=np.int64
-    )
-    correlations = np.full(
-        (len(dates), feature_count, target_count), np.nan, dtype=float
-    )
+    observations = np.zeros((len(dates), feature_count, target_count), dtype=np.int64)
+    correlations = np.full((len(dates), feature_count, target_count), np.nan, dtype=float)
     required = max(minimum_observations, len(controls) + 3)
 
     for date_index, positions in enumerate(date_groups.values()):
@@ -1135,11 +1066,7 @@ def _batched_daily_partial_ic(
             target_values = date_values[:, target_start + target_index]
             target_finite = np.isfinite(target_values)
             for feature_index in range(feature_count):
-                valid = (
-                    controls_finite
-                    & target_finite
-                    & np.isfinite(date_values[:, feature_index])
-                )
+                valid = controls_finite & target_finite & np.isfinite(date_values[:, feature_index])
                 count = int(valid.sum())
                 observations[date_index, feature_index, target_index] = count
                 if count < required:
@@ -1162,23 +1089,14 @@ def _batched_daily_partial_ic(
                 target_key = (target_index, support_key)
                 target_residual = target_residual_cache.get(target_key)
                 if target_residual is None:
-                    target_residual = _rank_residual_from_design(
-                        target_values[valid], design
-                    )
+                    target_residual = _rank_residual_from_design(target_values[valid], design)
                     target_residual_cache[target_key] = target_residual
 
-                if (
-                    np.std(feature_residual) <= 1.0e-12
-                    or np.std(target_residual) <= 1.0e-12
-                ):
+                if np.std(feature_residual) <= 1.0e-12 or np.std(target_residual) <= 1.0e-12:
                     continue
-                correlation = float(
-                    np.corrcoef(feature_residual, target_residual)[0, 1]
-                )
+                correlation = float(np.corrcoef(feature_residual, target_residual)[0, 1])
                 if np.isfinite(correlation):
-                    correlations[
-                        date_index, feature_index, target_index
-                    ] = correlation
+                    correlations[date_index, feature_index, target_index] = correlation
 
     results: dict[tuple[str, str], pd.DataFrame] = {}
     for feature_index, feature in enumerate(unique_features):
@@ -1187,9 +1105,7 @@ def _batched_daily_partial_ic(
             results[(feature, target)] = pd.DataFrame(
                 {
                     "trade_date_ny": dates,
-                    "observations": observations[
-                        :, feature_index, target_index
-                    ],
+                    "observations": observations[:, feature_index, target_index],
                     "daily_partial_ic": correlation,
                     "eligible_date": np.isfinite(correlation),
                 },
@@ -1216,14 +1132,10 @@ def evaluate_incremental_information(
     if isinstance(frozen_features, pd.DataFrame):
         frozen = frozen_features
         if "in_frozen_set" in frozen:
-            frozen = frozen.loc[
-                _strict_boolean(frozen["in_frozen_set"], "in_frozen_set")
-            ]
+            frozen = frozen.loc[_strict_boolean(frozen["in_frozen_set"], "in_frozen_set")]
         frozen_names = frozen["feature_name"].astype(str).tolist()
     elif frozen_features is None:
-        raise ValueError(
-            "frozen_features is required for incremental-information evaluation"
-        )
+        raise ValueError("frozen_features is required for incremental-information evaluation")
     else:
         frozen_names = list(frozen_features)
     frozen_names = list(dict.fromkeys(frozen_names))
@@ -1238,24 +1150,17 @@ def evaluate_incremental_information(
         "atr_20": [atr_anchor],
         "frozen_15": frozen_names,
     }
-    daily_cache: dict[
-        tuple[str, str, int, str, str, str], pd.DataFrame
-    ] = {}
+    daily_cache: dict[tuple[str, str, int, str, str, str], pd.DataFrame] = {}
     unique_horizons = list(dict.fromkeys(horizons))
     for family in MLAT_TARGET_FAMILIES:
         complete_column = f"{family}_complete_sample"
-        family_frame = frame.loc[
-            _strict_boolean(frame[complete_column], complete_column)
-        ]
+        family_frame = frame.loc[_strict_boolean(frame[complete_column], complete_column)]
         targets = [_target_name(family, horizon) for horizon in unique_horizons]
         for session in settings.sessions:
             session_mask = family_frame["entry_session"].astype(str).eq(session)
             for partition in settings.partitions:
                 group = family_frame.loc[
-                    session_mask
-                    & family_frame["research_partition"]
-                    .astype(str)
-                    .eq(partition)
+                    session_mask & family_frame["research_partition"].astype(str).eq(partition)
                 ]
                 for control_name, controls in control_sets.items():
                     batched = _batched_daily_partial_ic(
@@ -1266,9 +1171,7 @@ def evaluate_incremental_information(
                         settings.minimum_observations_per_day,
                     )
                     for feature in features:
-                        for horizon, target in zip(
-                            unique_horizons, targets, strict=True
-                        ):
+                        for horizon, target in zip(unique_horizons, targets, strict=True):
                             daily_cache[
                                 (
                                     feature,
@@ -1318,9 +1221,7 @@ def evaluate_incremental_information(
                                     "research_partition": partition,
                                     "control_set": control_name,
                                     "eligible_dates": int(len(eligible)),
-                                    "finite_observations": int(
-                                        eligible["observations"].sum()
-                                    ),
+                                    "finite_observations": int(eligible["observations"].sum()),
                                     "mean_daily_partial_ic": (
                                         float(eligible["daily_partial_ic"].mean())
                                         if len(eligible)
@@ -1347,24 +1248,18 @@ def evaluate_incremental_information(
         settings.frozen_partial_ic_threshold,
     )
     wide["development_threshold"] = threshold
-    wide["development_sample_pass"] = (
-        wide["eligible_dates_development"].ge(
-            settings.minimum_development_dates
-        )
-        & wide["finite_observations_development"].ge(
-            settings.minimum_development_observations
-        )
-    )
-    wide["validation_sample_pass"] = (
-        wide["eligible_dates_validation"].ge(settings.minimum_validation_dates)
-        & wide["finite_observations_validation"].ge(
-            settings.minimum_validation_observations
-        )
-    )
+    wide["development_sample_pass"] = wide["eligible_dates_development"].ge(
+        settings.minimum_development_dates
+    ) & wide["finite_observations_development"].ge(settings.minimum_development_observations)
+    wide["validation_sample_pass"] = wide["eligible_dates_validation"].ge(
+        settings.minimum_validation_dates
+    ) & wide["finite_observations_validation"].ge(settings.minimum_validation_observations)
     wide["development_magnitude_pass"] = development_ic.abs() >= threshold
     wide["validation_sign_agreement"] = (
-        np.sign(validation_ic) == np.sign(development_ic)
-    ) & development_ic.notna() & validation_ic.notna()
+        (np.sign(validation_ic) == np.sign(development_ic))
+        & development_ic.notna()
+        & validation_ic.notna()
+    )
     wide["validation_magnitude_retention"] = validation_ic.abs() / development_ic.abs()
     wide["validation_retention_pass"] = (
         wide["validation_magnitude_retention"] >= settings.validation_retention
@@ -1384,9 +1279,7 @@ def evaluate_incremental_information(
     )
 
 
-def _validation_failures(
-    validation: object | None, features: Sequence[str]
-) -> Mapping[str, bool]:
+def _validation_failures(validation: object | None, features: Sequence[str]) -> Mapping[str, bool]:
     failures = {feature: False for feature in features}
     if validation is None:
         raise ValueError("validation evidence is required for verdict assignment")
@@ -1397,9 +1290,7 @@ def _validation_failures(
     diagnostics = getattr(validation, "feature_diagnostics", None)
     if isinstance(diagnostics, pd.DataFrame) and not diagnostics.empty:
         for row in diagnostics.itertuples(index=False):
-            failures[str(row.feature_name)] = failures.get(
-                str(row.feature_name), False
-            ) or bool(
+            failures[str(row.feature_name)] = failures.get(str(row.feature_name), False) or bool(
                 getattr(row, "missing_rate", 0) > 0.05
                 or not getattr(row, "dtype_pass", True)
                 or getattr(row, "nonfinite_count", 0) > 0
@@ -1431,13 +1322,10 @@ def assign_mlat_verdicts(
     settings = config or MlatEvaluationConfig()
     if not isinstance(evaluation, MlatCellEvaluationResult):
         raise TypeError(
-            "evaluation must be MlatCellEvaluationResult so stability evidence "
-            "cannot be omitted"
+            "evaluation must be MlatCellEvaluationResult so stability evidence cannot be omitted"
         )
     if not isinstance(incremental, MlatIncrementalResult):
-        raise TypeError(
-            "incremental must be MlatIncrementalResult with complete control evidence"
-        )
+        raise TypeError("incremental must be MlatIncrementalResult with complete control evidence")
     if overlap_audit is None or overlap_audit.empty:
         raise ValueError("non-empty overlap_audit evidence is required")
     overlap_required = {
@@ -1477,21 +1365,13 @@ def assign_mlat_verdicts(
         "control_set",
         "incremental_pass",
     }
-    missing_incremental = sorted(
-        incremental_required.difference(incremental_table.columns)
-    )
+    missing_incremental = sorted(incremental_required.difference(incremental_table.columns))
     if missing_incremental:
-        raise KeyError(
-            f"incremental evidence columns missing: {missing_incremental}"
-        )
+        raise KeyError(f"incremental evidence columns missing: {missing_incremental}")
     if "thinned_mean_daily_ic" not in cells:
-        raise KeyError(
-            "cell result columns missing: ['thinned_mean_daily_ic']"
-        )
+        raise KeyError("cell result columns missing: ['thinned_mean_daily_ic']")
     required_incremental_horizons = sorted(
-        pd.to_numeric(
-            incremental_table["horizon_minutes"], errors="coerce"
-        )
+        pd.to_numeric(incremental_table["horizon_minutes"], errors="coerce")
         .dropna()
         .astype(int)
         .unique()
@@ -1500,9 +1380,7 @@ def assign_mlat_verdicts(
     if not required_incremental_horizons:
         raise ValueError("incremental evidence contains no evaluable horizons")
     required_thinning_cells = cells.loc[
-        pd.to_numeric(cells["horizon_minutes"], errors="coerce").isin(
-            required_incremental_horizons
-        )
+        pd.to_numeric(cells["horizon_minutes"], errors="coerce").isin(required_incremental_horizons)
     ]
     finite_required_thinning_cells = int(
         np.isfinite(
@@ -1513,28 +1391,21 @@ def assign_mlat_verdicts(
         ).sum()
     )
     required_development_thinning_cells = required_thinning_cells.loc[
-        required_thinning_cells["research_partition"]
-        .astype(str)
-        .eq("Development")
+        required_thinning_cells["research_partition"].astype(str).eq("Development")
     ]
     finite_required_development_thinning_cells = int(
         np.isfinite(
             pd.to_numeric(
-                required_development_thinning_cells[
-                    "thinned_mean_daily_ic"
-                ],
+                required_development_thinning_cells["thinned_mean_daily_ic"],
                 errors="coerce",
             )
         ).sum()
     )
     required_thinning_cell_count = len(required_thinning_cells)
     authorization_gate_open = bool(
-        required_thinning_cell_count > 0
-        and finite_required_development_thinning_cells > 0
+        required_thinning_cell_count > 0 and finite_required_development_thinning_cells > 0
     )
-    horizon_label = "/".join(
-        str(horizon) for horizon in required_incremental_horizons
-    )
+    horizon_label = "/".join(str(horizon) for horizon in required_incremental_horizons)
     if authorization_gate_open:
         authorization_gate_reason = (
             "frozen v1 horizon-thinning evidence is evaluable: "
@@ -1567,8 +1438,7 @@ def assign_mlat_verdicts(
     missing_overlap_features = sorted(set(features).difference(existing_overlap_features))
     if missing_overlap_features:
         raise ValueError(
-            "existing-feature overlap evidence missing for: "
-            f"{missing_overlap_features}"
+            f"existing-feature overlap evidence missing for: {missing_overlap_features}"
         )
     validation_failed = _validation_failures(validation, features)
     metadata_by_feature: dict[str, dict[str, object]] = {}
@@ -1593,21 +1463,11 @@ def assign_mlat_verdicts(
             how="left",
             suffixes=("_development", "_validation"),
         )
-        dev_q = paired.get(
-            "q_value_development", pd.Series(np.nan, index=paired.index)
-        )
-        dev_dates = paired.get(
-            "eligible_dates_development", pd.Series(0, index=paired.index)
-        )
-        val_dates = paired.get(
-            "eligible_dates_validation", pd.Series(0, index=paired.index)
-        )
-        dev_obs = paired.get(
-            "finite_observations_development", pd.Series(0, index=paired.index)
-        )
-        val_obs = paired.get(
-            "finite_observations_validation", pd.Series(0, index=paired.index)
-        )
+        dev_q = paired.get("q_value_development", pd.Series(np.nan, index=paired.index))
+        dev_dates = paired.get("eligible_dates_development", pd.Series(0, index=paired.index))
+        val_dates = paired.get("eligible_dates_validation", pd.Series(0, index=paired.index))
+        dev_obs = paired.get("finite_observations_development", pd.Series(0, index=paired.index))
+        val_obs = paired.get("finite_observations_validation", pd.Series(0, index=paired.index))
         dev_ic = paired["mean_daily_ic_development"]
         val_ic = paired["mean_daily_ic_validation"]
         paired["development_screen_pass"] = (
@@ -1616,23 +1476,19 @@ def assign_mlat_verdicts(
             & dev_obs.ge(settings.minimum_development_observations)
         )
         paired["validation_sign_agreement"] = (
-            np.sign(dev_ic) == np.sign(val_ic)
-        ) & dev_ic.notna() & val_ic.notna()
+            (np.sign(dev_ic) == np.sign(val_ic)) & dev_ic.notna() & val_ic.notna()
+        )
         paired["validation_magnitude_retention"] = val_ic.abs() / dev_ic.abs()
         paired["validation_confirmation_pass"] = (
             paired["validation_sign_agreement"]
-            & paired["validation_magnitude_retention"].ge(
-                settings.validation_retention
-            )
+            & paired["validation_magnitude_retention"].ge(settings.validation_retention)
             & val_dates.ge(settings.minimum_validation_dates)
             & val_obs.ge(settings.minimum_validation_observations)
         )
         monotonicity = paired.get(
             "absolute_monotonicity_development", pd.Series(np.nan, index=paired.index)
         )
-        paired["monotonicity_pass"] = monotonicity.ge(
-            settings.monotonicity_threshold
-        )
+        paired["monotonicity_pass"] = monotonicity.ge(settings.monotonicity_threshold)
         thinning = paired.get(
             "thinning_sign_agreement_development",
             pd.Series(False, index=paired.index),
@@ -1641,13 +1497,11 @@ def assign_mlat_verdicts(
         if year_table.empty:
             paired["year_stability_pass"] = False
         else:
-            feature_years = year_table.loc[
-                year_table["feature_name"].astype(str).eq(feature)
-            ]
+            feature_years = year_table.loc[year_table["feature_name"].astype(str).eq(feature)]
             year_pass = (
-                feature_years.groupby(
-                    [*keys, "research_partition"], observed=True
-                )["full_period_sign_agreement"]
+                feature_years.groupby([*keys, "research_partition"], observed=True)[
+                    "full_period_sign_agreement"
+                ]
                 .all()
                 .unstack("research_partition")
             )
@@ -1657,9 +1511,7 @@ def assign_mlat_verdicts(
                 on=keys,
                 how="left",
             )
-            paired["year_stability_pass"] = paired[
-                "year_stability_pass"
-            ].fillna(False)
+            paired["year_stability_pass"] = paired["year_stability_pass"].fillna(False)
         session_evidence = (
             paired["mean_daily_ic_development"].notna()
             & paired["mean_daily_ic_validation"].notna()
@@ -1682,14 +1534,9 @@ def assign_mlat_verdicts(
         paired["session_stability_pass"] = [
             bool(
                 (family, horizon) in session_summary.index
-                and session_summary.loc[
-                    (family, horizon), "eligible_sessions"
-                ]
+                and session_summary.loc[(family, horizon), "eligible_sessions"]
                 == required_session_count
-                and session_summary.loc[
-                    (family, horizon), "development_signs"
-                ]
-                == 1
+                and session_summary.loc[(family, horizon), "development_signs"] == 1
             )
             for family, horizon in zip(
                 paired["target_family"], paired["horizon_minutes"], strict=True
@@ -1714,33 +1561,23 @@ def assign_mlat_verdicts(
         ]
         incremental_rows = []
         required_controls = set(REQUIRED_INCREMENTAL_CONTROL_SETS)
-        for key_values, group in incremental_feature.groupby(
-            keys, observed=True, sort=False
-        ):
-            key_tuple = (
-                key_values if isinstance(key_values, tuple) else (key_values,)
-            )
+        for key_values, group in incremental_feature.groupby(keys, observed=True, sort=False):
+            key_tuple = key_values if isinstance(key_values, tuple) else (key_values,)
             controls = group["control_set"].astype(str)
             required_rows = group.loc[controls.isin(required_controls)]
             complete_controls = (
-                set(controls) == required_controls
-                and not controls.duplicated().any()
+                set(controls) == required_controls and not controls.duplicated().any()
             )
             incremental_rows.append(
                 {
                     **dict(zip(keys, key_tuple, strict=True)),
                     "incremental_pass": bool(
                         complete_controls
-                        and required_rows["incremental_pass"]
-                        .fillna(False)
-                        .astype(bool)
-                        .all()
+                        and required_rows["incremental_pass"].fillna(False).astype(bool).all()
                     ),
                 }
             )
-        incremental_grouped = pd.DataFrame(
-            incremental_rows, columns=[*keys, "incremental_pass"]
-        )
+        incremental_grouped = pd.DataFrame(incremental_rows, columns=[*keys, "incremental_pass"])
         paired = paired.merge(incremental_grouped, on=keys, how="left")
         incremental_pass = paired["incremental_pass"].fillna(False)
         paired["incremental_gate_pass"] = incremental_pass
@@ -1772,9 +1609,7 @@ def assign_mlat_verdicts(
                 overlap_rows["sufficient_overlap"].fillna(False)
                 & (
                     overlap_rows["is_exact_duplicate"].fillna(False)
-                    | overlap_rows["absolute_correlation"].ge(
-                        settings.overlap_threshold
-                    )
+                    | overlap_rows["absolute_correlation"].ge(settings.overlap_threshold)
                 )
             ).any()
         )
@@ -1803,13 +1638,17 @@ def assign_mlat_verdicts(
             reason = f"Development overlap veto against {reference}"
         elif advances["target_family"].eq("direction").any():
             verdict = "ADVANCE_DIRECTIONAL"
-            reason = "directional cell passed Development, Validation, economic, and incremental gates"
+            reason = (
+                "directional cell passed Development, Validation, economic, and incremental gates"
+            )
         elif advances["target_family"].eq("expansion").any():
             verdict = "ADVANCE_EXPANSION"
             reason = "expansion cell passed Development, Validation, and incremental gates"
         elif advances["target_family"].isin(["volatility", "path_risk"]).any():
             verdict = "ADVANCE_RISK_STATE"
-            reason = "volatility/path-risk cell passed Development, Validation, and incremental gates"
+            reason = (
+                "volatility/path-risk cell passed Development, Validation, and incremental gates"
+            )
         elif directional_trivial:
             verdict = "ECONOMICALLY_TRIVIAL"
             reason = "directional evidence did not reach the two-GC-tick spread gate"
@@ -1820,11 +1659,10 @@ def assign_mlat_verdicts(
             verdict = "NO_EVIDENCE"
             reason = "no Development cell passed the preregistered screen"
         pre_authorization_verdict = verdict
-        if (
-            not authorization_gate_open
-            and verdict
-            not in {"FAILED_VALIDATION", "REDUNDANT_WITH_EXISTING"}
-        ):
+        if not authorization_gate_open and verdict not in {
+            "FAILED_VALIDATION",
+            "REDUNDANT_WITH_EXISTING",
+        }:
             verdict = "RESEARCH_ONLY"
             reason = authorization_gate_reason
         best = (
@@ -1836,14 +1674,11 @@ def assign_mlat_verdicts(
         source = MLAT_SOURCE_TRACEABILITY.get(feature, (pd.NA, pd.NA, pd.NA))
         metadata = metadata_by_feature.get(feature, {})
         hypothesis_id = metadata.get("hypothesis_id", source[0])
-        book_chapter = metadata.get(
-            "book_chapter", metadata.get("source_chapter", source[1])
-        )
+        book_chapter = metadata.get("book_chapter", metadata.get("source_chapter", source[1]))
         source_pdf_page = metadata.get("source_pdf_page", source[2])
         development_screened = paired["development_screen_pass"].fillna(False)
-        screened_confirmed = (
-            development_screened
-            & paired["validation_confirmation_pass"].fillna(False)
+        screened_confirmed = development_screened & paired["validation_confirmation_pass"].fillna(
+            False
         )
         development_result = (
             f"{int(development_screened.sum())}/{len(paired)} cells pass "
@@ -1854,13 +1689,10 @@ def assign_mlat_verdicts(
         )
         screened_count = int(development_screened.sum())
         confirmed_count = int(screened_confirmed.sum())
-        confirmed_validation_ic = paired.loc[
-            screened_confirmed, "mean_daily_ic_validation"
-        ]
+        confirmed_validation_ic = paired.loc[screened_confirmed, "mean_daily_ic_validation"]
         if screened_count == 0:
             validation_result = (
-                "0 Development cells passed the screen; "
-                "Validation confirmation not applicable"
+                "0 Development cells passed the screen; Validation confirmation not applicable"
             )
         elif confirmed_validation_ic.notna().any():
             validation_result = (
@@ -1875,9 +1707,7 @@ def assign_mlat_verdicts(
                 "confirmed in Validation"
             )
         incremental_feature = (
-            incremental_table.loc[
-                incremental_table["feature_name"].astype(str).eq(feature)
-            ]
+            incremental_table.loc[incremental_table["feature_name"].astype(str).eq(feature)]
             if not incremental_table.empty
             else pd.DataFrame()
         )
@@ -1914,16 +1744,10 @@ def assign_mlat_verdicts(
             economic_interpretation = (
                 "No incremental, stable, nonredundant economic interpretation is supported."
             )
-        any_session_stability_pass = bool(
-            paired["session_stability_pass"].any()
-        )
-        all_session_stability_pass = bool(
-            paired["session_stability_pass"].all()
-        )
+        any_session_stability_pass = bool(paired["session_stability_pass"].any())
+        all_session_stability_pass = bool(paired["session_stability_pass"].all())
         if all_session_stability_pass:
-            session_stability = (
-                "PASS_ALL: every family/horizon meets the cross-session gate"
-            )
+            session_stability = "PASS_ALL: every family/horizon meets the cross-session gate"
         elif any_session_stability_pass:
             session_stability = (
                 "MIXED: at least one family/horizon meets the cross-session "
@@ -1937,18 +1761,14 @@ def assign_mlat_verdicts(
         any_year_stability_pass = bool(paired["year_stability_pass"].any())
         all_year_stability_pass = bool(paired["year_stability_pass"].all())
         if all_year_stability_pass:
-            year_stability = (
-                "PASS_ALL: every evaluated cell has stable annual IC signs"
-            )
+            year_stability = "PASS_ALL: every evaluated cell has stable annual IC signs"
         elif any_year_stability_pass:
             year_stability = (
                 "MIXED: at least one evaluated cell has stable annual IC "
                 "signs and at least one does not"
             )
         else:
-            year_stability = (
-                "FAIL: no evaluated cell has stable annual IC signs"
-            )
+            year_stability = "FAIL: no evaluated cell has stable annual IC signs"
         rows.append(
             {
                 "feature_name": feature,
@@ -1958,35 +1778,25 @@ def assign_mlat_verdicts(
                 "validation_passed": not validation_failed.get(feature, False),
                 "overlap_veto": redundant,
                 "overlap_reference": reference,
-                "any_development_screen_pass": bool(
-                    paired["development_screen_pass"].any()
-                ),
+                "any_development_screen_pass": bool(paired["development_screen_pass"].any()),
                 "any_validation_confirmation_pass": bool(
                     paired["validation_confirmation_pass"].any()
                 ),
-                "any_screened_validation_confirmation_pass": bool(
-                    screened_confirmed.any()
-                ),
-                "any_monotonicity_pass": bool(
-                    paired["monotonicity_pass"].any()
-                ),
+                "any_screened_validation_confirmation_pass": bool(screened_confirmed.any()),
+                "any_monotonicity_pass": bool(paired["monotonicity_pass"].any()),
                 "any_thinning_pass": bool(paired["thinning_pass"].any()),
                 "any_year_stability_pass": any_year_stability_pass,
                 "any_session_stability_pass": any_session_stability_pass,
                 "any_economic_gate_pass": bool(paired["economic_pass"].any()),
-                "any_incremental_gate_pass": bool(
-                    paired["incremental_gate_pass"].any()
-                ),
+                "any_incremental_gate_pass": bool(paired["incremental_gate_pass"].any()),
                 "directional_cells_passed": int(
                     (
-                        paired["target_family"].eq("direction")
-                        & paired["all_advancement_gates"]
+                        paired["target_family"].eq("direction") & paired["all_advancement_gates"]
                     ).sum()
                 ),
                 "expansion_cells_passed": int(
                     (
-                        paired["target_family"].eq("expansion")
-                        & paired["all_advancement_gates"]
+                        paired["target_family"].eq("expansion") & paired["all_advancement_gates"]
                     ).sum()
                 ),
                 "risk_state_cells_passed": int(
@@ -2001,9 +1811,7 @@ def assign_mlat_verdicts(
                 "primary_horizon_minutes": (
                     primary["horizon_minutes"] if primary is not None else pd.NA
                 ),
-                "primary_session": (
-                    primary["entry_session"] if primary is not None else pd.NA
-                ),
+                "primary_session": (primary["entry_session"] if primary is not None else pd.NA),
                 "development_result": development_result,
                 "validation_result": validation_result,
                 "session_stability": session_stability,

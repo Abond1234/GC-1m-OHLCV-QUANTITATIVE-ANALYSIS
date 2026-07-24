@@ -240,9 +240,7 @@ def _build_specs() -> tuple[MLATFeatureSpec, ...]:
             source_chapter="Appendix",
             source_pdf_page="752-753",
             source_type="MLAT-ADAPTED",
-            formula=(
-                "sum_20(volume * ((2*close-high-low)/(high-low))) / sum_20(volume)"
-            ),
+            formula=("sum_20(volume * ((2*close-high-low)/(high-low))) / sum_20(volume)"),
             rationale=(
                 "Close location weighted by volume may reveal pressure not present in either "
                 "input alone."
@@ -318,8 +316,7 @@ def _build_specs() -> tuple[MLATFeatureSpec, ...]:
             source_pdf_page="297-301",
             source_type="PROJECT-ORIGINAL-EXTENSION",
             formula=(
-                "1e4 * sqrt(mean_30(log(high/open)*log(high/close) + "
-                "log(low/open)*log(low/close)))"
+                "1e4 * sqrt(mean_30(log(high/open)*log(high/close) + log(low/open)*log(low/close)))"
             ),
             rationale=(
                 "A drift-robust OHLC estimator may retain information beyond ATR and "
@@ -347,9 +344,7 @@ def _build_specs() -> tuple[MLATFeatureSpec, ...]:
             source_chapter="5 / 9",
             source_pdf_page="169-178; 297-301",
             source_type="PROJECT-ORIGINAL-EXTENSION",
-            formula=(
-                "(sum_60(r^2 * 1[r>0]) - sum_60(r^2 * 1[r<0])) / sum_60(r^2)"
-            ),
+            formula=("(sum_60(r^2 * 1[r>0]) - sum_60(r^2 * 1[r<0])) / sum_60(r^2)"),
             rationale=(
                 "Asymmetry in recent signed variation may distinguish downside and upside "
                 "risk states."
@@ -375,8 +370,7 @@ def _build_specs() -> tuple[MLATFeatureSpec, ...]:
             source_pdf_page="297-301",
             source_type="PROJECT-ORIGINAL-EXTENSION",
             formula=(
-                "max(RV-BV, 0)/RV; RV=sum_60(r^2); "
-                "BV=(pi/2)*(60/59)*sum_60(abs(r_i)*abs(r_(i-1)))"
+                "max(RV-BV, 0)/RV; RV=sum_60(r^2); BV=(pi/2)*(60/59)*sum_60(abs(r_i)*abs(r_(i-1)))"
             ),
             rationale=(
                 "The share of local variation attributable to jumps may alter subsequent "
@@ -432,9 +426,7 @@ def _build_specs() -> tuple[MLATFeatureSpec, ...]:
             source_chapter="6",
             source_pdf_page="192",
             source_type="PROJECT-ORIGINAL-EXTENSION",
-            formula=(
-                "-sum(p_s*log(p_s), s in {negative, zero, positive}) / log(3)"
-            ),
+            formula=("-sum(p_s*log(p_s), s in {negative, zero, positive}) / log(3)"),
             rationale=(
                 "Low sign entropy may reflect directional organization while high entropy "
                 "may reflect choppy state."
@@ -445,8 +437,7 @@ def _build_specs() -> tuple[MLATFeatureSpec, ...]:
             input_columns=("close",),
             expected_range="[0, 1]",
             missing_value_policy=(
-                "Null until 60 complete returns; sign states with zero probability "
-                "contribute zero."
+                "Null until 60 complete returns; sign states with zero probability contribute zero."
             ),
             normalization_method="Three-state Shannon entropy divided by log(3)",
             existing_feature_overlap="choppiness_14; return_sign_change_rate_30",
@@ -463,8 +454,7 @@ def _build_specs() -> tuple[MLATFeatureSpec, ...]:
             source_pdf_page="297-301",
             source_type="PROJECT-ORIGINAL-EXTENSION",
             formula=(
-                "population_std_60(RV15) / mean_60(RV15), "
-                "RV15=1e4*sqrt(mean_15(log_return^2))"
+                "population_std_60(RV15) / mean_60(RV15), RV15=1e4*sqrt(mean_15(log_return^2))"
             ),
             rationale=(
                 "Instability of volatility, rather than its level, may identify transition risk."
@@ -541,14 +531,10 @@ def validate_mlat_registry(
             f"MLAT registry schema mismatch: missing={missing_columns}, extra={extra_columns}"
         )
     if len(frame) != len(MLAT_FEATURE_NAMES):
-        raise ValueError(
-            f"Frozen MLAT registry requires 12 rows; received {len(frame)}."
-        )
+        raise ValueError(f"Frozen MLAT registry requires 12 rows; received {len(frame)}.")
     names = tuple(frame["feature_name"].astype(str))
     if names != MLAT_FEATURE_NAMES:
-        raise ValueError(
-            "MLAT feature membership/order drifted from the frozen v1 contract."
-        )
+        raise ValueError("MLAT feature membership/order drifted from the frozen v1 contract.")
     if frame["feature_name"].duplicated().any():
         raise ValueError("MLAT registry contains duplicate feature names.")
 
@@ -601,9 +587,7 @@ def validate_mlat_registry(
         raise ValueError("Every MLAT feature must remain FROZEN_V1.")
     if not frame["output_dtype"].astype(str).eq("float32").all():
         raise ValueError("Every frozen MLAT predictor must persist as float32.")
-    if not frame["implementation_version"].astype(str).eq(
-        MLAT_IMPLEMENTATION_VERSION
-    ).all():
+    if not frame["implementation_version"].astype(str).eq(MLAT_IMPLEMENTATION_VERSION).all():
         raise ValueError("MLAT implementation versions must match.")
     if not frame["is_experimental"].astype(bool).all():
         raise ValueError("The MLAT v1 additions must remain explicitly experimental.")
@@ -624,9 +608,7 @@ def validate_mlat_registry(
     for row in frame.itertuples(index=False):
         inputs = tuple(str(row.input_columns).split("|"))
         if not inputs or not set(inputs).issubset(MLAT_CAUSAL_INPUT_COLUMNS):
-            raise ValueError(
-                f"{row.feature_name} has non-causal or unsupported inputs: {inputs}"
-            )
+            raise ValueError(f"{row.feature_name} has non-causal or unsupported inputs: {inputs}")
         if int(row.minimum_history) <= 0:
             raise ValueError(f"{row.feature_name} minimum_history must be positive.")
         lower = row.validation_minimum
@@ -667,4 +649,3 @@ def validate_mlat_feature_frame(frame: pd.DataFrame) -> None:
 
 
 validate_mlat_registry()
-

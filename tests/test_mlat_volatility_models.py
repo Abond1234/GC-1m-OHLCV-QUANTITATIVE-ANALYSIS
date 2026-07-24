@@ -133,9 +133,7 @@ class TestSegmentedGARCHAudit(unittest.TestCase):
     def test_fragmented_runs_use_contiguous_slices_not_full_array_rescans(self) -> None:
         runs = np.arange(4_000, dtype=np.int64)
         values = np.ones(len(runs), dtype=np.float64)
-        timestamps = pd.Series(
-            pd.date_range("2024-01-01", periods=len(runs), freq="min", tz="UTC")
-        )
+        timestamps = pd.Series(pd.date_range("2024-01-01", periods=len(runs), freq="min", tz="UTC"))
         original_flatnonzero = np.flatnonzero
 
         def reject_full_length_scan(array: np.ndarray) -> np.ndarray:
@@ -244,12 +242,9 @@ class TestSegmentedGARCHAudit(unittest.TestCase):
         self.assertEqual(float(row["garch_variance_forecast_1m"]), expected_next)
         persistence = parameters.persistence
         unconditional = parameters.omega / (1.0 - persistence)
-        decay_sum = (
-            1.0 - persistence**HORIZON_MINUTES
-        ) / (1.0 - persistence)
+        decay_sum = (1.0 - persistence**HORIZON_MINUTES) / (1.0 - persistence)
         expected_cumulative = (
-            HORIZON_MINUTES * unconditional
-            + (expected_next - unconditional) * decay_sum
+            HORIZON_MINUTES * unconditional + (expected_next - unconditional) * decay_sum
         )
         self.assertEqual(
             float(row[f"garch_sigma_forecast_{HORIZON_MINUTES}m"]),
@@ -265,15 +260,10 @@ class TestSegmentedGARCHAudit(unittest.TestCase):
 
         default_forecasts = forecast_segmented_garch(self.bars, self.audit.fit)
         default_decay_sum = (1.0 - persistence**60) / (1.0 - persistence)
-        default_next = default_forecasts[
-            "garch_variance_forecast_1m"
-        ].to_numpy(dtype=np.float64)
+        default_next = default_forecasts["garch_variance_forecast_1m"].to_numpy(dtype=np.float64)
         np.testing.assert_array_equal(
             default_forecasts["garch_sigma_forecast_60m"].to_numpy(dtype=np.float64),
-            np.sqrt(
-                60.0 * unconditional
-                + (default_next - unconditional) * default_decay_sum
-            ),
+            np.sqrt(60.0 * unconditional + (default_next - unconditional) * default_decay_sum),
         )
 
     def test_calibration_is_fit_on_2023_and_unchanged_by_2024(self) -> None:
@@ -393,11 +383,7 @@ class TestMLATArtifactPersistence(unittest.TestCase):
             )
             self.assertEqual(
                 paths.report_dir,
-                root
-                / "reports"
-                / "statistical_research"
-                / "mlat_feature_research"
-                / "v1",
+                root / "reports" / "statistical_research" / "mlat_feature_research" / "v1",
             )
             self.assertEqual(
                 paths.figure_dir,
@@ -461,8 +447,7 @@ class TestMLATArtifactPersistence(unittest.TestCase):
             self.assertEqual(len(manifest["artifacts"]), 3)
             self.assertTrue(
                 all(
-                    not Path(artifact_path).is_absolute()
-                    for artifact_path in manifest["artifacts"]
+                    not Path(artifact_path).is_absolute() for artifact_path in manifest["artifacts"]
                 )
             )
 

@@ -23,7 +23,6 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-
 TRADING_DAYS_PER_YEAR = 252
 MIN_SHARPE_OBSERVATIONS = 20
 
@@ -57,17 +56,72 @@ def build_sharpe_applicability_table() -> pd.DataFrame:
     """Document where Sharpe is and is not valid across the notebook."""
 
     records = [
-        ("1-4", "Environment, population, and labels", False, "No return-generating policy; use validation, coverage, and label-integrity metrics."),
-        ("5", "Unconditional baseline event study", False, "Overlapping forward outcomes are descriptive labels, not a position or tradable PnL stream."),
-        ("6", "Feature engineering", False, "A feature value has no payoff until paired with a direction, sizing rule, holding period, and costs."),
-        ("7", "Univariate feature evaluation", True, "Use only as a secondary feature-spread diagnostic: daily top-minus-bottom forward-return spreads, Development-fitted orientation, Validation confirmation."),
-        ("8", "Redundancy and incremental information", False, "Partial rank IC measures incremental information, not returns; retain IC and correlation diagnostics."),
-        ("9", "Multivariate expansion models", False, "The target is unsigned future range; IC, AUC, Brier score, and calibration are appropriate, while Sharpe would mislabel volatility forecasts as PnL."),
-        ("10", "Signal construction", False, "Rules exist but realized sequential returns do not; defer Sharpe until the cost-aware backtest."),
-        ("11", "Independent sequential backtest", True, "Primary valid use: annualized Sharpe of daily net R, including zero-trade eligible dates, reported by variant, partition, and cost scenario."),
-        ("12", "Hybrid integration event study", False, "Events overlap and the robust-R comparison is not a sequential portfolio return stream; use date-block improvement intervals and sample floors."),
-        ("12B", "Sizing, exits, and suppression event study", False, "The tests are non-sequential conditional event studies; mean/MAD, effect intervals, retention, and drawdown diagnostics remain the governed measures."),
-        ("GARCH", "Volatility modelling", False, "Conditional volatility is a risk forecast, not a return stream; use forecast persistence and regime diagnostics until tied to a frozen strategy."),
+        (
+            "1-4",
+            "Environment, population, and labels",
+            False,
+            "No return-generating policy; use validation, coverage, and label-integrity metrics.",
+        ),
+        (
+            "5",
+            "Unconditional baseline event study",
+            False,
+            "Overlapping forward outcomes are descriptive labels, not a position or tradable PnL stream.",
+        ),
+        (
+            "6",
+            "Feature engineering",
+            False,
+            "A feature value has no payoff until paired with a direction, sizing rule, holding period, and costs.",
+        ),
+        (
+            "7",
+            "Univariate feature evaluation",
+            True,
+            "Use only as a secondary feature-spread diagnostic: daily top-minus-bottom forward-return spreads, Development-fitted orientation, Validation confirmation.",
+        ),
+        (
+            "8",
+            "Redundancy and incremental information",
+            False,
+            "Partial rank IC measures incremental information, not returns; retain IC and correlation diagnostics.",
+        ),
+        (
+            "9",
+            "Multivariate expansion models",
+            False,
+            "The target is unsigned future range; IC, AUC, Brier score, and calibration are appropriate, while Sharpe would mislabel volatility forecasts as PnL.",
+        ),
+        (
+            "10",
+            "Signal construction",
+            False,
+            "Rules exist but realized sequential returns do not; defer Sharpe until the cost-aware backtest.",
+        ),
+        (
+            "11",
+            "Independent sequential backtest",
+            True,
+            "Primary valid use: annualized Sharpe of daily net R, including zero-trade eligible dates, reported by variant, partition, and cost scenario.",
+        ),
+        (
+            "12",
+            "Hybrid integration event study",
+            False,
+            "Events overlap and the robust-R comparison is not a sequential portfolio return stream; use date-block improvement intervals and sample floors.",
+        ),
+        (
+            "12B",
+            "Sizing, exits, and suppression event study",
+            False,
+            "The tests are non-sequential conditional event studies; mean/MAD, effect intervals, retention, and drawdown diagnostics remain the governed measures.",
+        ),
+        (
+            "GARCH",
+            "Volatility modelling",
+            False,
+            "Conditional volatility is a risk forecast, not a return stream; use forecast persistence and regime diagnostics until tied to a frozen strategy.",
+        ),
     ]
     return pd.DataFrame(
         records,
@@ -193,10 +247,9 @@ def build_feature_spread_sharpe(
                             axis=1,
                             join="inner",
                         )
-                        enough = (
-                            joined["bottom_count"].ge(min_daily_bucket_observations)
-                            & joined["top_count"].ge(min_daily_bucket_observations)
-                        )
+                        enough = joined["bottom_count"].ge(min_daily_bucket_observations) & joined[
+                            "top_count"
+                        ].ge(min_daily_bucket_observations)
                         daily_spread = orientation * (
                             joined.loc[enough, "top_mean"] - joined.loc[enough, "bottom_mean"]
                         )
@@ -212,8 +265,12 @@ def build_feature_spread_sharpe(
                             "development_daily_ic_mean": dev_ic,
                             "bucket_count_observed": int(observed_bucket_count),
                             "trading_dates": int(len(daily_spread)),
-                            "mean_daily_spread_ticks": float(daily_spread.mean()) if len(daily_spread) else np.nan,
-                            "daily_spread_std_ticks": float(daily_spread.std(ddof=1)) if len(daily_spread) > 1 else np.nan,
+                            "mean_daily_spread_ticks": float(daily_spread.mean())
+                            if len(daily_spread)
+                            else np.nan,
+                            "daily_spread_std_ticks": float(daily_spread.std(ddof=1))
+                            if len(daily_spread) > 1
+                            else np.nan,
                             "annualized_sharpe": annualized_sharpe_ratio(
                                 daily_spread,
                                 periods_per_year=periods_per_year,
@@ -229,11 +286,11 @@ def _scenario_cost_ticks(config: object, scenario: str) -> float:
     if scenario == "frictionless":
         return 0.0
     per_side = (
-        float(getattr(config, "base_slippage_ticks_per_side"))
+        float(config.base_slippage_ticks_per_side)
         if scenario == "base"
-        else float(getattr(config, "pessimistic_slippage_ticks_per_side"))
+        else float(config.pessimistic_slippage_ticks_per_side)
     )
-    return float(getattr(config, "commission_ticks_round_trip")) + 2.0 * per_side
+    return float(config.commission_ticks_round_trip) + 2.0 * per_side
 
 
 def build_backtest_daily_sharpe(
@@ -263,17 +320,17 @@ def build_backtest_daily_sharpe(
     summary_records: list[dict] = []
     daily_frames: list[pd.DataFrame] = []
 
-    scenarios = tuple(getattr(config, "cost_scenarios"))
+    scenarios = tuple(config.cost_scenarios)
     for scenario in scenarios:
         cost_ticks = _scenario_cost_ticks(config, str(scenario))
         scored = trades.assign(net_r=trades["gross_r"] - cost_ticks / trades["stop_ticks"])
         for keys, group in scored.groupby(variant_columns, sort=False):
             direction, gate, partition = keys
-            dates = calendar.loc[
-                calendar["research_partition"].eq(str(partition)), "trade_date_ny"
-            ]
-            daily = group.groupby("trade_date_ny", sort=True)["net_r"].sum().reindex(
-                pd.DatetimeIndex(dates), fill_value=0.0
+            dates = calendar.loc[calendar["research_partition"].eq(str(partition)), "trade_date_ny"]
+            daily = (
+                group.groupby("trade_date_ny", sort=True)["net_r"]
+                .sum()
+                .reindex(pd.DatetimeIndex(dates), fill_value=0.0)
             )
             cumulative = daily.cumsum()
             drawdown = cumulative.cummax() - cumulative
@@ -331,7 +388,9 @@ def save_performance_diagnostics(
     """Persist Sharpe diagnostics and verify every artifact reloads."""
 
     processed = project_root / "data" / "processed" / "statistical_research"
-    tables = project_root / "reports" / "statistical_research" / "tables" / "performance_diagnostics"
+    tables = (
+        project_root / "reports" / "statistical_research" / "tables" / "performance_diagnostics"
+    )
     processed.mkdir(parents=True, exist_ok=True)
     tables.mkdir(parents=True, exist_ok=True)
     outputs = {
