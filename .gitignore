@@ -31,6 +31,9 @@ logs/
 models/
 .agents/
 .claude/
+.gitnexus/
+tmp/
+work_quant_review/
 reports/figures/
 reports/results/
 reports/statistical_research/figures/section5/

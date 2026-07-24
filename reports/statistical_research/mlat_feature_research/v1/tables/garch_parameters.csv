@@ -1,2 +1,0 @@
-model_name,model_version,mean,omega,alpha,beta,persistence,initial_variance,return_scale,fit_end_utc,n_fit_observations,n_fit_segments,optimizer_method,optimizer_success,optimizer_status,optimizer_message,objective_value,iterations
-"Gaussian GARCH(1,1)",mlat-garch-audit-v1,1.5047681157592058e-07,3.4748307241874539e-10,0.07600239833656447,0.91392187544578829,0.98992427378235281,3.4487149105951719e-08,10000,2023-01-01 04:59:59+00:00,541160,1483,L-BFGS-B,True,0,CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH,2.1123863329028909,20

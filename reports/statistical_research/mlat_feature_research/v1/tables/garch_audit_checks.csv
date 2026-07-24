@@ -1,8 +1,0 @@
-category,check_name,critical,passed,details,advancement_authorized
-garch_audit,fit_critical_checks,True,True,all optimizer and parameter gates,False
-garch_audit,fit_residual_diagnostics,True,False,segment-aware Ljung-Box on residuals/squares and ARCH LM,False
-garch_audit,development_audit_residual_diagnostics,True,False,segment-aware Ljung-Box on residuals/squares and ARCH LM,False
-garch_audit,validation_residual_diagnostics,True,False,segment-aware Ljung-Box on residuals/squares and ARCH LM,False
-garch_audit,development_calibration_success,True,True,multipliers fitted on 2023 only and frozen,False
-garch_audit,validation_improves_best_simple_anchor,True,True,"garch_rmse=0.0007403402599226602; anchor_rmse={'realized_volatility_anchor': 0.000798902868852521, 'atr_anchor': 0.0007543416482724045}",False
-garch_audit,audit_only_no_feature_authorization,False,True,Passing diagnostics do not add GARCH to the frozen v1 matrix.,False
