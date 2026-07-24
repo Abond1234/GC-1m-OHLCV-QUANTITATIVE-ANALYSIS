@@ -18,9 +18,11 @@ if str(PROJECT_ROOT) not in sys.path:
 def main() -> None:
     from PySide6 import QtWidgets
 
+    from src.app.ui import theme
     from src.app.ui.main_window import MainWindow
 
     app = QtWidgets.QApplication(sys.argv)
+    theme.apply(app, "dark")
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
