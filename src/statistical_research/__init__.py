@@ -105,6 +105,14 @@ from .signal_construction import (
     load_entry_fields,
     save_signal_outputs,
 )
+from .strategy_catalog import (
+    CATALOG_FEATURES,
+    CATALOG_MIN_FIRE_RATE,
+    build_catalog,
+    catalog_library,
+    feature_thresholds,
+    load_catalog_universe,
+)
 from .strategy_evaluation import (
     CSCV_BLOCKS,
     STRATEGY_EVALUATION_SEED,
@@ -233,6 +241,12 @@ __all__ = [
     "simulate_strategy",
     "strategy_library",
     "walk_precomputed",
+    "CATALOG_FEATURES",
+    "CATALOG_MIN_FIRE_RATE",
+    "build_catalog",
+    "catalog_library",
+    "feature_thresholds",
+    "load_catalog_universe",
     "CSCV_BLOCKS",
     "STRATEGY_EVALUATION_SEED",
     "EvaluationConfig",
