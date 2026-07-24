@@ -37,6 +37,7 @@ work_quant_review/
 reports/figures/
 reports/results/
 reports/statistical_research/figures/section5/
+reports/ui_smoke/
 
 # Secrets and local configuration
 .env

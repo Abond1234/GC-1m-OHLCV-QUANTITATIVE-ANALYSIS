@@ -11,6 +11,9 @@ import pandas as pd
 
 from src.app.datalayer.bar_store import BarStore
 from src.app.datalayer.partitions import EVAL_CAP_DATE, assert_dev_val_only
+from src.app.datalayer.paths import research_bars_path
+
+_HAS_BARS = research_bars_path().exists()
 
 
 def _bars(n=6, *, start_date="2021-06-01", segments=None, minute_start=240):
@@ -53,6 +56,20 @@ class LockoutTests(unittest.TestCase):
         store = BarStore.from_frame(_bars(start_date="2024-02-01"))
         self.assertEqual(store.n_bars, 6)
         self.assertLessEqual(pd.Timestamp(store.trade_date.max()), EVAL_CAP_DATE)
+
+
+@unittest.skipUnless(_HAS_BARS, "research bars parquet not present")
+class DateFloorTests(unittest.TestCase):
+    """The offscreen-render fast path narrows the window; it must never widen it."""
+
+    def test_date_floor_narrows_and_respects_cap(self):
+        floor = pd.Timestamp("2024-12-20")
+        store = BarStore.load(research_bars_path(), date_floor=floor)
+        self.assertGreater(store.n_bars, 0)
+        min_date = pd.Timestamp(store.trade_date.min())
+        max_date = pd.Timestamp(store.trade_date.max())
+        self.assertGreaterEqual(min_date, floor)
+        self.assertLessEqual(max_date, EVAL_CAP_DATE)
 
 
 class ViewportTests(unittest.TestCase):

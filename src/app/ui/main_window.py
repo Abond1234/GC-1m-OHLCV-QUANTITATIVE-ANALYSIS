@@ -21,7 +21,7 @@ from PySide6 import QtCore, QtWidgets
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.paths import project_root
-from ..datalayer.vwap import rolling_vwap
+from ..datalayer.vwap import execution_session_vwap, research_day_vwap, rolling_vwap
 from ..sim.exit_config import ExitConfig, frozen_config
 from ..sim.flex_exit import single_flex_exit
 from ..workers.tasks import Task
@@ -37,23 +37,29 @@ def _session_code(minute_ny: np.ndarray) -> np.ndarray:
     return code
 
 
-def load_app_data(root=None) -> dict:
-    """Worker payload: services, VWAP, session codes, and the available dates."""
+def load_app_data(root=None, date_floor=None) -> dict:
+    """Worker payload: services, VWAP variants, session codes, and available dates.
 
-    replay = StrategyReplayService.load(root or project_root())
+    ``date_floor`` narrows the bar load to recent Dev days for the offscreen render
+    harness; production passes ``None`` for the full Dev/Val window.
+    """
+
+    replay = StrategyReplayService.load(root or project_root(), date_floor=date_floor)
     bars = replay.bars
     dates = pd.to_datetime(pd.unique(bars.trade_date))
     return {
         "replay": replay,
         "forensics": ForensicsService(),
         "vwap20": rolling_vwap(bars, 20),
+        "vwap_day": research_day_vwap(bars),
+        "vwap_session": execution_session_vwap(bars),
         "session_code": _session_code(bars.minute_ny),
         "dates": np.sort(dates),
     }
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
+    def __init__(self, data: dict | None = None):
         super().__init__()
         self.setWindowTitle("GC Trade Simulator - Development + Validation")
         self.resize(1500, 900)
@@ -65,6 +71,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._replay_cfg = frozen_config()
 
         self._build_ui()
+        if data is not None:
+            # Synchronous path for the offscreen render harness and tests.
+            self._on_loaded(data)
+            return
         self._set_status("Loading Development + Validation data ...")
         task = Task(load_app_data)
         task.signals.finished.connect(self._on_loaded)
@@ -78,11 +88,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.date_combo = QtWidgets.QComboBox()
         self.date_combo.currentTextChanged.connect(lambda _t: self._render_current_date())
-        self.vwap_check = QtWidgets.QCheckBox("VWAP")
+        self.vwap_check = QtWidgets.QCheckBox("VWAP 20")
         self.vwap_check.setChecked(True)
+        self.vwap_check.setToolTip("Rolling 20-bar volume-weighted average price.")
+        self.vwap_day_check = QtWidgets.QCheckBox("VWAP day")
+        self.vwap_day_check.setToolTip("VWAP anchored to the start of each New York trade date.")
+        self.vwap_session_check = QtWidgets.QCheckBox("VWAP session")
+        self.vwap_session_check.setToolTip("VWAP within each Asia/NY execution session.")
         self.session_check = QtWidgets.QCheckBox("NY session")
         self.session_check.setChecked(True)
-        for box in (self.vwap_check, self.session_check):
+        self.session_check.setToolTip("Shade the New York execution window (07:00-12:00 NY).")
+        for box in (
+            self.vwap_check,
+            self.vwap_day_check,
+            self.vwap_session_check,
+            self.session_check,
+        ):
             box.stateChanged.connect(lambda _s: self._render_current_date())
 
         self.strategy_combo = QtWidgets.QComboBox()
@@ -106,6 +127,8 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QLabel("Date"),
             self.date_combo,
             self.vwap_check,
+            self.vwap_day_check,
+            self.vwap_session_check,
             self.session_check,
             _sep(),
             QtWidgets.QLabel("Strategy"),
@@ -197,10 +220,15 @@ class MainWindow(QtWidgets.QMainWindow):
             "low": bars.low[sl],
             "close": bars.close[sl],
             "volume": bars.volume[sl],
+            "segment": bars.segment[sl],
         }
         self.chart.set_view(ohlc, labels, lo)
         if self.vwap_check.isChecked():
-            self.chart.add_vwap(self._data["vwap20"][sl])
+            self.chart.add_vwap(self._data["vwap20"][sl], "rolling")
+        if self.vwap_day_check.isChecked():
+            self.chart.add_vwap(self._data["vwap_day"][sl], "day")
+        if self.vwap_session_check.isChecked():
+            self.chart.add_vwap(self._data["vwap_session"][sl], "session")
         if self.session_check.isChecked():
             self.chart.shade_sessions(self._data["session_code"][sl])
         self._draw_markers_for_view()

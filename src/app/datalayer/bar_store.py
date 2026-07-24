@@ -108,19 +108,29 @@ class BarStore:
 
     @classmethod
     def load(
-        cls, bars_path: Path, *, cap_date: pd.Timestamp = EVAL_CAP_DATE, product: str = "GC"
+        cls,
+        bars_path: Path,
+        *,
+        cap_date: pd.Timestamp = EVAL_CAP_DATE,
+        product: str = "GC",
+        date_floor: pd.Timestamp | None = None,
     ) -> BarStore:
-        """Load GC bars through the Validation cap; Final-test rows are never read."""
+        """Load GC bars through the Validation cap; Final-test rows are never read.
+
+        ``date_floor`` optionally narrows the read to ``trade_date_ny >= date_floor``.
+        It can only shrink the Dev/Val window (never cross ``cap_date``), so it is a
+        pure speed knob for loading a handful of recent days - e.g. the offscreen
+        render harness - and leaves the default full-window read unchanged.
+        """
 
         import pyarrow.parquet as pq
 
-        table = pq.read_table(
-            bars_path,
-            columns=_BAR_COLUMNS,
-            filters=[
-                ("product", "==", product),
-                ("trade_date_ny", "<=", pd.Timestamp(cap_date).to_pydatetime()),
-            ],
-        )
+        filters = [
+            ("product", "==", product),
+            ("trade_date_ny", "<=", pd.Timestamp(cap_date).to_pydatetime()),
+        ]
+        if date_floor is not None:
+            filters.append(("trade_date_ny", ">=", pd.Timestamp(date_floor).to_pydatetime()))
+        table = pq.read_table(bars_path, columns=_BAR_COLUMNS, filters=filters)
         frame = table.to_pandas(ignore_metadata=True)
         return cls.from_frame(frame)

@@ -37,10 +37,10 @@ class StrategyReplayService:
         self._entry_positions = pd.Index(bars.ts).get_indexer(self.universe["entry_timestamp_utc"])
 
     @classmethod
-    def load(cls, root=None) -> StrategyReplayService:
+    def load(cls, root=None, *, date_floor=None) -> StrategyReplayService:
         root = root or project_root()
         universe = load_catalog_universe(root)
-        bars = BarStore.load(research_bars_path())
+        bars = BarStore.load(research_bars_path(), date_floor=date_floor)
         return cls(universe, bars)
 
     def list_strategies(self) -> list[StrategySpec]:
