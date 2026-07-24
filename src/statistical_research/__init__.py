@@ -1,5 +1,20 @@
 """Independent statistical-research utilities."""
 
+from .backtest_verification import (
+    VerificationConfig,
+    VerificationResult,
+    audit_entry_fidelity,
+    audit_fills,
+    audit_gate_consistency,
+    cross_check_forward_labels,
+    independent_resimulate,
+    load_gc_bars,
+    map_entry_positions,
+    reconcile_performance,
+    reconcile_trades,
+    run_verification,
+    save_verification_outputs,
+)
 from .baselines import (
     BASELINE_RANDOM_SEED,
     BOOTSTRAP_REPLICATES,
@@ -162,4 +177,17 @@ __all__ = [
     "load_backtest_bars",
     "run_sequential_backtest",
     "save_backtest_outputs",
+    "VerificationConfig",
+    "VerificationResult",
+    "audit_entry_fidelity",
+    "audit_fills",
+    "audit_gate_consistency",
+    "cross_check_forward_labels",
+    "independent_resimulate",
+    "load_gc_bars",
+    "map_entry_positions",
+    "reconcile_performance",
+    "reconcile_trades",
+    "run_verification",
+    "save_verification_outputs",
 ]
