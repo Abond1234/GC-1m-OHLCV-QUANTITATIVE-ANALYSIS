@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 
 def project_root() -> Path:
-    """Repository root, resolved relative to this file (src/app/data/paths.py)."""
+    """Repository root holding ``data/processed``.
 
+    Source runs resolve it relative to this file. A packaged (PyInstaller) build
+    has no such tree, so it looks next to the executable; ``GC_PROJECT_ROOT``
+    overrides both, letting a built app point at a checkout's data.
+    """
+
+    override = os.environ.get("GC_PROJECT_ROOT")
+    if override:
+        return Path(override).resolve()
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[3]
 
 

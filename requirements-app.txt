@@ -13,3 +13,6 @@
 
 PySide6==6.11.*
 pyqtgraph>=0.14
+
+# Packaging only (build a standalone app: python scripts/build_app.py).
+pyinstaller>=6.0
