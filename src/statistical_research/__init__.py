@@ -105,6 +105,19 @@ from .signal_construction import (
     load_entry_fields,
     save_signal_outputs,
 )
+from .strategy_evaluation import (
+    CSCV_BLOCKS,
+    STRATEGY_EVALUATION_SEED,
+    EvaluationConfig,
+    EvaluationResult,
+    bootstrap_mean_ci,
+    daily_sharpe,
+    deflated_sharpe_ratio,
+    evaluate_strategies,
+    one_sided_t_pvalue,
+    probability_of_backtest_overfitting,
+    save_strategy_evaluation_outputs,
+)
 from .strategy_lab import (
     SIGNAL_FEATURE_COLUMNS,
     STRATEGY_LAB_SEED,
@@ -216,4 +229,15 @@ __all__ = [
     "simulate_positions",
     "simulate_strategy",
     "strategy_library",
+    "CSCV_BLOCKS",
+    "STRATEGY_EVALUATION_SEED",
+    "EvaluationConfig",
+    "EvaluationResult",
+    "bootstrap_mean_ci",
+    "daily_sharpe",
+    "deflated_sharpe_ratio",
+    "evaluate_strategies",
+    "one_sided_t_pvalue",
+    "probability_of_backtest_overfitting",
+    "save_strategy_evaluation_outputs",
 ]
