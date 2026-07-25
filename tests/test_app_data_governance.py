@@ -4,14 +4,16 @@ Final-test, plus BarStore viewport/segment behaviour.
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from src.app.datalayer.bar_store import BarStore
 from src.app.datalayer.partitions import EVAL_CAP_DATE, assert_dev_val_only
-from src.app.datalayer.paths import research_bars_path
+from src.app.datalayer.paths import _find_data_root, research_bars_path
 
 _HAS_BARS = research_bars_path().exists()
 
@@ -70,6 +72,28 @@ class DateFloorTests(unittest.TestCase):
         max_date = pd.Timestamp(store.trade_date.max())
         self.assertGreaterEqual(min_date, floor)
         self.assertLessEqual(max_date, EVAL_CAP_DATE)
+
+
+class DataRootDiscoveryTests(unittest.TestCase):
+    """A packaged build finds a checkout's data by walking up from the executable."""
+
+    def test_finds_root_from_nested_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "data" / "processed").mkdir(parents=True)
+            nested = root / "dist" / "GCTradeSimulator"
+            nested.mkdir(parents=True)
+            self.assertEqual(_find_data_root(nested), root)
+
+    def test_returns_the_start_when_it_holds_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "data" / "processed").mkdir(parents=True)
+            self.assertEqual(_find_data_root(root), root)
+
+    def test_returns_none_when_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(_find_data_root(Path(tmp)))
 
 
 class ViewportTests(unittest.TestCase):

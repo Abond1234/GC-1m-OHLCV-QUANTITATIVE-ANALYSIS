@@ -80,7 +80,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, data: dict | None = None):
         super().__init__()
         self.setWindowTitle("GC Trade Simulator - Development + Validation")
-        self.resize(1600, 940)
+        self.setMinimumSize(960, 600)
+        self._fit_to_screen(1600, 940)
         self._pool = QtCore.QThreadPool.globalInstance()
         self._tasks: set = set()  # keep runnables alive until they finish (PySide6 GC)
         self._data: dict | None = None
@@ -107,6 +108,27 @@ class MainWindow(QtWidgets.QMainWindow):
         task.signals.finished.connect(self._on_loaded)
         task.signals.error.connect(self._on_error)
         self._start(task)
+
+    def _fit_to_screen(self, preferred_w: int, preferred_h: int) -> None:
+        """Open at the preferred size but never larger than the available screen.
+
+        The window stays freely resizable and can be maximised; this only keeps the
+        initial geometry from spilling off a display narrower or shorter than the
+        layout was designed for. Centres the window within the available area.
+        """
+
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            self.resize(preferred_w, preferred_h)
+            return
+        avail = screen.availableGeometry()
+        width = min(preferred_w, avail.width())
+        height = min(preferred_h, avail.height())
+        self.resize(width, height)
+        self.move(
+            avail.x() + (avail.width() - width) // 2,
+            avail.y() + (avail.height() - height) // 2,
+        )
 
     # -- construction ------------------------------------------------------
     def _build_ui(self) -> None:
