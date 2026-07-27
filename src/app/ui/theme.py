@@ -144,6 +144,10 @@ def qss(p: Palette) -> str:
     QMainWindow, QWidget {{ background: {p.bg}; color: {p.text};
         font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 12px; }}
     QToolBar {{ background: {p.panel}; border: none; spacing: 6px; padding: 4px; }}
+    QToolButton {{ background: transparent; border: 1px solid transparent;
+        border-radius: 5px; padding: 5px 8px; color: {p.text}; }}
+    QToolButton:hover {{ border-color: {p.gold}; }}
+    QToolButton:checked {{ background: {p.gold}; color: {p.bg}; font-weight: 600; }}
     QStatusBar {{ background: {p.panel}; color: {p.text_dim}; }}
     QDockWidget {{ titlebar-close-icon: none; color: {p.text_dim}; }}
     QDockWidget::title {{ background: {p.panel_alt}; padding: 6px 10px;

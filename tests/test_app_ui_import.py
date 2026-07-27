@@ -141,6 +141,63 @@ class ChartWidgetSmokeTests(unittest.TestCase):
         self.assertEqual(placed, [True])
         chart.set_draw_mode(None)
 
+    def test_mirror_trade_draws_ghost_items(self):
+        from src.app.ui.chart_widget import ChartWidget
+
+        chart = ChartWidget()
+        n = 20
+        chart.set_view(_synthetic_ohlc(n), np.array([f"{i:02d}:00" for i in range(n)]), 0)
+        before = len(chart._trade_items)
+        chart.mirror_trade(4, 12, 100.4, 100.1, 100.9, 100.8)
+        self.assertEqual(len(chart._trade_items), before + 4)  # 2 levels + entry + exit
+        chart.clear_trades()
+        self.assertEqual(len(chart._trade_items), 0)
+
+    def test_rect_zone_places_and_serializes(self):
+        from src.app.ui.chart_widget import ChartWidget
+
+        chart = ChartWidget()
+        n = 12
+        chart.set_view(_synthetic_ohlc(n), np.array([f"{i:02d}:00" for i in range(n)]), 0)
+        chart.place_drawing("rect", 2, 100.2)  # anchor corner
+        chart.place_drawing("rect", 8, 100.9)  # opposite corner
+        self.assertEqual([k for k, _ in chart._drawing_items], ["rect"])
+        spec = chart._serialize_drawings()[0]
+        self.assertEqual(spec["kind"], "rect")
+        self.assertAlmostEqual(spec["p1"][0], 2.0)
+        self.assertAlmostEqual(spec["p2"][1], 100.9)
+
+    def test_drawings_are_zoom_stable(self):
+        from src.app.ui.chart_widget import ChartWidget
+
+        chart = ChartWidget()
+        n = 30
+        chart.set_view(_synthetic_ohlc(n), np.array([f"{i:02d}:00" for i in range(n)]), 0)
+        chart.place_drawing("hline", 0, 100.5)
+        chart.place_drawing("trend", 3, 100.2)
+        chart.place_drawing("trend", 20, 100.9)
+        chart.place_drawing("rect", 5, 100.3)
+        chart.place_drawing("rect", 12, 100.7)
+        before = chart._serialize_drawings()
+        # Zoom hard in and out: data-coordinate drawings must not move.
+        chart._price.setXRange(8, 12, padding=0)
+        chart._price.setYRange(100.4, 100.6, padding=0)
+        self.app.processEvents()
+        chart._price.setXRange(-5, 60, padding=0)
+        chart._price.setYRange(95, 106, padding=0)
+        self.app.processEvents()
+        after = chart._serialize_drawings()
+        self.assertEqual(len(before), len(after))
+        for b, a in zip(before, after, strict=True):
+            self.assertEqual(b["kind"], a["kind"])
+            for key in ("y", "x", "p1", "p2"):
+                if key in b:
+                    if isinstance(b[key], tuple):
+                        self.assertAlmostEqual(b[key][0], a[key][0], places=9)
+                        self.assertAlmostEqual(b[key][1], a[key][1], places=9)
+                    else:
+                        self.assertAlmostEqual(b[key], a[key], places=9)
+
 
 if __name__ == "__main__":
     unittest.main()

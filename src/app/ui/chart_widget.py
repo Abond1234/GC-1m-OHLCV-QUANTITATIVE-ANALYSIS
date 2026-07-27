@@ -159,6 +159,12 @@ class ChartWidget(QtWidgets.QWidget):
         self._drawing_store: dict[int, list[dict]] = {}  # view_start -> serialized specs
         self._trend_anchor: tuple[float, float] | None = None
         self._trend_anchor_dot = None
+        self._trend_preview = None  # rubber-band line while placing a trendline
+        self._draw_press_view: tuple[float, float] | None = None
+        self._draw_press_pixel = None
+        # Armed draw tools must own the whole press-drag-release gesture:
+        # otherwise the tiniest drag becomes a chart pan and nothing is placed.
+        self._layout.viewport().installEventFilter(self)
 
         # Crosshair (hidden until the cursor is over the plot).
         pen = pg.mkPen(p.text_faint, width=1, style=QtCore.Qt.DashLine)
@@ -221,6 +227,9 @@ class ChartWidget(QtWidgets.QWidget):
         self._drawing_items.clear()
         self._trend_anchor = None
         self._trend_anchor_dot = None
+        self._trend_preview = None
+        self._draw_press_view = None
+        self._draw_press_pixel = None
         self._last_readout_i = -1
         for line in (self._vline, self._hline):
             line.setVisible(False)
@@ -274,6 +283,105 @@ class ChartWidget(QtWidgets.QWidget):
 
         self._draw_mode = mode
         self._clear_trend_anchor()
+        self._remove_drag_preview()
+        self._draw_press_view = None
+        self._draw_press_pixel = None
+
+    def eventFilter(self, obj, event):  # noqa: N802 - Qt override
+        """Own the mouse while a draw tool is armed.
+
+        Without this the tiniest press-move becomes a ViewBox pan and nothing is
+        placed. Levels/markers place on release; a trendline supports both the
+        TradingView press-drag-release gesture (with a live rubber band) and the
+        two-click flow. Right-click cancels the tool.
+        """
+
+        if obj is not self._layout.viewport() or self._draw_mode is None:
+            return super().eventFilter(obj, event)
+        etype = event.type()
+        if etype == QtCore.QEvent.MouseButtonPress:
+            if event.button() == QtCore.Qt.RightButton:
+                self.set_draw_mode(None)
+                self.drawing_placed.emit()  # hand the toolbar back to the cursor
+                return True
+            if event.button() == QtCore.Qt.LeftButton:
+                self._draw_press_view = self._map_pixel_to_view(event.position())
+                self._draw_press_pixel = event.position()
+                return True
+        elif etype == QtCore.QEvent.MouseMove:
+            current = self._map_pixel_to_view(event.position())
+            if current is not None and self._draw_mode in ("trend", "rect"):
+                if self._draw_press_view is not None:
+                    self._update_drag_preview(self._draw_mode, self._draw_press_view, current)
+                    return True
+                if self._trend_anchor is not None:
+                    self._update_drag_preview(self._draw_mode, self._trend_anchor, current)
+            return False  # plain hovers keep feeding the crosshair
+        elif etype == QtCore.QEvent.MouseButtonRelease and event.button() == QtCore.Qt.LeftButton:
+            start = self._draw_press_view
+            start_pixel = self._draw_press_pixel
+            self._draw_press_view = None
+            self._draw_press_pixel = None
+            end = self._map_pixel_to_view(event.position())
+            if end is None:
+                self._remove_drag_preview()
+                return True
+            if (
+                self._draw_mode in ("trend", "rect")
+                and start is not None
+                and start_pixel is not None
+            ):
+                moved = (event.position() - start_pixel).manhattanLength()
+                if moved > 6:  # a real drag: place the two-point shape start -> end
+                    self._remove_drag_preview()
+                    self._clear_trend_anchor()
+                    self._create_drawing({"kind": self._draw_mode, "p1": start, "p2": end})
+                    self.drawing_placed.emit()
+                    return True
+            self.place_drawing(self._draw_mode, end[0], end[1])
+            return True
+        elif etype == QtCore.QEvent.ContextMenu:
+            return True  # no pan/zoom menu while a tool is armed
+        return super().eventFilter(obj, event)
+
+    def _map_pixel_to_view(self, pos) -> tuple[float, float] | None:
+        """Viewport pixel -> (bar index, price), or None outside the price box."""
+
+        scene_pos = self._layout.mapToScene(QtCore.QPoint(round(pos.x()), round(pos.y())))
+        if not self._price.vb.sceneBoundingRect().contains(scene_pos):
+            return None
+        view_pos = self._price.vb.mapSceneToView(scene_pos)
+        return float(view_pos.x()), float(view_pos.y())
+
+    def _update_drag_preview(self, kind: str, p1, p2) -> None:
+        p = theme.active()
+        if self._trend_preview is None:
+            if kind == "rect":
+                preview = QtWidgets.QGraphicsRectItem()
+                pen = pg.mkPen(p.gold, width=1.2, style=QtCore.Qt.DashLine)
+                pen.setCosmetic(True)
+                preview.setPen(pen)
+                fill = QtGui.QColor(p.gold)
+                fill.setAlpha(24)
+                preview.setBrush(fill)
+            else:
+                preview = pg.PlotDataItem(pen=pg.mkPen(p.gold, width=1.2, style=QtCore.Qt.DashLine))
+            preview.setZValue(12)
+            self._price.addItem(preview, ignoreBounds=True)
+            self._trend_preview = preview
+        if isinstance(self._trend_preview, QtWidgets.QGraphicsRectItem):
+            self._trend_preview.setRect(
+                QtCore.QRectF(
+                    QtCore.QPointF(p1[0], p1[1]), QtCore.QPointF(p2[0], p2[1])
+                ).normalized()
+            )
+        else:
+            self._trend_preview.setData([p1[0], p2[0]], [p1[1], p2[1]])
+
+    def _remove_drag_preview(self) -> None:
+        if self._trend_preview is not None:
+            self._price.removeItem(self._trend_preview)
+            self._trend_preview = None
 
     def place_drawing(self, kind: str, x: float, y: float) -> None:
         """Create a drawing at view coordinates (bar index, price)."""
@@ -282,7 +390,7 @@ class ChartWidget(QtWidgets.QWidget):
             return
         n = len(self._ohlc["close"])
         x = max(0.0, min(float(x), float(n - 1)))
-        if kind == "trend":
+        if kind in ("trend", "rect"):
             if self._trend_anchor is None:
                 self._trend_anchor = (x, float(y))
                 p = theme.active()
@@ -290,9 +398,10 @@ class ChartWidget(QtWidgets.QWidget):
                     x=[x], y=[float(y)], symbol="+", size=12, pen=pg.mkPen(p.gold, width=1.5)
                 )
                 self._price.addItem(self._trend_anchor_dot, ignoreBounds=True)
-                return  # second click completes the segment
-            spec = {"kind": "trend", "p1": self._trend_anchor, "p2": (x, float(y))}
+                return  # second click (or drag release) completes the shape
+            spec = {"kind": kind, "p1": self._trend_anchor, "p2": (x, float(y))}
             self._clear_trend_anchor()
+            self._remove_drag_preview()
         elif kind == "hline":
             spec = {"kind": "hline", "y": float(y)}
         elif kind == "vline":
@@ -306,52 +415,116 @@ class ChartWidget(QtWidgets.QWidget):
         p = theme.active()
         kind = spec["kind"]
         if kind == "hline":
-            item = pg.InfiniteLine(
-                pos=float(spec["y"]),
-                angle=0,
-                movable=True,
-                pen=pg.mkPen(p.vwap_rolling, width=1.2),
-                hoverPen=pg.mkPen(p.vwap_rolling, width=2.2),
-                label="{value:.1f}",
-                labelOpts={"position": 0.97, "color": p.vwap_rolling, "movable": True},
-            )
+            items = [
+                pg.InfiniteLine(
+                    pos=float(spec["y"]),
+                    angle=0,
+                    movable=True,
+                    pen=pg.mkPen(p.vwap_rolling, width=1.2),
+                    hoverPen=pg.mkPen(p.vwap_rolling, width=2.2),
+                    label="{value:.1f}",
+                    labelOpts={"position": 0.97, "color": p.vwap_rolling, "movable": True},
+                )
+            ]
         elif kind == "vline":
-            item = pg.InfiniteLine(
-                pos=float(spec["x"]),
-                angle=90,
-                movable=True,
-                pen=pg.mkPen(p.text_faint, width=1.2, style=QtCore.Qt.DashLine),
-                hoverPen=pg.mkPen(p.text_dim, width=2.2),
-            )
+            items = [
+                pg.InfiniteLine(
+                    pos=float(spec["x"]),
+                    angle=90,
+                    movable=True,
+                    pen=pg.mkPen(p.text_faint, width=1.2, style=QtCore.Qt.DashLine),
+                    hoverPen=pg.mkPen(p.text_dim, width=2.2),
+                )
+            ]
         elif kind == "trend":
-            item = pg.LineSegmentROI(
-                positions=[spec["p1"], spec["p2"]],
-                pen=pg.mkPen(p.gold, width=1.6),
-                hoverPen=pg.mkPen(p.hook, width=2.4),
-                movable=True,
-            )
+            # A data-coordinate line with two TargetItem endpoint handles.
+            # Everything lives in view coordinates with cosmetic pens, so the
+            # drawing is exact under any zoom (LineSegmentROI is not).
+            line = pg.PlotDataItem(pen=pg.mkPen(p.gold, width=1.6))
+            handles = [
+                pg.TargetItem(
+                    pos=spec[key],
+                    size=9,
+                    movable=True,
+                    pen=pg.mkPen(p.gold, width=1.2),
+                    hoverPen=pg.mkPen(p.hook, width=2.0),
+                    brush=pg.mkBrush(0, 0, 0, 0),
+                )
+                for key in ("p1", "p2")
+            ]
+
+            def _sync(*_a, _line=line, _handles=handles):
+                _line.setData(
+                    [_handles[0].pos().x(), _handles[1].pos().x()],
+                    [_handles[0].pos().y(), _handles[1].pos().y()],
+                )
+
+            for handle in handles:
+                handle.sigPositionChanged.connect(_sync)
+            _sync()
+            items = [line, *handles]
+        elif kind == "rect":
+            # A zone box (supply/demand style): data-coordinate rect with a
+            # cosmetic border and translucent fill, resized by dragging its
+            # two corner handles. Exact under any zoom.
+            rect = QtWidgets.QGraphicsRectItem()
+            pen = pg.mkPen(p.gold, width=1.2)
+            pen.setCosmetic(True)
+            rect.setPen(pen)
+            fill = QtGui.QColor(p.gold)
+            fill.setAlpha(28)
+            rect.setBrush(fill)
+            corners = [
+                pg.TargetItem(
+                    pos=spec[key],
+                    size=9,
+                    movable=True,
+                    pen=pg.mkPen(p.gold, width=1.2),
+                    hoverPen=pg.mkPen(p.hook, width=2.0),
+                    brush=pg.mkBrush(0, 0, 0, 0),
+                )
+                for key in ("p1", "p2")
+            ]
+
+            def _sync_rect(*_a, _rect=rect, _corners=corners):
+                _rect.setRect(
+                    QtCore.QRectF(
+                        QtCore.QPointF(_corners[0].pos().x(), _corners[0].pos().y()),
+                        QtCore.QPointF(_corners[1].pos().x(), _corners[1].pos().y()),
+                    ).normalized()
+                )
+
+            for corner in corners:
+                corner.sigPositionChanged.connect(_sync_rect)
+            _sync_rect()
+            items = [rect, *corners]
         else:
             return
-        item.setZValue(12)  # above the curtain so annotations stay usable in replay
-        self._price.addItem(item, ignoreBounds=True)
-        self._drawing_items.append((kind, item))
+        for item in items:
+            item.setZValue(12)  # above the curtain so annotations stay usable in replay
+            self._price.addItem(item, ignoreBounds=True)
+        self._drawing_items.append((kind, items))
 
     def undo_drawing(self) -> None:
         """Remove the most recent drawing on this day (or a pending anchor)."""
 
         if self._trend_anchor is not None:
             self._clear_trend_anchor()
+            self._remove_drag_preview()
             return
         if self._drawing_items:
-            _kind, item = self._drawing_items.pop()
-            self._price.removeItem(item)
+            _kind, items = self._drawing_items.pop()
+            for item in items:
+                self._price.removeItem(item)
 
     def clear_drawings(self) -> None:
         """Remove every drawing on this day."""
 
         self._clear_trend_anchor()
-        for _kind, item in self._drawing_items:
-            self._price.removeItem(item)
+        self._remove_drag_preview()
+        for _kind, items in self._drawing_items:
+            for item in items:
+                self._price.removeItem(item)
         self._drawing_items.clear()
         self._drawing_store.pop(self._view_start, None)
 
@@ -363,24 +536,20 @@ class ChartWidget(QtWidgets.QWidget):
 
     def _serialize_drawings(self) -> list[dict]:
         specs: list[dict] = []
-        for kind, item in self._drawing_items:
+        for kind, items in self._drawing_items:
             if kind == "hline":
-                specs.append({"kind": "hline", "y": float(item.value())})
+                specs.append({"kind": "hline", "y": float(items[0].value())})
             elif kind == "vline":
-                specs.append({"kind": "vline", "x": float(item.value())})
-            elif kind == "trend":
-                points = [
-                    self._price.vb.mapSceneToView(scene_pos)
-                    for _name, scene_pos in item.getSceneHandlePositions()
-                ]
-                if len(points) == 2:
-                    specs.append(
-                        {
-                            "kind": "trend",
-                            "p1": (float(points[0].x()), float(points[0].y())),
-                            "p2": (float(points[1].x()), float(points[1].y())),
-                        }
-                    )
+                specs.append({"kind": "vline", "x": float(items[0].value())})
+            elif kind in ("trend", "rect"):
+                _shape, h1, h2 = items
+                specs.append(
+                    {
+                        "kind": kind,
+                        "p1": (float(h1.pos().x()), float(h1.pos().y())),
+                        "p2": (float(h2.pos().x()), float(h2.pos().y())),
+                    }
+                )
         return specs
 
     def set_reveal(self, up_to_local: int | None) -> None:
@@ -530,6 +699,49 @@ class ChartWidget(QtWidgets.QWidget):
                 items[key].clear()
         items["entry"].setData(x=[entry_local], y=[entry_price], brush=pg.mkBrush(marker))
         items["exit"].setData(x=[exit_local], y=[exit_price], pen=pg.mkPen(marker, width=2))
+
+    def mirror_trade(
+        self, entry_local, exit_local, entry_price, stop_level, target_level, exit_price
+    ) -> None:
+        """Ghost a trade from the other instrument onto this tape.
+
+        Entry/exit markers at the times mapped from the source trade plus its
+        initial stop/target levels, so "did the pattern replicate" is a visual
+        check rather than a spreadsheet exercise.
+        """
+
+        p = theme.active()
+        span = [entry_local, max(exit_local, entry_local + 1)]
+        if stop_level is not None:
+            self._add_trade_item(
+                pg.PlotDataItem(
+                    span,
+                    [stop_level] * 2,
+                    pen=pg.mkPen(p.stop, width=1.2, style=QtCore.Qt.DashLine),
+                ),
+                ignore_bounds=True,
+            )
+        if target_level is not None:
+            self._add_trade_item(
+                pg.PlotDataItem(
+                    span,
+                    [target_level] * 2,
+                    pen=pg.mkPen(p.target, width=1.2, style=QtCore.Qt.DashLine),
+                ),
+                ignore_bounds=True,
+            )
+        self._add_trade_item(
+            pg.ScatterPlotItem(
+                x=[entry_local], y=[entry_price], symbol="o", size=11, brush=pg.mkBrush(p.entry)
+            ),
+            ignore_bounds=True,
+        )
+        self._add_trade_item(
+            pg.ScatterPlotItem(
+                x=[exit_local], y=[exit_price], symbol="x", size=12, pen=pg.mkPen(p.entry, width=2)
+            ),
+            ignore_bounds=True,
+        )
 
     def light_marker(self, entry_local, entry_price, exit_local, exit_price, gross_r, color):
         """A faint entry-to-exit connector for a non-active placed trade."""
