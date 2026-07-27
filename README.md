@@ -408,6 +408,23 @@ The current statistical workflow is notebook-driven:
 
 Do not start Section 7 feature evaluation by changing frozen Section 6 definitions in response to Final-test behaviour.
 
+### GC Trade Simulator (desktop app)
+
+A native charting and trade-simulation app over the same verified engine lives in `src/app/`. From the repository root:
+
+~~~powershell
+# one-time: app dependencies on top of the pinned research core
+python -m pip install -r requirements.txt -r requirements-app.txt
+
+# run from source (shows the Gold Quant splash, then the app)
+python scripts/run_trade_simulator.py
+
+# package a standalone build (writes dist/GCTradeSimulator/GCTradeSimulator.exe)
+python scripts/build_app.py
+~~~
+
+The packaged executable does not bundle the parquet data; run it from inside the checkout (any subfolder works - it finds `data/processed` by walking up), or point `GC_PROJECT_ROOT` at a checkout. See `src/app/README.md` for features, architecture, and headless UI verification.
+
 ## Generated artifacts
 
 Generated artifacts are excluded from Git and should be rebuilt or transferred separately.

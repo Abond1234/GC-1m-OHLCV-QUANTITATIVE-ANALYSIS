@@ -12,14 +12,66 @@ verified with offscreen-rendered screenshots and a live run.**
 
 ## Install and run
 
-```
+All commands run from the repository root. Setting up from scratch:
+
+```powershell
+# 1. Create and activate a virtual environment (Python 3.14)
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 2. Install the pinned research core plus the app dependencies
 python -m pip install -r requirements.txt -r requirements-app.txt
+
+# 3. Run the app from source
 python scripts/run_trade_simulator.py
 ```
+
+The app shows the Gold Quant splash while the Development+Validation bars load
+(about ten seconds for the full window), then opens the main window. The local
+parquet data under `data/processed/` must be present - it is never committed, so
+a fresh clone needs the data copied in first.
 
 `requirements-app.txt` (PySide6, pyqtgraph, and pyinstaller for packaging) is kept
 out of the pinned research core so the deterministic install and CI are unaffected.
 PySide6 6.11 ships an abi3 wheel and installs on the repo's Python 3.14 venv.
+
+## Building the standalone app locally
+
+```powershell
+python scripts/build_app.py
+```
+
+This renders the code-drawn GQ icon into the git-ignored `build/` directory and
+packages `dist/GCTradeSimulator/GCTradeSimulator.exe` (a one-directory
+PyInstaller build, about 400 MB) with that icon embedded. The executable does
+NOT bundle the multi-hundred-MB parquet data (per the data governance), so run
+it where it can find a checkout's `data/processed`:
+
+```powershell
+# either: launch from anywhere inside the checkout (it walks up to find data/)
+dist\GCTradeSimulator\GCTradeSimulator.exe
+
+# or: point a build that lives elsewhere at a checkout explicitly
+$env:GC_PROJECT_ROOT = "C:\path\to\project-1"
+dist\GCTradeSimulator\GCTradeSimulator.exe
+```
+
+`dist/`, `build/`, and the generated `GCTradeSimulator.spec` are git-ignored;
+rebuild whenever you want a fresh packaged artifact - day-to-day development
+runs from source.
+
+## Verifying a change
+
+```powershell
+python -m unittest discover -s tests          # full suite (app tests included)
+python -m ruff check . ; python -m ruff format --check .
+python scripts/render_screens.py              # UI screenshots without clicking through
+```
+
+`render_screens.py` builds the real `MainWindow` under a narrow bar load, drives
+it through the same slots a user would, and writes PNG screenshots (including a
+narrow-display pass and a mid-replay frame). It uses the OS default platform so
+real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
 
 ## What it does
 
@@ -88,24 +140,6 @@ PySide6 6.11 ships an abi3 wheel and installs on the repo's Python 3.14 venv.
 - `src/app/ui/`, `src/app/workers/` - the PySide6 widgets (theme, chart, exit panel,
   blotter, forensics panel, heatmap, replay animator, main window) and thread-pool
   workers.
-
-## Verifying the UI without a display
-
-`scripts/render_screens.py` builds the real `MainWindow` under a narrow bar load and
-writes PNG screenshots, so UI changes can be reviewed headlessly. It uses the OS
-default platform (real fonts where a window station exists); set
-`QT_QPA_PLATFORM=offscreen` for a truly headless machine.
-
-## Packaging a standalone build
-
-```
-python scripts/build_app.py
-```
-
-Produces `dist/GCTradeSimulator/` via PyInstaller. The build does **not** bundle the
-multi-hundred-MB parquet data (that stays in the repo per the data governance): run
-the executable from the repo root, or set `GC_PROJECT_ROOT` to a checkout so it can
-find `data/processed`. `dist/`, `build/`, and the generated `*.spec` are git-ignored.
 
 ## Deferred
 
