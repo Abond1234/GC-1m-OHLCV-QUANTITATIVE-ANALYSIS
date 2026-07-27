@@ -100,6 +100,7 @@ class ChartWidget(QtWidgets.QWidget):
     """Backend-agnostic chart surface used by the main window."""
 
     bar_clicked = QtCore.Signal(int)  # emits the global bar index under the cursor
+    drawing_placed = QtCore.Signal()  # a one-shot draw mode finished placing
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -150,6 +151,14 @@ class ChartWidget(QtWidgets.QWidget):
         # down and rebuilding the whole overlay layer each event.
         self._active_trade_items: dict | None = None
         self._excursion_items: dict | None = None
+        self._curtains: list = []  # bar-replay covers, rebuilt per view
+        # User drawings (levels/trendlines/time markers). Live items for the
+        # current day plus a per-day store so annotations survive date switches.
+        self._draw_mode: str | None = None
+        self._drawing_items: list[tuple[str, object]] = []  # (kind, item), creation order
+        self._drawing_store: dict[int, list[dict]] = {}  # view_start -> serialized specs
+        self._trend_anchor: tuple[float, float] | None = None
+        self._trend_anchor_dot = None
 
         # Crosshair (hidden until the cursor is over the plot).
         pen = pg.mkPen(p.text_faint, width=1, style=QtCore.Qt.DashLine)
@@ -196,6 +205,8 @@ class ChartWidget(QtWidgets.QWidget):
         """
 
         p = theme.active()
+        if self._ohlc is not None:  # keep this day's annotations for when we return
+            self._drawing_store[self._view_start] = self._serialize_drawings()
         self._price.clear()
         self._volume.clear()
         self._trade_items.clear()
@@ -207,6 +218,9 @@ class ChartWidget(QtWidgets.QWidget):
         self._session_regions.clear()
         self._active_trade_items = None
         self._excursion_items = None
+        self._drawing_items.clear()
+        self._trend_anchor = None
+        self._trend_anchor_dot = None
         self._last_readout_i = -1
         for line in (self._vline, self._hline):
             line.setVisible(False)
@@ -231,6 +245,158 @@ class ChartWidget(QtWidgets.QWidget):
         self._volume.addItem(pg.BarGraphItem(x=x, height=vol, width=0.7, brush=p.text_faint))
         self._price.setLimits(xMin=-1, xMax=n)
         self._price.enableAutoRange()
+
+        # Reveal curtains: opaque covers that hide every bar after the replay
+        # clock, so an animated trade unfolds candle by candle with the future
+        # genuinely invisible (TradingView-style bar replay). Hidden until a
+        # replay starts; z sits above data/overlays, below the crosshair, the
+        # draggable levels, and the replay marker.
+        self._curtains = []
+        for plot in (self._price, self._volume):
+            curtain = pg.LinearRegionItem(
+                values=(n + 1, n + 2),
+                movable=False,
+                brush=pg.mkBrush(p.bg),
+                pen=pg.mkPen(None),
+            )
+            curtain.setZValue(8)
+            curtain.setVisible(False)
+            plot.addItem(curtain, ignoreBounds=True)
+            self._curtains.append(curtain)
+
+        # Bring back any annotations drawn on this day earlier in the session.
+        for spec in self._drawing_store.get(self._view_start, []):
+            self._create_drawing(spec)
+
+    # -- user drawings (levels / trendlines / time markers) -----------------
+    def set_draw_mode(self, mode: str | None) -> None:
+        """Arm a one-shot drawing tool: "hline", "vline", "trend", or None."""
+
+        self._draw_mode = mode
+        self._clear_trend_anchor()
+
+    def place_drawing(self, kind: str, x: float, y: float) -> None:
+        """Create a drawing at view coordinates (bar index, price)."""
+
+        if self._ohlc is None:
+            return
+        n = len(self._ohlc["close"])
+        x = max(0.0, min(float(x), float(n - 1)))
+        if kind == "trend":
+            if self._trend_anchor is None:
+                self._trend_anchor = (x, float(y))
+                p = theme.active()
+                self._trend_anchor_dot = pg.ScatterPlotItem(
+                    x=[x], y=[float(y)], symbol="+", size=12, pen=pg.mkPen(p.gold, width=1.5)
+                )
+                self._price.addItem(self._trend_anchor_dot, ignoreBounds=True)
+                return  # second click completes the segment
+            spec = {"kind": "trend", "p1": self._trend_anchor, "p2": (x, float(y))}
+            self._clear_trend_anchor()
+        elif kind == "hline":
+            spec = {"kind": "hline", "y": float(y)}
+        elif kind == "vline":
+            spec = {"kind": "vline", "x": x}
+        else:
+            return
+        self._create_drawing(spec)
+        self.drawing_placed.emit()
+
+    def _create_drawing(self, spec: dict) -> None:
+        p = theme.active()
+        kind = spec["kind"]
+        if kind == "hline":
+            item = pg.InfiniteLine(
+                pos=float(spec["y"]),
+                angle=0,
+                movable=True,
+                pen=pg.mkPen(p.vwap_rolling, width=1.2),
+                hoverPen=pg.mkPen(p.vwap_rolling, width=2.2),
+                label="{value:.1f}",
+                labelOpts={"position": 0.97, "color": p.vwap_rolling, "movable": True},
+            )
+        elif kind == "vline":
+            item = pg.InfiniteLine(
+                pos=float(spec["x"]),
+                angle=90,
+                movable=True,
+                pen=pg.mkPen(p.text_faint, width=1.2, style=QtCore.Qt.DashLine),
+                hoverPen=pg.mkPen(p.text_dim, width=2.2),
+            )
+        elif kind == "trend":
+            item = pg.LineSegmentROI(
+                positions=[spec["p1"], spec["p2"]],
+                pen=pg.mkPen(p.gold, width=1.6),
+                hoverPen=pg.mkPen(p.hook, width=2.4),
+                movable=True,
+            )
+        else:
+            return
+        item.setZValue(12)  # above the curtain so annotations stay usable in replay
+        self._price.addItem(item, ignoreBounds=True)
+        self._drawing_items.append((kind, item))
+
+    def undo_drawing(self) -> None:
+        """Remove the most recent drawing on this day (or a pending anchor)."""
+
+        if self._trend_anchor is not None:
+            self._clear_trend_anchor()
+            return
+        if self._drawing_items:
+            _kind, item = self._drawing_items.pop()
+            self._price.removeItem(item)
+
+    def clear_drawings(self) -> None:
+        """Remove every drawing on this day."""
+
+        self._clear_trend_anchor()
+        for _kind, item in self._drawing_items:
+            self._price.removeItem(item)
+        self._drawing_items.clear()
+        self._drawing_store.pop(self._view_start, None)
+
+    def _clear_trend_anchor(self) -> None:
+        self._trend_anchor = None
+        if self._trend_anchor_dot is not None:
+            self._price.removeItem(self._trend_anchor_dot)
+            self._trend_anchor_dot = None
+
+    def _serialize_drawings(self) -> list[dict]:
+        specs: list[dict] = []
+        for kind, item in self._drawing_items:
+            if kind == "hline":
+                specs.append({"kind": "hline", "y": float(item.value())})
+            elif kind == "vline":
+                specs.append({"kind": "vline", "x": float(item.value())})
+            elif kind == "trend":
+                points = [
+                    self._price.vb.mapSceneToView(scene_pos)
+                    for _name, scene_pos in item.getSceneHandlePositions()
+                ]
+                if len(points) == 2:
+                    specs.append(
+                        {
+                            "kind": "trend",
+                            "p1": (float(points[0].x()), float(points[0].y())),
+                            "p2": (float(points[1].x()), float(points[1].y())),
+                        }
+                    )
+        return specs
+
+    def set_reveal(self, up_to_local: int | None) -> None:
+        """Show bars only up to ``up_to_local`` (None reveals the whole day)."""
+
+        if self._ohlc is None or not self._curtains:
+            return
+        if up_to_local is None:
+            for curtain in self._curtains:
+                curtain.setVisible(False)
+            return
+        n = len(self._ohlc["close"])
+        edge = min(float(up_to_local) + 0.5, n + 1.0)
+        for curtain in self._curtains:
+            curtain.setRegion((edge, n + 1.0))
+            curtain.setVisible(True)
 
     def add_vwap(self, vwap: np.ndarray, kind: str = "rolling", *, visible: bool = True) -> None:
         """Overlay a VWAP line. ``kind`` selects colour/legend label.
@@ -323,9 +489,23 @@ class ChartWidget(QtWidgets.QWidget):
         marker = color or p.entry
         items = self._active_trade_items
         if items is None:
+            entry_line = pg.PlotDataItem(pen=None)  # invisible anchor for the zones
+            stop_curve = pg.PlotDataItem()
+            target_curve = pg.PlotDataItem()
+            # Risk/reward zones between entry and the level tracks, like a
+            # long/short position tool: red where the trade can be cut, green
+            # where it pays. Following the tracks means a trailing stop's
+            # ratchet is visible as the red zone tightening.
+            risk_fill = pg.FillBetweenItem(entry_line, stop_curve)
+            reward_fill = pg.FillBetweenItem(entry_line, target_curve)
+            for fill in (risk_fill, reward_fill):
+                fill.setZValue(-6)  # under the excursion ribbons
             items = {
-                "stop": pg.PlotDataItem(),
-                "target": pg.PlotDataItem(),
+                "entry_line": entry_line,
+                "stop": stop_curve,
+                "target": target_curve,
+                "risk_fill": risk_fill,
+                "reward_fill": reward_fill,
                 "entry": pg.ScatterPlotItem(symbol="o", size=12),
                 "exit": pg.ScatterPlotItem(symbol="x", size=13),
             }
@@ -334,13 +514,20 @@ class ChartWidget(QtWidgets.QWidget):
             self._active_trade_items = items
         items["stop"].setPen(pg.mkPen(p.stop, style=QtCore.Qt.DashLine))
         items["target"].setPen(pg.mkPen(p.target, style=QtCore.Qt.DashLine))
+        risk = QtGui.QColor(p.stop)
+        risk.setAlpha(26)
+        reward = QtGui.QColor(p.target)
+        reward.setAlpha(26)
+        items["risk_fill"].setBrush(pg.mkBrush(risk))
+        items["reward_fill"].setBrush(pg.mkBrush(reward))
         if len(stop_track):
             held = np.arange(entry_local, entry_local + len(stop_track))
+            items["entry_line"].setData(held, np.full(len(held), float(entry_price)))
             items["stop"].setData(held, stop_track)
             items["target"].setData(held, target_track)
         else:
-            items["stop"].clear()
-            items["target"].clear()
+            for key in ("entry_line", "stop", "target"):
+                items[key].clear()
         items["entry"].setData(x=[entry_local], y=[entry_price], brush=pg.mkBrush(marker))
         items["exit"].setData(x=[exit_local], y=[exit_price], pen=pg.mkPen(marker, width=2))
 
@@ -515,54 +702,74 @@ class ChartWidget(QtWidgets.QWidget):
         self._on_level_changed = None
 
     # -- bar-by-bar replay animation ---------------------------------------
-    def start_replay(self, result) -> None:
-        """Set up the moving marker and stop/target lines for an animated replay."""
+    def start_replay(self, result=None, *, start_global: int | None = None) -> None:
+        """Set up the animated replay and drop the reveal curtain at its start.
+
+        With a trade ``result``, the moving marker is joined by its stop/target
+        lines. With ``result=None`` (a bare day replay) only the marker and the
+        elapsed-time label ride the tape. Either way, history before the start
+        stays visible for context and everything after "now" is hidden.
+        """
 
         self.stop_replay()
         p = theme.active()
+        start = int(result.entry_position) if result is not None else int(start_global)
         self._replay_marker = pg.ScatterPlotItem(
             symbol="o", size=13, brush=pg.mkBrush(p.gold), pen=pg.mkPen(p.bg)
         )
-        self._replay_stop = pg.InfiniteLine(
-            angle=0, movable=False, pen=pg.mkPen(p.stop, width=1.5, style=QtCore.Qt.DashLine)
-        )
-        self._replay_target = pg.InfiniteLine(
-            angle=0, movable=False, pen=pg.mkPen(p.target, width=1.5, style=QtCore.Qt.DashLine)
-        )
         self._replay_label = pg.TextItem("", color=p.text, anchor=(0, 1))
-        self._replay_items = [
-            self._replay_stop,
-            self._replay_target,
-            self._replay_marker,
-            self._replay_label,
-        ]
+        self._replay_items = [self._replay_marker, self._replay_label]
+        self._replay_stop = self._replay_target = None
+        if result is not None:
+            self._replay_stop = pg.InfiniteLine(
+                angle=0, movable=False, pen=pg.mkPen(p.stop, width=1.5, style=QtCore.Qt.DashLine)
+            )
+            self._replay_target = pg.InfiniteLine(
+                angle=0,
+                movable=False,
+                pen=pg.mkPen(p.target, width=1.5, style=QtCore.Qt.DashLine),
+            )
+            self._replay_items = [
+                self._replay_stop,
+                self._replay_target,
+                self._replay_marker,
+                self._replay_label,
+            ]
         for item in self._replay_items:
+            item.setZValue(10)  # ride above the reveal curtain (z=8)
             self._price.addItem(item, ignoreBounds=True)
+        self.set_reveal(start - self._view_start)
 
-    def replay_frame(self, result, t: int) -> None:
-        """Advance the animation to global bar ``t``."""
+    def replay_frame(self, result, t: int, *, start_global: int | None = None) -> None:
+        """Advance the animation to global bar ``t`` (``result`` may be None)."""
 
         if not self._replay_items or self._ohlc is None:
             return
-        start = int(result.entry_position)
-        idx = max(0, min(int(t) - start, len(result.stop_track) - 1))
+        start = int(result.entry_position) if result is not None else int(start_global)
         local = int(t) - self._view_start
         n = len(self._ohlc["close"])
         if not (0 <= local < n):
             return
         price = float(self._ohlc["close"][local])
+        self.set_reveal(local)  # the bar at "now" appears; the future stays hidden
+        # Auto-scroll when the revealed edge nears the right of the view.
+        (x0, x1), _y = self._price.viewRange()
+        if local > x1 - 8:
+            width = x1 - x0
+            self._price.setXRange(local - width * 0.7, local + width * 0.3, padding=0)
         self._replay_marker.setData([local], [price])
-        if len(result.stop_track):
-            self._replay_stop.setPos(float(result.stop_track[idx]))
-            self._replay_target.setPos(float(result.target_track[idx]))
-        stop_points = float(result.initial_stop_points)
-        if stop_points > 0 and np.isfinite(stop_points):
-            running_r = (price - result.entry_price) / stop_points
-            if result.direction < 0:
-                running_r = -running_r
-            label = f"+{int(t) - start}m   {running_r:+.2f} R"
-        else:
-            label = f"+{int(t) - start}m"
+        label = f"+{int(t) - start}m"
+        if result is not None:
+            idx = max(0, min(int(t) - start, len(result.stop_track) - 1))
+            if len(result.stop_track):
+                self._replay_stop.setPos(float(result.stop_track[idx]))
+                self._replay_target.setPos(float(result.target_track[idx]))
+            stop_points = float(result.initial_stop_points)
+            if stop_points > 0 and np.isfinite(stop_points):
+                running_r = (price - result.entry_price) / stop_points
+                if result.direction < 0:
+                    running_r = -running_r
+                label = f"+{int(t) - start}m   {running_r:+.2f} R"
         self._replay_label.setText(label)
         self._replay_label.setPos(local, price)
 
@@ -570,6 +777,7 @@ class ChartWidget(QtWidgets.QWidget):
         for item in self._replay_items:
             self._price.removeItem(item)
         self._replay_items = []
+        self.set_reveal(None)  # lift the curtain; the whole day returns
 
     def center_on(self, local_index: int, pad: int | None = None) -> None:
         pad = theme.CHART_PAD_BARS if pad is None else int(pad)
@@ -602,6 +810,9 @@ class ChartWidget(QtWidgets.QWidget):
         if self._ohlc is None or not self._price.vb.sceneBoundingRect().contains(pos):
             return
         mouse_point = self._price.vb.mapSceneToView(pos)
+        if self._draw_mode is not None:  # an armed drawing tool takes the click
+            self.place_drawing(self._draw_mode, mouse_point.x(), mouse_point.y())
+            return
         local = int(round(mouse_point.x()))
         if not (0 <= local < len(self._ohlc["close"])):
             return

@@ -127,12 +127,19 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     win._on_exit_grid()
     saved.append(_grab(win, out_dir / "07_exit_grid.png", app))
 
-    # 8. Animated replay: load and step to a mid-frame.
+    # 8. Animated trade replay: load and step to a mid-frame (future hidden).
     result, _cfg = win._current()
     if result is not None:
         win._animator.load(result)
         win._animator.step((result.exit_position - result.entry_position) // 2)
         saved.append(_grab(win, out_dir / "08_replay_frame.png", app))
+
+    # 8b. Day replay: the tape revealed to mid-day, no trade attached.
+    win._replay_day()
+    win._animator.pause()
+    win._animator.step((win._view_end - win._view_start) // 2)
+    saved.append(_grab(win, out_dir / "08b_day_replay.png", app))
+    win._animator.stop()
 
     # 9. Light theme.
     win._set_theme("light")

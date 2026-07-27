@@ -74,6 +74,73 @@ class ChartWidgetSmokeTests(unittest.TestCase):
         for tag in ("O", "H", "L", "C"):
             self.assertIn(tag, text)
 
+    def test_reveal_curtain_hides_and_lifts(self):
+        from src.app.ui.chart_widget import ChartWidget
+
+        chart = ChartWidget()
+        n = 20
+        chart.set_view(_synthetic_ohlc(n), np.array([f"{i:02d}:00" for i in range(n)]), 0)
+        self.assertEqual(len(chart._curtains), 2)  # price and volume
+        self.assertFalse(chart._curtains[0].isVisible())
+        chart.set_reveal(7)
+        for curtain in chart._curtains:
+            self.assertTrue(curtain.isVisible())
+            lo, hi = curtain.getRegion()
+            self.assertAlmostEqual(lo, 7.5)
+            self.assertGreaterEqual(hi, n)
+        chart.set_reveal(None)
+        self.assertFalse(chart._curtains[0].isVisible())
+
+    def test_day_replay_without_a_trade(self):
+        from src.app.ui.chart_widget import ChartWidget
+
+        chart = ChartWidget()
+        n = 20
+        chart.set_view(_synthetic_ohlc(n), np.array([f"{i:02d}:00" for i in range(n)]), 0)
+        chart.start_replay(None, start_global=0)
+        self.assertTrue(chart._curtains[0].isVisible())
+        chart.replay_frame(None, 9, start_global=0)
+        self.assertAlmostEqual(chart._curtains[0].getRegion()[0], 9.5)
+        self.assertIn("+9m", chart._replay_label.toPlainText())
+        chart.stop_replay()
+        self.assertFalse(chart._curtains[0].isVisible())
+
+    def test_drawings_place_undo_clear_and_survive_view_switch(self):
+        from src.app.ui.chart_widget import ChartWidget
+
+        chart = ChartWidget()
+        n = 20
+        labels = np.array([f"{i:02d}:00" for i in range(n)])
+        chart.set_view(_synthetic_ohlc(n), labels, start_index=0)
+        chart.place_drawing("hline", 0, 100.5)
+        chart.place_drawing("vline", 4, 0)
+        chart.place_drawing("trend", 2, 100.2)  # first click: anchor only
+        self.assertEqual(len(chart._drawing_items), 2)
+        chart.place_drawing("trend", 9, 100.9)  # second click completes it
+        self.assertEqual(len(chart._drawing_items), 3)
+        # Switch to another window and back: this day's drawings return.
+        chart.set_view(_synthetic_ohlc(n), labels, start_index=500)
+        self.assertEqual(len(chart._drawing_items), 0)
+        chart.set_view(_synthetic_ohlc(n), labels, start_index=0)
+        self.assertEqual(len(chart._drawing_items), 3)
+        chart.undo_drawing()
+        self.assertEqual(len(chart._drawing_items), 2)
+        chart.clear_drawings()
+        self.assertEqual(len(chart._drawing_items), 0)
+
+    def test_draw_mode_click_routing(self):
+        from src.app.ui.chart_widget import ChartWidget
+
+        chart = ChartWidget()
+        n = 10
+        chart.set_view(_synthetic_ohlc(n), np.array([f"{i:02d}:00" for i in range(n)]), 0)
+        placed = []
+        chart.drawing_placed.connect(lambda: placed.append(True))
+        chart.set_draw_mode("hline")
+        chart.place_drawing("hline", 3, 100.4)
+        self.assertEqual(placed, [True])
+        chart.set_draw_mode(None)
+
 
 if __name__ == "__main__":
     unittest.main()

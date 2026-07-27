@@ -147,6 +147,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_side()
         self._build_exit_dock()
         self._build_transport()
+        self._build_draw_toolbar()
 
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         split.addWidget(self.chart)
@@ -341,12 +342,26 @@ class MainWindow(QtWidgets.QMainWindow):
         transport_act.setText("Replay transport")
         transport_act.setShortcut("Ctrl+3")
         menu.addAction(transport_act)
+        draw_act = self._draw_toolbar.toggleViewAction()
+        draw_act.setText("Draw toolbar")
+        draw_act.setShortcut("Ctrl+4")
+        menu.addAction(draw_act)
 
     def _build_transport(self) -> None:
         bar = QtWidgets.QToolBar("Replay")
         bar.setMovable(False)
+        self.replay_day_btn = QtWidgets.QPushButton("Replay day")
+        self.replay_day_btn.setToolTip(
+            "Hide this day's bars and play the tape from its first bar - candles\n"
+            "appear one by one with the future hidden. Free-play entries can be\n"
+            "placed on revealed bars while it runs."
+        )
+        self.replay_day_btn.clicked.connect(self._replay_day)
         self.animate_btn = QtWidgets.QPushButton("Animate trade")
-        self.animate_btn.setToolTip("Step the selected trade bar by bar from entry to exit.")
+        self.animate_btn.setToolTip(
+            "Replay the selected trade bar by bar from entry to exit, with the\n"
+            "future hidden - watch price walk into your stop or target."
+        )
         self.animate_btn.clicked.connect(self._animate_current)
         self.play_btn = QtWidgets.QPushButton("Play")
         self.play_btn.clicked.connect(self._animator.toggle)
@@ -369,6 +384,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.replay_pos.fontMetrics().horizontalAdvance("  +8888 / 8888 min")
         )
         for w in (
+            self.replay_day_btn,
             self.animate_btn,
             step_back,
             self.play_btn,
@@ -381,6 +397,44 @@ class MainWindow(QtWidgets.QMainWindow):
             bar.addWidget(w)
         self.addToolBar(QtCore.Qt.BottomToolBarArea, bar)
         self._transport = bar
+
+    def _build_draw_toolbar(self) -> None:
+        """Vertical drawing strip on the left edge, TradingView-style."""
+
+        bar = QtWidgets.QToolBar("Draw")
+        bar.setMovable(False)
+        bar.setOrientation(QtCore.Qt.Vertical)
+        group = QtGui.QActionGroup(self)
+        group.setExclusive(True)
+        self._draw_actions = {}
+        for label, mode, tip in (
+            ("Cursor", None, "Normal interaction: crosshair, free-play clicks, drags."),
+            ("Level", "hline", "Click a price to drop a draggable horizontal level."),
+            ("Trend", "trend", "Two clicks place a trendline; drag its endpoints to adjust."),
+            ("Time", "vline", "Click a bar to mark a moment with a draggable vertical line."),
+        ):
+            act = bar.addAction(label)
+            act.setCheckable(True)
+            act.setToolTip(tip)
+            act.setActionGroup(group)
+            act.triggered.connect(lambda _c=False, m=mode: self.chart.set_draw_mode(m))
+            self._draw_actions[mode] = act
+        self._draw_actions[None].setChecked(True)
+        bar.addSeparator()
+        undo = bar.addAction("Undo")
+        undo.setToolTip("Remove the most recent drawing on this day.")
+        undo.triggered.connect(self.chart.undo_drawing)
+        clear = bar.addAction("Clear")
+        clear.setToolTip("Remove every drawing on this day.")
+        clear.triggered.connect(self.chart.clear_drawings)
+        self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
+        self._draw_toolbar = bar
+        # One-shot tools: fall back to the cursor once a drawing lands.
+        self.chart.drawing_placed.connect(self._on_drawing_placed)
+
+    def _on_drawing_placed(self) -> None:
+        self.chart.set_draw_mode(None)
+        self._draw_actions[None].setChecked(True)
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
@@ -921,6 +975,14 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     # -- animated replay ---------------------------------------------------
+    def _replay_day(self) -> None:
+        """Play the whole visible day tape-style, no trade required."""
+
+        if self._data is None or self._view_end <= self._view_start:
+            return
+        self._animator.load_day(self._view_start, self._view_end)
+        self._animator.play()
+
     def _animate_current(self) -> None:
         result, _cfg = self._current()
         if result is None:

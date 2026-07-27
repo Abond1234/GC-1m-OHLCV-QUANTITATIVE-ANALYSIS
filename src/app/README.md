@@ -40,7 +40,15 @@ PySide6 6.11 ships an abi3 wheel and installs on the repo's Python 3.14 venv.
     cap / tighter target, overlaid on the chart with a comparison table.
   - **Exit-grid heatmap**: sweep stop x target for one entry and colour the outcome;
     click a cell to apply it. Labelled exploratory (it shows the trial count).
-  - **Bar-by-bar replay**: animate a trade from entry to exit with play/step/speed.
+  - **Bar-by-bar replay with the future hidden**: animate a trade from entry to
+    exit with play/step/speed while a reveal curtain hides everything after
+    "now" - candles appear one by one, TradingView-replay style, and the view
+    auto-scrolls with the tape. Shaded risk/reward zones between entry and the
+    stop/target tracks show the position like a long/short tool (a trailing
+    stop's ratchet is visible as the red zone tightening).
+  - **Replay day**: the same tape reveal for a whole day with no trade attached
+    - play the session from its first bar and place free-play entries on
+    revealed bars as it runs.
   - **Forensics panel**: a plain-language verdict, a per-horizon MFE/MAE mini-chart,
     and labelled entry-context meters.
 - **Light / dark** theme (View menu). Every surface re-themes in place, including
