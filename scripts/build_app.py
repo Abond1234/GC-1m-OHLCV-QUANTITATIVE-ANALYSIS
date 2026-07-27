@@ -23,6 +23,35 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ENTRY = PROJECT_ROOT / "scripts" / "run_trade_simulator.py"
 
 
+def _render_icon() -> Path:
+    """Render the code-drawn Gold Quant mark to a .ico for the executable.
+
+    Generated into the git-ignored ``build/`` directory at build time - the mark's
+    single source of truth stays ``src/app/ui/brand.py``; no binary is committed.
+    """
+
+    import os
+
+    from PySide6 import QtWidgets
+
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from src.app.ui import brand
+
+    # Use the native platform so real fonts render into the icon; the offscreen
+    # platform substitutes box glyphs for text. Fall back to offscreen only when
+    # there is no window station at all (a headless builder).
+    try:
+        app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    except (RuntimeError, SystemError):
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        app = QtWidgets.QApplication([])
+    icon_path = PROJECT_ROOT / "build" / "app_icon.ico"
+    brand.write_ico(icon_path)
+    del app
+    return icon_path
+
+
 def main() -> None:
     try:
         import PyInstaller.__main__ as pyi
@@ -31,11 +60,13 @@ def main() -> None:
             "PyInstaller is not installed. Run:\n  python -m pip install -r requirements-app.txt"
         ) from None
 
+    icon_path = _render_icon()
     args = [
         str(ENTRY),
         "--name=GCTradeSimulator",
         "--noconfirm",
         "--windowed",  # no console window
+        f"--icon={icon_path}",
         "--paths",
         str(PROJECT_ROOT),  # so 'src' is importable during analysis
         "--collect-submodules=src.app",
