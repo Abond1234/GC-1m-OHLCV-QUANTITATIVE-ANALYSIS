@@ -54,7 +54,9 @@ class TradeBlotter(QtWidgets.QWidget):
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        header.setStretchLastSection(True)
         self.table.itemSelectionChanged.connect(self._on_selection)
         layout.addWidget(self.table)
 
@@ -85,6 +87,7 @@ class TradeBlotter(QtWidgets.QWidget):
         for c, v in enumerate(values):
             item = QtWidgets.QTableWidgetItem(v)
             item.setData(QtCore.Qt.UserRole, int(t.id))
+            item.setToolTip(v)  # full text survives any column elision
             if c == 0 and t.color:
                 item.setForeground(QtGui.QColor(t.color))
             if c == 4:

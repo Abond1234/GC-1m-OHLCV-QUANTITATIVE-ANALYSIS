@@ -58,18 +58,23 @@ class ExitPanel(QtWidgets.QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        # Presets.
-        presets = QtWidgets.QHBoxLayout()
-        for label, factory in (
-            ("Frozen contract", frozen_config),
-            ("Wider stop", self._preset_wider),
-            ("Add trailing", self._preset_trailing),
-            ("Longer cap", self._preset_longer),
+        # Presets, in a 2x2 grid so none clips when the dock sits at its
+        # minimum width on a narrow display.
+        presets = QtWidgets.QGridLayout()
+        presets.setHorizontalSpacing(6)
+        presets.setVerticalSpacing(6)
+        for i, (label, factory) in enumerate(
+            (
+                ("Frozen contract", frozen_config),
+                ("Wider stop", self._preset_wider),
+                ("Add trailing", self._preset_trailing),
+                ("Longer cap", self._preset_longer),
+            )
         ):
             btn = QtWidgets.QPushButton(label)
+            btn.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
             btn.clicked.connect(lambda _c=False, f=factory: self.from_config(f()))
-            presets.addWidget(btn)
-        presets.addStretch(1)
+            presets.addWidget(btn, i // 2, i % 2)
         layout.addLayout(presets)
 
         # Stop.
@@ -210,6 +215,7 @@ class ExitPanel(QtWidgets.QWidget):
     def from_config(self, cfg: ExitConfig) -> None:
         """Load a config into the controls without firing a burst of signals."""
 
+        self._debounce.stop()  # this immediate emission supersedes any queued edit
         blockers = [
             self.stop_mode,
             self.stop_value,

@@ -38,9 +38,12 @@ class HeatmapWidget(QtWidgets.QWidget):
         self.metric_combo.currentTextChanged.connect(lambda _t: self._render())
         top.addWidget(self.metric_combo)
         top.addStretch(1)
-        self.readout = QtWidgets.QLabel("")
-        top.addWidget(self.readout)
         layout.addLayout(top)
+
+        # Hover readout on its own row so a narrow pane never clips the R value.
+        self.readout = QtWidgets.QLabel("")
+        self.readout.setWordWrap(True)
+        layout.addWidget(self.readout)
 
         self._glw = pg.GraphicsLayoutWidget()
         self.plot = self._glw.addPlot(row=0, col=0)
@@ -65,6 +68,12 @@ class HeatmapWidget(QtWidgets.QWidget):
         self._grid = grid
         self._render()
 
+    def refresh_theme(self) -> None:
+        """Re-render with the active palette (the image bakes theme colours in)."""
+
+        self._glw.setBackground(theme.active().bg)
+        self._render()
+
     # -- rendering ---------------------------------------------------------
     def _render(self) -> None:
         grid = self._grid
@@ -86,11 +95,13 @@ class HeatmapWidget(QtWidgets.QWidget):
         self.img.setLookupTable(cmap.getLookupTable(nPts=256))
         self._set_rect(grid)
         rows, cols = grid.gross_r.shape
-        self.caption.setText(
+        caption = (
             f"Exploratory: {rows} x {cols} = {grid.trials} exits swept on this one entry. "
             f"The best-looking cell is partly luck, not a validated edge - nothing here "
             f"changes the frozen research verdict. Click a cell to apply that exit."
         )
+        self.caption.setText(caption)
+        self.caption.setToolTip(caption)  # the pane may be too short for every line
 
     def _set_rect(self, grid: GridResult) -> None:
         s, t = grid.stop_mults, grid.target_rs

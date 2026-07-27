@@ -85,6 +85,7 @@ class ForensicsPanel(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._meters: dict[str, tuple] = {}
+        self._last_html = None  # skip QTextDocument rebuilds during 60 Hz drags
         self._build()
 
     def _build(self) -> None:
@@ -112,6 +113,8 @@ class ForensicsPanel(QtWidgets.QWidget):
         grid.setContentsMargins(10, 8, 10, 8)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(5)
+        # When the pane narrows, shrink the bar (column 1), never the labels.
+        grid.setColumnStretch(1, 1)
         for row, spec in enumerate(_METERS):
             name = QtWidgets.QLabel(spec.label)
             name.setToolTip(spec.tip)
@@ -139,20 +142,30 @@ class ForensicsPanel(QtWidgets.QWidget):
     def show_realized(self, result) -> None:
         """Verdict from the realized path only (no registered context yet)."""
 
-        self.verdict.setHtml(self._verdict_html(result, ctx=None))
+        html = self._verdict_html(result, ctx=None)
+        if html != self._last_html:  # a drag re-explains per event; text rarely changes
+            self._last_html = html
+            self.verdict.setHtml(html)
         self._show_context_widgets(False)
 
     def show_context(self, result, ctx) -> None:
         """Full verdict plus the per-horizon chart and feature meters."""
 
-        self.verdict.setHtml(self._verdict_html(result, ctx=ctx))
+        self._last_html = self._verdict_html(result, ctx=ctx)
+        self.verdict.setHtml(self._last_html)
         self._draw_horizons(result.direction, ctx)
         self._fill_meters(ctx.features)
         self._show_context_widgets(True)
 
     def clear(self) -> None:
+        self._last_html = None
         self.verdict.clear()
         self._show_context_widgets(False)
+
+    def retheme(self) -> None:
+        """Re-style the pieces that baked the previous palette in."""
+
+        self.horizon_plot.setBackground(theme.active().bg)
 
     # -- rendering ---------------------------------------------------------
     def _verdict_html(self, result, ctx) -> str:
@@ -198,7 +211,8 @@ class ForensicsPanel(QtWidgets.QWidget):
         axis.setTicks([[(i, f"{h}m") for i, h in enumerate(horizons)]])
 
     def _fill_meters(self, feats: dict) -> None:
-        p = theme.active()
+        # No per-label stylesheets: the app-wide QSS colours QLabel, so a theme
+        # switch restyles these automatically instead of leaving stale colours.
         feats = feats or {}
         for key, (bar, val, spec) in self._meters.items():
             v = feats.get(key)
@@ -209,7 +223,6 @@ class ForensicsPanel(QtWidgets.QWidget):
             frac = (float(v) - spec.lo) / (spec.hi - spec.lo)
             bar.setValue(int(max(0.0, min(1.0, frac)) * 1000))
             val.setText(spec.fmt.format(v))
-            val.setStyleSheet(f"color:{p.text}")
 
 
 def _num(value) -> float:

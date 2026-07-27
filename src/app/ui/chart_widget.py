@@ -41,6 +41,10 @@ class CandlestickItem(pg.GraphicsObject):
         self._x, self._o, self._h, self._l, self._c = x, o, h, low, c
         self.picture = QtGui.QPicture()
         self._draw()
+        # Rasterize once per zoom level: without this every overlapping repaint
+        # (crosshair moves, drag frames, replay ticks) replays ~2 antialiased
+        # primitives per bar from the QPicture command log.
+        self.setCacheMode(QtWidgets.QGraphicsItem.DeviceCoordinateCache)
 
     def _draw(self):
         p = theme.active()
@@ -116,18 +120,36 @@ class ChartWidget(QtWidgets.QWidget):
         self._volume.showAxis("bottom", False)
         self._volume.setLabel("left", "vol")
 
+        # O/H/L/C readout as a plain QLabel: updating a plot title forces a
+        # graphics-layout pass on every mouse move; a label repaint does not.
+        self._readout_label = QtWidgets.QLabel(" ")
+        self._readout_label.setTextFormat(QtCore.Qt.RichText)
+        self._readout_label.setFixedHeight(20)
+        self._readout_label.setContentsMargins(8, 0, 8, 0)
+
         box = QtWidgets.QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(0)
+        box.addWidget(self._readout_label)
         box.addWidget(self._layout)
 
         self._view_start = 0  # global index of the first rendered bar
         self._trade_items: list = []
+        self._whatif_items: list = []  # alternative-exit overlays, cleared separately
         self._level_lines: list = []  # draggable stop/target lines (kept across path redraws)
         self._level_proxies: list = []
         self._replay_items: list = []  # bar-by-bar animation items
         self._on_level_changed = None
         self._ohlc: dict | None = None  # current window arrays, for the crosshair readout
         self._labels: np.ndarray = np.array([])
+        self._last_readout_i = -1
+        self._vwap_items: dict[str, pg.PlotDataItem] = {}  # kind -> overlay line
+        self._session_regions: list = []  # NY-session shading regions
+        # Persistent slots for the one detailed trade and its excursion ribbon,
+        # so a 60 Hz stop/target drag updates data in place instead of tearing
+        # down and rebuilding the whole overlay layer each event.
+        self._active_trade_items: dict | None = None
+        self._excursion_items: dict | None = None
 
         # Crosshair (hidden until the cursor is over the plot).
         pen = pg.mkPen(p.text_faint, width=1, style=QtCore.Qt.DashLine)
@@ -144,10 +166,25 @@ class ChartWidget(QtWidgets.QWidget):
         )
 
     def apply_theme(self) -> None:
-        """Repaint the chart surface with the active palette (light/dark switch)."""
+        """Repaint the chart surface with the active palette (light/dark switch).
+
+        Items rebuilt by ``set_view`` pick the palette up on the next render; this
+        restyles the pieces created once in the constructor (crosshair, legend,
+        axes) so nothing keeps the previous theme's colours.
+        """
 
         p = theme.active()
         self._layout.setBackground(p.bg)
+        cross = pg.mkPen(p.text_faint, width=1, style=QtCore.Qt.DashLine)
+        self._vline.setPen(cross)
+        self._hline.setPen(cross)
+        self._legend.setLabelTextColor(p.text_dim)
+        for plot in (self._price, self._volume):
+            for name in ("left", "right", "bottom"):
+                axis = plot.getAxis(name)
+                if axis is not None:
+                    axis.setPen(pg.mkPen(p.text_faint))
+                    axis.setTextPen(pg.mkPen(p.text_dim))
 
     # -- rendering ---------------------------------------------------------
     def set_view(self, ohlc: dict, labels: np.ndarray, start_index: int) -> None:
@@ -162,9 +199,15 @@ class ChartWidget(QtWidgets.QWidget):
         self._price.clear()
         self._volume.clear()
         self._trade_items.clear()
+        self._whatif_items.clear()
         self._level_lines.clear()  # removed by _price.clear(); drop stale references
         self._level_proxies.clear()
         self._replay_items.clear()
+        self._vwap_items.clear()
+        self._session_regions.clear()
+        self._active_trade_items = None
+        self._excursion_items = None
+        self._last_readout_i = -1
         for line in (self._vline, self._hline):
             line.setVisible(False)
             self._price.addItem(line, ignoreBounds=True)
@@ -189,8 +232,12 @@ class ChartWidget(QtWidgets.QWidget):
         self._price.setLimits(xMin=-1, xMax=n)
         self._price.enableAutoRange()
 
-    def add_vwap(self, vwap: np.ndarray, kind: str = "rolling") -> None:
-        """Overlay a VWAP line. ``kind`` selects colour/legend label."""
+    def add_vwap(self, vwap: np.ndarray, kind: str = "rolling", *, visible: bool = True) -> None:
+        """Overlay a VWAP line. ``kind`` selects colour/legend label.
+
+        Lines persist for the rendered window; checkbox toggles flip visibility
+        via ``set_vwap_visible`` instead of rebuilding the whole chart.
+        """
 
         p = theme.active()
         colour = {
@@ -203,9 +250,16 @@ class ChartWidget(QtWidgets.QWidget):
         )
         x = np.arange(len(vwap))
         item = pg.PlotDataItem(x, vwap, pen=pg.mkPen(colour, width=1.4), name=label)
+        item.setVisible(visible)
         self._price.addItem(item)
+        self._vwap_items[kind] = item
 
-    def shade_sessions(self, session_code: np.ndarray) -> None:
+    def set_vwap_visible(self, kind: str, on: bool) -> None:
+        item = self._vwap_items.get(kind)
+        if item is not None:
+            item.setVisible(on)
+
+    def shade_sessions(self, session_code: np.ndarray, *, visible: bool = True) -> None:
         """Light vertical shading for the New York execution window (code == 2)."""
 
         p = theme.active()
@@ -222,7 +276,13 @@ class ChartWidget(QtWidgets.QWidget):
         for a, b in zip(starts, ends, strict=False):
             region = pg.LinearRegionItem([a, b], movable=False, brush=pg.mkBrush(*p.session_shade))
             region.setZValue(-10)
+            region.setVisible(visible)
             self._price.addItem(region)
+            self._session_regions.append(region)
+
+    def set_sessions_visible(self, on: bool) -> None:
+        for region in self._session_regions:
+            region.setVisible(on)
 
     def mark_trades(self, local_entries, y, directions, gross_r) -> None:
         """Scatter entry markers at entry price, coloured by outcome (local indices)."""
@@ -238,8 +298,9 @@ class ChartWidget(QtWidgets.QWidget):
             size=11,
             pen=pg.mkPen(p.bg),
         )
-        self._price.addItem(item)
-        self._trade_items.append(item)
+        # Annotations sit inside the candle range; they must never drive
+        # autorange (which would make the view jump on every redraw).
+        self._add_trade_item(item, ignore_bounds=True)
 
     def draw_trade(
         self,
@@ -252,30 +313,36 @@ class ChartWidget(QtWidgets.QWidget):
         *,
         color: str | None = None,
     ):
-        """Draw one trade in detail: stop/target tracks and entry/exit markers."""
+        """Draw (or update) the one detailed trade: level tracks and entry/exit.
+
+        The four items persist between calls, so a stop/target drag at 60 Hz is
+        four ``setData`` calls, not a teardown of the overlay layer.
+        """
 
         p = theme.active()
         marker = color or p.entry
-        held = np.arange(entry_local, entry_local + len(stop_track))
+        items = self._active_trade_items
+        if items is None:
+            items = {
+                "stop": pg.PlotDataItem(),
+                "target": pg.PlotDataItem(),
+                "entry": pg.ScatterPlotItem(symbol="o", size=12),
+                "exit": pg.ScatterPlotItem(symbol="x", size=13),
+            }
+            for item in items.values():
+                self._add_trade_item(item, ignore_bounds=True)
+            self._active_trade_items = items
+        items["stop"].setPen(pg.mkPen(p.stop, style=QtCore.Qt.DashLine))
+        items["target"].setPen(pg.mkPen(p.target, style=QtCore.Qt.DashLine))
         if len(stop_track):
-            self._add_trade_item(
-                pg.PlotDataItem(held, stop_track, pen=pg.mkPen(p.stop, style=QtCore.Qt.DashLine))
-            )
-            self._add_trade_item(
-                pg.PlotDataItem(
-                    held, target_track, pen=pg.mkPen(p.target, style=QtCore.Qt.DashLine)
-                )
-            )
-        self._add_trade_item(
-            pg.ScatterPlotItem(
-                x=[entry_local], y=[entry_price], symbol="o", size=12, brush=pg.mkBrush(marker)
-            )
-        )
-        self._add_trade_item(
-            pg.ScatterPlotItem(
-                x=[exit_local], y=[exit_price], symbol="x", size=13, pen=pg.mkPen(marker, width=2)
-            )
-        )
+            held = np.arange(entry_local, entry_local + len(stop_track))
+            items["stop"].setData(held, stop_track)
+            items["target"].setData(held, target_track)
+        else:
+            items["stop"].clear()
+            items["target"].clear()
+        items["entry"].setData(x=[entry_local], y=[entry_price], brush=pg.mkBrush(marker))
+        items["exit"].setData(x=[exit_local], y=[exit_price], pen=pg.mkPen(marker, width=2))
 
     def light_marker(self, entry_local, entry_price, exit_local, exit_price, gross_r, color):
         """A faint entry-to-exit connector for a non-active placed trade."""
@@ -287,17 +354,20 @@ class ChartWidget(QtWidgets.QWidget):
                 [entry_local, exit_local],
                 [entry_price, exit_price],
                 pen=pg.mkPen(color, width=1, style=QtCore.Qt.DotLine),
-            )
+            ),
+            ignore_bounds=True,
         )
         self._add_trade_item(
             pg.ScatterPlotItem(
                 x=[entry_local], y=[entry_price], symbol="o", size=8, brush=pg.mkBrush(color)
-            )
+            ),
+            ignore_bounds=True,
         )
         self._add_trade_item(
             pg.ScatterPlotItem(
                 x=[exit_local], y=[exit_price], symbol="x", size=9, pen=pg.mkPen(outcome, width=1)
-            )
+            ),
+            ignore_bounds=True,
         )
 
     def draw_excursion(self, exc, hook: bool = False) -> None:
@@ -309,75 +379,86 @@ class ChartWidget(QtWidgets.QWidget):
 
         p = theme.active()
         x = np.asarray(exc.x) - self._view_start
-        baseline = pg.PlotDataItem(x, np.full(len(x), exc.entry_price), pen=None)
-        fav_curve = pg.PlotDataItem(x, exc.fav_price, pen=pg.mkPen(p.target, width=1))
-        adv_curve = pg.PlotDataItem(x, exc.adv_price, pen=pg.mkPen(p.stop, width=1))
-        fav_fill = pg.FillBetweenItem(
-            baseline, fav_curve, brush=pg.mkBrush(*(p.hook_fill if hook else p.mfe_fill))
+        items = self._excursion_items
+        if items is None:
+            baseline = pg.PlotDataItem(pen=None)
+            fav_curve = pg.PlotDataItem()
+            adv_curve = pg.PlotDataItem()
+            fav_fill = pg.FillBetweenItem(baseline, fav_curve)
+            adv_fill = pg.FillBetweenItem(baseline, adv_curve)
+            for item in (fav_fill, adv_fill):
+                item.setZValue(-5)
+            items = {
+                "baseline": baseline,
+                "fav_curve": fav_curve,
+                "adv_curve": adv_curve,
+                "fav_fill": fav_fill,
+                "adv_fill": adv_fill,
+                "peak": pg.ScatterPlotItem(symbol="d", size=12),
+                "trough": pg.ScatterPlotItem(symbol="d", size=11),
+                "label": pg.TextItem("", anchor=(0, 1)),
+            }
+            # Overlays are within the candles' range, so they must not drive
+            # autorange (FillBetweenItem reports a [0,0] bound that would
+            # otherwise collapse Y). Items persist for cheap drag updates.
+            for item in items.values():
+                self._add_trade_item(item, ignore_bounds=True)
+            self._excursion_items = items
+        items["fav_curve"].setPen(pg.mkPen(p.target, width=1))
+        items["adv_curve"].setPen(pg.mkPen(p.stop, width=1))
+        items["baseline"].setData(x, np.full(len(x), exc.entry_price))
+        items["fav_curve"].setData(x, exc.fav_price)
+        items["adv_curve"].setData(x, exc.adv_price)
+        items["fav_fill"].setBrush(pg.mkBrush(*(p.hook_fill if hook else p.mfe_fill)))
+        items["adv_fill"].setBrush(pg.mkBrush(*p.mae_fill))
+        items["peak"].setData(
+            x=[exc.peak_x - self._view_start],
+            y=[exc.peak_price],
+            brush=pg.mkBrush(p.hook if hook else p.target),
+            pen=pg.mkPen(p.bg),
         )
-        adv_fill = pg.FillBetweenItem(baseline, adv_curve, brush=pg.mkBrush(*p.mae_fill))
-        for item in (fav_fill, adv_fill):
-            item.setZValue(-5)
-        # Overlays are within the candles' range, so they must not drive autorange
-        # (FillBetweenItem reports a [0,0] bound that would otherwise collapse Y).
-        for item in (fav_fill, adv_fill, baseline, fav_curve, adv_curve):
-            self._add_trade_item(item, ignore_bounds=True)
-        self._add_trade_item(
-            pg.ScatterPlotItem(
-                x=[exc.peak_x - self._view_start],
-                y=[exc.peak_price],
-                symbol="d",
-                size=12,
-                brush=pg.mkBrush(p.hook if hook else p.target),
-                pen=pg.mkPen(p.bg),
-            ),
-            ignore_bounds=True,
+        items["trough"].setData(
+            x=[exc.trough_x - self._view_start],
+            y=[exc.trough_price],
+            brush=pg.mkBrush(p.stop),
+            pen=pg.mkPen(p.bg),
         )
-        self._add_trade_item(
-            pg.ScatterPlotItem(
-                x=[exc.trough_x - self._view_start],
-                y=[exc.trough_price],
-                symbol="d",
-                size=11,
-                brush=pg.mkBrush(p.stop),
-                pen=pg.mkPen(p.bg),
-            ),
-            ignore_bounds=True,
-        )
-        label = pg.TextItem(
-            f"+{exc.mfe_r:.1f} R @ +{exc.time_to_peak_min}m",
-            color=p.hook if hook else p.target,
-            anchor=(0, 1),
-        )
-        label.setPos(exc.peak_x - self._view_start, exc.peak_price)
-        self._add_trade_item(label, ignore_bounds=True)
+        items["label"].setColor(p.hook if hook else p.target)
+        items["label"].setText(f"+{exc.mfe_r:.1f} R @ +{exc.time_to_peak_min}m")
+        items["label"].setPos(exc.peak_x - self._view_start, exc.peak_price)
 
     def draw_whatif(self, runs) -> None:
         """Overlay each alternative-exit run's stop track and exit in its colour."""
 
+        self.clear_whatif()
         for run in runs:
             r = run.result
             start = r.entry_position - self._view_start
             if len(r.stop_track):
                 held = np.arange(start, start + len(r.stop_track))
-                self._add_trade_item(
-                    pg.PlotDataItem(
-                        held,
-                        r.stop_track,
-                        pen=pg.mkPen(run.color, width=1.2, style=QtCore.Qt.DashDotLine),
-                    ),
-                    ignore_bounds=True,
+                item = pg.PlotDataItem(
+                    held,
+                    r.stop_track,
+                    pen=pg.mkPen(run.color, width=1.2, style=QtCore.Qt.DashDotLine),
                 )
-            self._add_trade_item(
-                pg.ScatterPlotItem(
-                    x=[r.exit_position - self._view_start],
-                    y=[r.exit_price],
-                    symbol="x",
-                    size=11,
-                    pen=pg.mkPen(run.color, width=2),
-                ),
-                ignore_bounds=True,
+                self._price.addItem(item, ignoreBounds=True)
+                self._whatif_items.append(item)
+            marker = pg.ScatterPlotItem(
+                x=[r.exit_position - self._view_start],
+                y=[r.exit_price],
+                symbol="x",
+                size=11,
+                pen=pg.mkPen(run.color, width=2),
             )
+            self._price.addItem(marker, ignoreBounds=True)
+            self._whatif_items.append(marker)
+
+    def clear_whatif(self) -> None:
+        """Drop the alternative-exit overlays (e.g. once their config is stale)."""
+
+        for item in self._whatif_items:
+            self._price.removeItem(item)
+        self._whatif_items.clear()
 
     def _add_trade_item(self, item, ignore_bounds: bool = False) -> None:
         self._price.addItem(item, ignoreBounds=ignore_bounds)
@@ -387,6 +468,9 @@ class ChartWidget(QtWidgets.QWidget):
         for item in self._trade_items:
             self._price.removeItem(item)
         self._trade_items.clear()
+        self.clear_whatif()
+        self._active_trade_items = None  # items were just removed with the layer
+        self._excursion_items = None
 
     # -- draggable stop/target levels (active free-play trade) --------------
     def set_draggable_levels(self, stop_price, target_price, on_changed) -> None:
@@ -416,7 +500,9 @@ class ChartWidget(QtWidgets.QWidget):
             )
 
     def _emit_level(self, kind: str) -> None:
-        if self._on_level_changed is None:
+        # A rate-limited SignalProxy event can arrive after clear_draggable_levels
+        # (e.g. the redraw that follows a config change), so re-check both.
+        if self._on_level_changed is None or len(self._level_lines) < 2:
             return
         line = self._level_lines[0] if kind == "stop" else self._level_lines[1]
         self._on_level_changed(kind, float(line.value()))
@@ -469,10 +555,15 @@ class ChartWidget(QtWidgets.QWidget):
         if len(result.stop_track):
             self._replay_stop.setPos(float(result.stop_track[idx]))
             self._replay_target.setPos(float(result.target_track[idx]))
-        running_r = (price - result.entry_price) / result.initial_stop_points
-        if result.direction < 0:
-            running_r = -running_r
-        self._replay_label.setText(f"+{int(t) - start}m   {running_r:+.2f} R")
+        stop_points = float(result.initial_stop_points)
+        if stop_points > 0 and np.isfinite(stop_points):
+            running_r = (price - result.entry_price) / stop_points
+            if result.direction < 0:
+                running_r = -running_r
+            label = f"+{int(t) - start}m   {running_r:+.2f} R"
+        else:
+            label = f"+{int(t) - start}m"
+        self._replay_label.setText(label)
         self._replay_label.setPos(local, price)
 
     def stop_replay(self) -> None:
@@ -490,8 +581,12 @@ class ChartWidget(QtWidgets.QWidget):
             n = len(self._ohlc["close"])
             a, b = max(0, x0), min(n - 1, x1)
             if b > a:
-                lo = float(np.nanmin(self._ohlc["low"][a : b + 1]))
-                hi = float(np.nanmax(self._ohlc["high"][a : b + 1]))
+                window_low = self._ohlc["low"][a : b + 1]
+                window_high = self._ohlc["high"][a : b + 1]
+                if np.isnan(window_low).all() or np.isnan(window_high).all():
+                    return  # nothing finite to frame; keep the current range
+                lo = float(np.nanmin(window_low))
+                hi = float(np.nanmax(window_high))
                 margin = (hi - lo) * 0.08 or 1.0
                 self._price.setYRange(lo - margin, hi + margin, padding=0)
 
@@ -500,10 +595,16 @@ class ChartWidget(QtWidgets.QWidget):
         if event.button() != QtCore.Qt.LeftButton:
             return
         pos = event.scenePos()
-        if not self._price.sceneBoundingRect().contains(pos):
+        # Test against the ViewBox, not the whole PlotItem: the plot rect
+        # includes the axis strips, where a click maps to an out-of-range bar
+        # (numpy would accept the negative index and place a trade on the
+        # wrong day entirely).
+        if self._ohlc is None or not self._price.vb.sceneBoundingRect().contains(pos):
             return
         mouse_point = self._price.vb.mapSceneToView(pos)
         local = int(round(mouse_point.x()))
+        if not (0 <= local < len(self._ohlc["close"])):
+            return
         self.bar_clicked.emit(self._view_start + local)
 
     def _on_mouse_moved(self, evt) -> None:
@@ -519,8 +620,9 @@ class ChartWidget(QtWidgets.QWidget):
         self._vline.setVisible(True)
         self._hline.setVisible(True)
         n = len(self._ohlc["close"])
-        if 0 <= i < n:
-            self._price.setTitle(self._readout(i))
+        if 0 <= i < n and i != self._last_readout_i:
+            self._last_readout_i = i  # the readout only changes per bar, not per pixel
+            self._readout_label.setText(self._readout(i))
 
     def _readout(self, i: int) -> str:
         p = theme.active()
