@@ -1,25 +1,33 @@
 """The code-drawn Gold Quant mark and the animated loading splash.
 
-Runs under the offscreen platform; asserts geometry and paint coverage rather
-than glyph rendering (offscreen font fallback draws boxes for text).
+Skips when PySide6/pyqtgraph are not installed (CI and the research env do not
+have them). When present, runs under the offscreen platform and asserts geometry
+and paint coverage rather than glyph rendering (offscreen font fallback draws
+boxes for text).
 """
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import tempfile
 import unittest
 from pathlib import Path
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+_HAS_QT = (
+    importlib.util.find_spec("PySide6") is not None
+    and importlib.util.find_spec("pyqtgraph") is not None
+)
 
-from PySide6 import QtWidgets  # noqa: E402
+if _HAS_QT:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6 import QtWidgets
 
-from src.app.ui import brand, theme  # noqa: E402
-from src.app.ui.splash import GoldSplash  # noqa: E402
+    from src.app.ui import brand, theme
+    from src.app.ui.splash import GoldSplash
 
-_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-theme.apply(_app, "dark")
+    _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    theme.apply(_app, "dark")
 
 
 def _coverage(pixmap, step=8):
@@ -36,6 +44,7 @@ def _coverage(pixmap, step=8):
     return hit / max(1, total)
 
 
+@unittest.skipUnless(_HAS_QT, "PySide6/pyqtgraph not installed")
 class LogoTests(unittest.TestCase):
     def test_pixmap_sizes_and_content(self):
         for size in (16, 48, 256):
@@ -63,6 +72,7 @@ class LogoTests(unittest.TestCase):
             self.assertGreater(path.stat().st_size, 1000)
 
 
+@unittest.skipUnless(_HAS_QT, "PySide6/pyqtgraph not installed")
 class SplashTests(unittest.TestCase):
     def test_constructs_paints_and_updates_status(self):
         splash = GoldSplash()
