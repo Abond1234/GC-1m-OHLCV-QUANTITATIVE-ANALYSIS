@@ -77,6 +77,8 @@ def load_app_data(root=None, date_floor=None) -> dict:
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    loadFinished = QtCore.Signal(bool)  # initial data load done (True) or failed (False)
+
     def __init__(self, data: dict | None = None):
         super().__init__()
         self.setWindowTitle("GC Trade Simulator - Development + Validation")
@@ -93,9 +95,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._placed: dict[int, object] = {}  # id -> PlacedTrade
         self._active_id: int | None = None
         self._focused_result = None  # a clicked replay trade's detailed path
+        self._focused_obs_id = None  # its observation id, for forensics re-fetches
         self._whatif_runs = []  # alternative-exit overlays for the current trade
         self._next_id = 1
         self._forensics_token = 0
+        self._whatif_token = 0
         self._ny_label = None
 
         self._build_ui()
@@ -148,6 +152,9 @@ class MainWindow(QtWidgets.QMainWindow):
         split.addWidget(self.chart)
         split.addWidget(self._right)
         split.setSizes([1080, 460])
+        split.setCollapsible(0, False)  # the chart itself can never collapse
+        split.setCollapsible(1, True)  # the sidebar can be dragged fully shut
+        self._split = split
 
         central = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(central)
@@ -156,9 +163,11 @@ class MainWindow(QtWidgets.QMainWindow):
         outer.addWidget(split, 1)
         self.setCentralWidget(central)
         self._set_status = self.statusBar().showMessage
+        self._populate_view_menu()
 
     def _build_topbar(self) -> None:
         self.date_combo = QtWidgets.QComboBox()
+        self.date_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.date_combo.currentTextChanged.connect(lambda _t: self._render_current_date())
         self.vwap_check = QtWidgets.QCheckBox("VWAP 20")
         self.vwap_check.setChecked(True)
@@ -170,15 +179,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session_check = QtWidgets.QCheckBox("NY session")
         self.session_check.setChecked(True)
         self.session_check.setToolTip("Shade the New York execution window (07:00-12:00 NY).")
-        for box in (
-            self.vwap_check,
-            self.vwap_day_check,
-            self.vwap_session_check,
-            self.session_check,
-        ):
-            box.stateChanged.connect(lambda _s: self._render_current_date())
+        # Overlay toggles flip item visibility directly; rebuilding the whole
+        # chart for a checkbox is what made these toggles feel heavy.
+        self.vwap_check.toggled.connect(lambda on: self.chart.set_vwap_visible("rolling", on))
+        self.vwap_day_check.toggled.connect(lambda on: self.chart.set_vwap_visible("day", on))
+        self.vwap_session_check.toggled.connect(
+            lambda on: self.chart.set_vwap_visible("session", on)
+        )
+        self.session_check.toggled.connect(self.chart.set_sessions_visible)
 
         self.strategy_combo = QtWidgets.QComboBox()
+        # Long catalog names: keep the closed combo compact, let the popup widen.
+        self.strategy_combo.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.strategy_combo.setMinimumContentsLength(16)
         self.custom_check = QtWidgets.QCheckBox("Custom exits")
         self.custom_check.setToolTip(
             "Replay using the Exit-rule panel instead of the frozen contract."
@@ -211,7 +226,9 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.grid_btn.clicked.connect(self._on_exit_grid)
 
-        self._controls = QtWidgets.QHBoxLayout()
+        # Two rows so nothing clips off the right edge on a narrow display:
+        # row 1 = what is on the chart, row 2 = acting on it.
+        row1 = QtWidgets.QHBoxLayout()
         for w in (
             QtWidgets.QLabel("Date"),
             self.date_combo,
@@ -224,7 +241,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.strategy_combo,
             self.custom_check,
             self.replay_btn,
-            _sep(),
+        ):
+            row1.addWidget(w)
+        row1.addStretch(1)
+        row2 = QtWidgets.QHBoxLayout()
+        for w in (
             self.freeplay_check,
             self.long_radio,
             self.short_radio,
@@ -233,13 +254,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self.whatif_btn,
             self.grid_btn,
         ):
-            self._controls.addWidget(w)
-        self._controls.addStretch(1)
+            row2.addWidget(w)
+        row2.addStretch(1)
+        self._controls = QtWidgets.QVBoxLayout()
+        self._controls.setSpacing(4)
+        self._controls.addLayout(row1)
+        self._controls.addLayout(row2)
 
     def _build_side(self) -> None:
         self.trade_table = QtWidgets.QTableWidget(0, len(_TRADE_COLUMNS))
         self.trade_table.setHorizontalHeaderLabels(_TRADE_COLUMNS)
-        self.trade_table.horizontalHeader().setStretchLastSection(True)
+        trade_header = self.trade_table.horizontalHeader()
+        trade_header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        trade_header.setStretchLastSection(True)
         self.trade_table.verticalHeader().setVisible(False)
         self.trade_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.trade_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
@@ -252,7 +279,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.whatif_table = QtWidgets.QTableWidget(0, len(_WHATIF_COLUMNS))
         self.whatif_table.setHorizontalHeaderLabels(_WHATIF_COLUMNS)
-        self.whatif_table.horizontalHeader().setStretchLastSection(True)
+        whatif_header = self.whatif_table.horizontalHeader()
+        whatif_header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        whatif_header.setStretchLastSection(True)
         self.whatif_table.verticalHeader().setVisible(False)
         self.whatif_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
@@ -278,16 +307,40 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.exit_panel)
-        dock = QtWidgets.QDockWidget("Exit rule (no frozen exit)", self)
+        dock = QtWidgets.QDockWidget("Exit rule (unfrozen)", self)
+        dock.setToolTip(
+            "Every exit field here is editable - deliberately not the frozen research contract."
+        )
         dock.setWidget(scroll)
         dock.setMinimumWidth(260)
         self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
+        self._exit_dock = dock
 
     def _build_menu(self) -> None:
-        view = self.menuBar().addMenu("View")
+        self._view_menu = self.menuBar().addMenu("View")
         for label, mode in (("Dark theme", "dark"), ("Light theme", "light")):
-            act = view.addAction(label)
+            act = self._view_menu.addAction(label)
             act.triggered.connect(lambda _c=False, m=mode: self._set_theme(m))
+
+    def _populate_view_menu(self) -> None:
+        """Panel toggles, added once the docks/toolbars they control exist."""
+
+        menu = self._view_menu
+        menu.addSeparator()
+        exit_act = self._exit_dock.toggleViewAction()
+        exit_act.setText("Exit-rule panel")
+        exit_act.setShortcut("Ctrl+1")
+        menu.addAction(exit_act)
+        side_act = menu.addAction("Analysis sidebar")
+        side_act.setCheckable(True)
+        side_act.setChecked(True)
+        side_act.setShortcut("Ctrl+2")
+        side_act.toggled.connect(self._right.setVisible)
+        self._sidebar_action = side_act
+        transport_act = self._transport.toggleViewAction()
+        transport_act.setText("Replay transport")
+        transport_act.setShortcut("Ctrl+3")
+        menu.addAction(transport_act)
 
     def _build_transport(self) -> None:
         bar = QtWidgets.QToolBar("Replay")
@@ -310,6 +363,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.speed.setToolTip("Playback speed (left = faster).")
         self.speed.valueChanged.connect(self._animator.set_interval)
         self.replay_pos = QtWidgets.QLabel("")
+        # Reserve the widest plausible text so per-tick updates never trigger a
+        # toolbar relayout mid-animation.
+        self.replay_pos.setMinimumWidth(
+            self.replay_pos.fontMetrics().horizontalAdvance("  +8888 / 8888 min")
+        )
         for w in (
             self.animate_btn,
             step_back,
@@ -322,6 +380,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             bar.addWidget(w)
         self.addToolBar(QtCore.Qt.BottomToolBarArea, bar)
+        self._transport = bar
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
@@ -333,6 +392,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- loading -----------------------------------------------------------
     def _on_error(self, message: str) -> None:
+        if self._data is None:
+            self.loadFinished.emit(False)  # let the splash release before the modal
         self._set_status("Error - see dialog")
         QtWidgets.QMessageBox.critical(self, "Load error", message)
 
@@ -345,8 +406,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.date_combo.blockSignals(False)
         for spec in data["replay"].list_strategies():
             self.strategy_combo.addItem(spec.name)
+        # The closed combo stays compact; widen the popup to the longest name.
+        metrics = self.strategy_combo.fontMetrics()
+        widest = max(
+            (
+                metrics.horizontalAdvance(self.strategy_combo.itemText(i))
+                for i in range(self.strategy_combo.count())
+            ),
+            default=0,
+        )
+        self.strategy_combo.view().setMinimumWidth(widest + 48)
         self._set_status(f"Loaded {data['replay'].bars.n_bars:,} GC bars (Dev+Val).")
         self._render_current_date()
+        self.loadFinished.emit(True)
 
     # -- rendering ---------------------------------------------------------
     @property
@@ -359,10 +431,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._animator.stop()  # leaving a day ends any running animation
         bars = self._bars
         date = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        idx = np.nonzero(bars.trade_date == date)[0]
-        if len(idx) == 0:
+        # Bars are chronological, so the day window is two binary searches, not
+        # a full-array comparison over the whole Dev+Val history.
+        lo = int(np.searchsorted(bars.trade_date, date, side="left"))
+        hi = int(np.searchsorted(bars.trade_date, date, side="right")) - 1
+        if hi < lo:
             return
-        lo, hi = int(idx[0]), int(idx[-1])
         self._view_start, self._view_end = lo, hi
         sl = slice(lo, hi + 1)
         minute = bars.minute_ny[sl]
@@ -376,14 +450,21 @@ class MainWindow(QtWidgets.QMainWindow):
             "segment": bars.segment[sl],
         }
         self.chart.set_view(ohlc, labels, lo)
-        if self.vwap_check.isChecked():
-            self.chart.add_vwap(self._data["vwap20"][sl], "rolling")
-        if self.vwap_day_check.isChecked():
-            self.chart.add_vwap(self._data["vwap_day"][sl], "day")
-        if self.vwap_session_check.isChecked():
-            self.chart.add_vwap(self._data["vwap_session"][sl], "session")
-        if self.session_check.isChecked():
-            self.chart.shade_sessions(self._data["session_code"][sl])
+        # Always build the overlays; the checkboxes only flip visibility.
+        self.chart.add_vwap(
+            self._data["vwap20"][sl], "rolling", visible=self.vwap_check.isChecked()
+        )
+        self.chart.add_vwap(
+            self._data["vwap_day"][sl], "day", visible=self.vwap_day_check.isChecked()
+        )
+        self.chart.add_vwap(
+            self._data["vwap_session"][sl],
+            "session",
+            visible=self.vwap_session_check.isChecked(),
+        )
+        self.chart.shade_sessions(
+            self._data["session_code"][sl], visible=self.session_check.isChecked()
+        )
         self._redraw_overlays()
 
     def _in_view(self, position: int) -> bool:
@@ -479,10 +560,14 @@ class MainWindow(QtWidgets.QMainWindow):
             return entry - t.stop_points, entry + t.target_points
         return entry + t.stop_points, entry - t.target_points
 
-    def _ensure_date_for(self, position: int) -> None:
+    def _ensure_date_for(self, position: int) -> bool:
+        """Switch the view to the bar's date; True if that re-rendered the chart."""
+
         date = pd.Timestamp(self._bars.trade_date[position]).strftime("%Y-%m-%d")
         if self.date_combo.currentText() != date:
             self.date_combo.setCurrentText(date)  # triggers _render_current_date
+            return True
+        return False
 
     # -- replay ------------------------------------------------------------
     def _on_replay(self) -> None:
@@ -493,15 +578,20 @@ class MainWindow(QtWidgets.QMainWindow):
         if name not in specs:
             return
         custom = self.custom_check.isChecked()
-        self._replay_cfg = self.exit_panel.to_config() if custom else frozen_config()
-        cfg = self._replay_cfg if custom else None
+        # The config is captured here but only installed when its log arrives,
+        # so clicking rows of the still-visible previous log keeps using the
+        # config that log was actually produced with.
+        cfg_used = self.exit_panel.to_config() if custom else frozen_config()
+        cfg = cfg_used if custom else None
         self._set_status(f"Replaying {name} ...")
         task = Task(self._data["replay"].replay, specs[name], cfg)
-        task.signals.finished.connect(self._on_replayed)
+        task.signals.finished.connect(lambda log, c=cfg_used: self._on_replayed(log, c))
         task.signals.error.connect(self._on_error)
         self._start(task)
 
-    def _on_replayed(self, log: pd.DataFrame) -> None:
+    def _on_replayed(self, log: pd.DataFrame, cfg=None) -> None:
+        if cfg is not None:
+            self._replay_cfg = cfg
         self._log = log
         self.trade_table.setRowCount(0)
         wins = int((log["gross_r"] > 0).sum()) if not log.empty else 0
@@ -529,19 +619,22 @@ class MainWindow(QtWidgets.QMainWindow):
         for c, v in enumerate(values):
             item = QtWidgets.QTableWidgetItem(v)
             item.setData(QtCore.Qt.UserRole, int(row["entry_position"]))
+            item.setToolTip(v)  # full text survives any column elision
             self.trade_table.setItem(r, c, item)
 
     def _on_row_selected(self) -> None:
         rows = self.trade_table.selectionModel().selectedRows()
         if not rows or self._log is None:
             return
-        entry_position = self.trade_table.item(rows[0].row(), 0).data(QtCore.Qt.UserRole)
+        item = self.trade_table.item(rows[0].row(), 0)
+        if item is None:  # selection event racing a table refresh
+            return
+        entry_position = item.data(QtCore.Qt.UserRole)
         match = self._log[self._log["entry_position"] == entry_position]
         if not match.empty:
             self._focus_trade(match.iloc[0])
 
     def _focus_trade(self, trade) -> None:
-        self._ensure_date_for(int(trade["entry_position"]))
         result = single_flex_exit(
             int(trade["entry_position"]),
             int(trade["direction"]),
@@ -552,11 +645,15 @@ class MainWindow(QtWidgets.QMainWindow):
             float(trade.get("trail_points", 0.0)),
         )
         self._focused_result = result
+        self._focused_obs_id = trade.get("observation_id")
         self._active_id = None  # a replay focus is not a draggable placed trade
         self._whatif_runs = []
-        self._redraw_overlays()
+        # A date switch re-renders (and redraws overlays) on its own; only
+        # redraw explicitly when the view stayed put.
+        if not self._ensure_date_for(int(trade["entry_position"])):
+            self._redraw_overlays()
         self.chart.center_on(result.entry_position - self._view_start)
-        self._explain(result, observation_id=trade.get("observation_id"))
+        self._explain(result, observation_id=self._focused_obs_id)
 
     # -- free-play ---------------------------------------------------------
     def _on_bar_clicked(self, global_index: int) -> None:
@@ -577,6 +674,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._placed[trade.id] = trade
         self._active_id = trade.id
         self._focused_result = None
+        self._focused_obs_id = None
         self._whatif_runs = []
         self._next_id += 1
         self._show_active_trade(center=True)
@@ -586,8 +684,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if active is None:
             self._redraw_overlays()
             return
-        self._ensure_date_for(active.entry_position)  # may re-render (and redraw)
-        self._redraw_overlays()
+        if not self._ensure_date_for(active.entry_position):  # a switch redraws itself
+            self._redraw_overlays()
         if center:
             self.chart.center_on(active.entry_position - self._view_start)
         self.blotter.set_trades(list(self._placed.values()))
@@ -607,7 +705,25 @@ class MainWindow(QtWidgets.QMainWindow):
             pts = (price - entry) if active.direction > 0 else (entry - price)
             updated = recompute_levels(active, self._bars.bar_arrays(), target_points=pts)
         self._placed[active.id] = updated
-        self._redraw_overlays(reset_levels=False)  # keep the line the user is dragging
+        # Fast path: update the persistent chart items in place instead of a
+        # full overlay teardown - this runs at up to 60 Hz during a drag.
+        if self._whatif_runs:
+            self._whatif_runs = []  # config changed under them; they are stale
+            self.whatif_table.setRowCount(0)
+            self.chart.clear_whatif()
+        result = updated.result
+        self.chart.draw_trade(
+            result.entry_position - self._view_start,
+            result.exit_position - self._view_start,
+            result.entry_price,
+            result.stop_track,
+            result.target_track,
+            result.exit_price,
+            color=updated.color,
+        )
+        if self.excursion_check.isChecked():
+            exc = compute_excursion(result, self._bars.high, self._bars.low)
+            self.chart.draw_excursion(exc, hook=is_winner_on_the_hook(result, theme.HOOK_R))
         self.blotter.update_trade(updated)
         self._explain(updated.result, observation_id=None)
 
@@ -616,6 +732,9 @@ class MainWindow(QtWidgets.QMainWindow):
         active = self._placed.get(self._active_id)
         if active is None:
             return
+        if self._whatif_runs:
+            self._whatif_runs = []  # computed against the previous config
+            self.whatif_table.setRowCount(0)
         updated = recompute_config(active, cfg, self._bars.atr20, self._bars.bar_arrays())
         self._placed[active.id] = updated
         self._redraw_overlays(reset_levels=True)
@@ -627,8 +746,22 @@ class MainWindow(QtWidgets.QMainWindow):
         if trade_id in self._placed:
             self._active_id = trade_id
             self._focused_result = None
+            self._focused_obs_id = None
             self._whatif_runs = []
             self._show_active_trade(center=True)
+
+    def _drop_stale_analysis(self) -> None:
+        """Clear what-if state and re-point forensics after the subject changed."""
+
+        self._whatif_runs = []
+        self.whatif_table.setRowCount(0)
+        active = self._placed.get(self._active_id)
+        if active is not None:
+            self._explain(active.result, observation_id=None)
+        elif self._focused_result is not None:
+            self._explain(self._focused_result, observation_id=self._focused_obs_id)
+        else:
+            self.forensics.clear()
 
     def _on_placed_removed(self, trade_id: int) -> None:
         self._placed.pop(trade_id, None)
@@ -637,12 +770,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.blotter.set_trades(list(self._placed.values()))
         if self._active_id is not None:
             self.blotter.select_trade(self._active_id)
+        self._drop_stale_analysis()
         self._redraw_overlays()
 
     def _on_placed_cleared(self) -> None:
         self._placed.clear()
         self._active_id = None
         self.blotter.set_trades([])
+        self._drop_stale_analysis()
         self._redraw_overlays()
 
     # -- forensics ---------------------------------------------------------
@@ -669,7 +804,12 @@ class MainWindow(QtWidgets.QMainWindow):
         result, cfg = self._current()
         if result is None:
             return
-        self._whatif_runs = run_whatifs(
+        self._whatif_token += 1
+        token = self._whatif_token
+        entry = int(result.entry_position)
+        self._set_status("Running what-if exits ...")
+        task = Task(
+            run_whatifs,
             result.entry_position,
             result.direction,
             cfg,
@@ -677,9 +817,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self._bars.bar_arrays(),
             theme.active().whatif_cycle,
         )
-        self._fill_whatif_table(self._whatif_runs)
+        task.signals.finished.connect(
+            lambda runs, t=token, e=entry: self._on_whatifs_ready(runs, t, e)
+        )
+        task.signals.error.connect(self._on_error)
+        self._start(task)
+
+    def _on_whatifs_ready(self, runs, token: int, entry: int) -> None:
+        if token != self._whatif_token:
+            return  # a newer request superseded this sweep
+        result, _cfg = self._current()
+        if result is None or int(result.entry_position) != entry:
+            return  # the user moved on to a different trade meanwhile
+        self._whatif_runs = runs
+        self._fill_whatif_table(runs)
         self._tabs.setCurrentWidget(self.whatif_table)
         self._redraw_overlays(reset_levels=False)
+        self._set_status(f"{len(runs)} alternative exits over the same entry.")
 
     def _fill_whatif_table(self, runs) -> None:
         p = theme.active()
@@ -697,6 +851,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ]
             for c, v in enumerate(values):
                 item = QtWidgets.QTableWidgetItem(v)
+                item.setToolTip(v)
                 if c == 0:
                     item.setForeground(QtGui.QColor(run.color))
                 elif c == 2:
@@ -737,7 +892,33 @@ class MainWindow(QtWidgets.QMainWindow):
             target_mode="r",
             target_value=target_r,
         )
-        self.exit_panel.from_config(cfg)  # emits configChanged -> recompute the active trade
+        if self._active_id is not None:
+            self.exit_panel.from_config(cfg)  # configChanged -> recompute the active trade
+            return
+        if self._focused_result is None:
+            self._set_status("Select or place a trade, sweep the grid, then click a cell.")
+            return
+        # A focused replay trade has no live recompute path through the panel,
+        # so honour "click to apply" directly: re-simulate this entry under the
+        # chosen cell (the exact sim the heatmap cell reports) and show it.
+        self.exit_panel.from_config(cfg)  # reflect the choice; no active trade to touch
+        base = self._focused_result
+        trade = place_trade(
+            0,
+            int(base.entry_position),
+            int(base.direction),
+            cfg,
+            self._bars.atr20,
+            self._bars.bar_arrays(),
+        )
+        self._focused_result = trade.result
+        self._whatif_runs = []
+        self._redraw_overlays()
+        self._explain(trade.result, observation_id=self._focused_obs_id)
+        self._set_status(
+            f"Applied stop {stop_mult:.2f}x ATR / target {target_r:.1f}R to this entry "
+            f"(exploratory)."
+        )
 
     # -- animated replay ---------------------------------------------------
     def _animate_current(self) -> None:
@@ -751,9 +932,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_replay_state(self, playing: bool) -> None:
         self.play_btn.setText("Pause" if playing else "Play")
+        if not playing and not self._animator.active:
+            self.replay_pos.setText("")  # the animation ended; do not show a stale position
 
     def _on_replay_position(self, offset: int, total: int) -> None:
-        self.replay_pos.setText(f"  +{offset} / {total} min")
+        text = f"  +{offset} / {total} min"
+        if text != self.replay_pos.text():  # skip no-op relayouts at 50 fps
+            self.replay_pos.setText(text)
 
     # -- theme -------------------------------------------------------------
     def _set_theme(self, mode: str) -> None:
@@ -762,11 +947,32 @@ class MainWindow(QtWidgets.QMainWindow):
             theme.apply(app, mode)
         self.chart.apply_theme()
         self._render_current_date()
+        # Re-render everything that baked the previous palette into itself.
+        self.heatmap.refresh_theme()
+        self.forensics.retheme()
+        if self._placed:
+            self.blotter.set_trades(list(self._placed.values()))
+            if self._active_id is not None:
+                self.blotter.select_trade(self._active_id)
+        if self._whatif_runs:
+            self._fill_whatif_table(self._whatif_runs)
         result, _cfg = self._current()
         if result is not None:
-            self._explain(result, observation_id=None)
+            # Keep the forensics context alive across the switch: re-fetch with
+            # the focused trade's observation id instead of dropping to the
+            # realized-only view.
+            obs = self._focused_obs_id if self._focused_result is not None else None
+            self._explain(result, observation_id=obs)
             if self._in_view(result.entry_position):
                 self.chart.center_on(result.entry_position - self._view_start)
+
+    # -- lifecycle ---------------------------------------------------------
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._animator.stop()
+        self._forensics_token += 1  # orphan any in-flight worker completions
+        self._whatif_token += 1
+        self._pool.waitForDone(1500)  # let workers drain before Qt teardown
+        super().closeEvent(event)
 
 
 def _sep() -> QtWidgets.QFrame:
