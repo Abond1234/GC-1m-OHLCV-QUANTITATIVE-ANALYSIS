@@ -61,6 +61,18 @@ class LockoutTests(unittest.TestCase):
 
 
 @unittest.skipUnless(_HAS_BARS, "research bars parquet not present")
+class MgcLoadTests(unittest.TestCase):
+    """The MGC mirror pane loads through the same Dev/Val cap as GC."""
+
+    def test_mgc_loads_capped_and_nonempty(self):
+        store = BarStore.load(
+            research_bars_path(), product="MGC", date_floor=pd.Timestamp("2024-12-20")
+        )
+        self.assertGreater(store.n_bars, 0)
+        self.assertLessEqual(pd.Timestamp(store.trade_date.max()), EVAL_CAP_DATE)
+
+
+@unittest.skipUnless(_HAS_BARS, "research bars parquet not present")
 class DateFloorTests(unittest.TestCase):
     """The offscreen-render fast path narrows the window; it must never widen it."""
 

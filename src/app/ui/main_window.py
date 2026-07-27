@@ -26,9 +26,10 @@ from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..analysis.whatif import run_whatifs
+from ..datalayer.bar_store import BarStore
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.forensics import ForensicsService
-from ..datalayer.paths import project_root
+from ..datalayer.paths import project_root, research_bars_path
 from ..datalayer.vwap import execution_session_vwap, research_day_vwap, rolling_vwap
 from ..sim.exit_config import frozen_config
 from ..sim.flex_exit import single_flex_exit
@@ -101,6 +102,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._forensics_token = 0
         self._whatif_token = 0
         self._ny_label = None
+        self._mgc_bars = None  # MGC BarStore, loaded on first toggle
+        self._mgc_loading = False
+        self._mgc_range: tuple[int, int] | None = None  # rendered MGC day window
 
         self._build_ui()
         if data is not None:
@@ -142,6 +146,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._animator.stateChanged.connect(self._on_replay_state)
         self._animator.positionChanged.connect(self._on_replay_position)
 
+        # MGC (micro gold) mirror pane: same day, same clock, the execution
+        # instrument's own tape. Hidden until toggled; bars load on demand.
+        self.mgc_chart = ChartWidget()
+        self.mgc_chart._price.setLabel("left", "MGC (micro)")
+        self.mgc_chart.setVisible(False)
+
         self._build_menu()
         self._build_topbar()
         self._build_side()
@@ -149,8 +159,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_transport()
         self._build_draw_toolbar()
 
+        chart_col = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        chart_col.addWidget(self.chart)
+        chart_col.addWidget(self.mgc_chart)
+        chart_col.setSizes([650, 320])
+        chart_col.setCollapsible(0, False)
+        self._chart_col = chart_col
+
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        split.addWidget(self.chart)
+        split.addWidget(chart_col)
         split.addWidget(self._right)
         split.setSizes([1080, 460])
         split.setCollapsible(0, False)  # the chart itself can never collapse
@@ -245,6 +262,14 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             row1.addWidget(w)
         row1.addStretch(1)
+        self.mgc_check = QtWidgets.QCheckBox("MGC mirror")
+        self.mgc_check.setToolTip(
+            "Show the MGC (micro gold) tape for the same day underneath, with the\n"
+            "current GC trade's entry/exit and initial levels mirrored onto it -\n"
+            "did the pattern replicate on the execution instrument?"
+        )
+        self.mgc_check.toggled.connect(self._on_mgc_toggled)
+
         row2 = QtWidgets.QHBoxLayout()
         for w in (
             self.freeplay_check,
@@ -254,6 +279,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.excursion_check,
             self.whatif_btn,
             self.grid_btn,
+            _sep(),
+            self.mgc_check,
         ):
             row2.addWidget(w)
         row2.addStretch(1)
@@ -346,6 +373,11 @@ class MainWindow(QtWidgets.QMainWindow):
         draw_act.setText("Draw toolbar")
         draw_act.setShortcut("Ctrl+4")
         menu.addAction(draw_act)
+        mgc_act = menu.addAction("MGC mirror pane")
+        mgc_act.setCheckable(True)
+        mgc_act.setShortcut("Ctrl+5")
+        mgc_act.toggled.connect(self.mgc_check.setChecked)
+        self.mgc_check.toggled.connect(mgc_act.setChecked)
 
     def _build_transport(self) -> None:
         bar = QtWidgets.QToolBar("Replay")
@@ -398,27 +430,59 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addToolBar(QtCore.Qt.BottomToolBarArea, bar)
         self._transport = bar
 
+    _DRAW_TOOLS = (
+        ("Cursor", None, "Normal interaction: crosshair, free-play clicks, drags.", ""),
+        (
+            "Level",
+            "hline",
+            "A horizontal price level (support/resistance). Drag it later to move it.",
+            "Level armed: click a price on the chart. Right-click cancels.",
+        ),
+        (
+            "Trend",
+            "trend",
+            "A trendline. Drag across the chart (or click two points); drag the\n"
+            "endpoint handles later to adjust.",
+            "Trendline armed: drag across the chart, or click two points. Right-click cancels.",
+        ),
+        (
+            "Zone",
+            "rect",
+            "A shaded box for supply/demand or consolidation zones. Drag a box;\n"
+            "drag its corner handles later to resize.",
+            "Zone armed: drag a box on the chart. Right-click cancels.",
+        ),
+        (
+            "Time",
+            "vline",
+            "A vertical time marker. Drag it later to move it.",
+            "Time marker armed: click a bar on the chart. Right-click cancels.",
+        ),
+    )
+
     def _build_draw_toolbar(self) -> None:
-        """Vertical drawing strip on the left edge, TradingView-style."""
+        """Vertical drawing strip on the left edge, TradingView-style.
+
+        Arming a tool highlights its button and puts a plain-language hint in
+        the status bar; every tool is one-shot and hands back to the cursor.
+        """
 
         bar = QtWidgets.QToolBar("Draw")
         bar.setMovable(False)
         bar.setOrientation(QtCore.Qt.Vertical)
+        bar.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
         group = QtGui.QActionGroup(self)
         group.setExclusive(True)
         self._draw_actions = {}
-        for label, mode, tip in (
-            ("Cursor", None, "Normal interaction: crosshair, free-play clicks, drags."),
-            ("Level", "hline", "Click a price to drop a draggable horizontal level."),
-            ("Trend", "trend", "Two clicks place a trendline; drag its endpoints to adjust."),
-            ("Time", "vline", "Click a bar to mark a moment with a draggable vertical line."),
-        ):
+        self._draw_hints = {}
+        for label, mode, tip, hint in self._DRAW_TOOLS:
             act = bar.addAction(label)
             act.setCheckable(True)
             act.setToolTip(tip)
             act.setActionGroup(group)
-            act.triggered.connect(lambda _c=False, m=mode: self.chart.set_draw_mode(m))
+            act.triggered.connect(lambda _c=False, m=mode: self._arm_draw_tool(m))
             self._draw_actions[mode] = act
+            self._draw_hints[mode] = hint
         self._draw_actions[None].setChecked(True)
         bar.addSeparator()
         undo = bar.addAction("Undo")
@@ -432,9 +496,18 @@ class MainWindow(QtWidgets.QMainWindow):
         # One-shot tools: fall back to the cursor once a drawing lands.
         self.chart.drawing_placed.connect(self._on_drawing_placed)
 
+    def _arm_draw_tool(self, mode: str | None) -> None:
+        self.chart.set_draw_mode(mode)
+        hint = self._draw_hints.get(mode, "")
+        if hint:
+            self._set_status(hint)
+        else:
+            self._set_status("")
+
     def _on_drawing_placed(self) -> None:
         self.chart.set_draw_mode(None)
         self._draw_actions[None].setChecked(True)
+        self._set_status("Drawing placed. Drag it to adjust; Undo/Clear are in the Draw bar.")
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
@@ -545,6 +618,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if active is not None and self._in_view(active.entry_position):
                 stop_price, target_price = self._level_prices(active)
                 self.chart.set_draggable_levels(stop_price, target_price, self._on_level_dragged)
+        self._update_mgc_pane()
 
     def _draw_analysis_overlays(self) -> None:
         """Excursion ribbon and any what-if overlays for the current trade."""
@@ -973,6 +1047,105 @@ class MainWindow(QtWidgets.QMainWindow):
             f"Applied stop {stop_mult:.2f}x ATR / target {target_r:.1f}R to this entry "
             f"(exploratory)."
         )
+
+    # -- MGC mirror pane ----------------------------------------------------
+    def _on_mgc_toggled(self, on: bool) -> None:
+        if not on:
+            self.mgc_chart.setVisible(False)
+            return
+        if self._mgc_bars is None:
+            if self._mgc_loading:
+                return
+            self._mgc_loading = True
+            self._set_status("Loading MGC bars ...")
+            task = Task(BarStore.load, research_bars_path(), product="MGC")
+            task.signals.finished.connect(self._on_mgc_loaded)
+            task.signals.error.connect(self._on_mgc_error)
+            self._start(task)
+            return
+        self.mgc_chart.setVisible(True)
+        self._update_mgc_pane(force_render=True)
+
+    def _on_mgc_loaded(self, store) -> None:
+        self._mgc_loading = False
+        self._mgc_bars = store
+        self._set_status(f"MGC: {store.n_bars:,} bars loaded (Dev+Val).")
+        if self.mgc_check.isChecked():
+            self.mgc_chart.setVisible(True)
+            self._update_mgc_pane(force_render=True)
+
+    def _on_mgc_error(self, message: str) -> None:
+        self._mgc_loading = False
+        self.mgc_check.setChecked(False)
+        self._on_error(message)
+
+    def _update_mgc_pane(self, force_render: bool = False) -> None:
+        """Render the MGC day window and ghost the current GC trade onto it."""
+
+        if (
+            self._mgc_bars is None
+            or not self.mgc_chart.isVisible()
+            or self._data is None
+            or not self.date_combo.count()
+        ):
+            return
+        mgc = self._mgc_bars
+        date = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
+        lo = int(np.searchsorted(mgc.trade_date, date, side="left"))
+        hi = int(np.searchsorted(mgc.trade_date, date, side="right")) - 1
+        if hi < lo:
+            self.mgc_chart.clear_trades()
+            self._set_status("No MGC bars on this trade date.")
+            return
+        if force_render or self._mgc_range != (lo, hi):
+            self._mgc_range = (lo, hi)
+            sl = slice(lo, hi + 1)
+            minute = mgc.minute_ny[sl]
+            labels = np.array([f"{m // 60:02d}:{m % 60:02d}" for m in minute])
+            self.mgc_chart.set_view(
+                {
+                    "open": mgc.open[sl],
+                    "high": mgc.high[sl],
+                    "low": mgc.low[sl],
+                    "close": mgc.close[sl],
+                    "volume": mgc.volume[sl],
+                    "segment": mgc.segment[sl],
+                },
+                labels,
+                lo,
+            )
+            self.mgc_chart.shade_sessions(
+                _session_code(minute), visible=self.session_check.isChecked()
+            )
+        self.mgc_chart.clear_trades()
+        result, _cfg = self._current()
+        if result is None or not self._in_view(result.entry_position):
+            return
+        # Map the GC trade onto the MGC clock by timestamp (minute-of-day is
+        # not monotonic within an NY trade date; timestamps are). Search the
+        # raw ts arrays directly - both stores read the same parquet column,
+        # so the values compare without any tz-dropping conversion.
+        gc = self._bars
+        entry_pos = int(np.searchsorted(mgc.ts, gc.ts[int(result.entry_position)]))
+        exit_pos = int(
+            np.searchsorted(mgc.ts, gc.ts[min(int(result.exit_position), gc.n_bars - 1)])
+        )
+        entry_pos = max(0, min(entry_pos, mgc.n_bars - 1))
+        exit_pos = max(0, min(exit_pos, mgc.n_bars - 1))
+        if not (lo <= entry_pos <= hi):
+            return
+        exit_pos = max(lo, min(exit_pos, hi))
+        stop0 = float(result.stop_track[0]) if len(result.stop_track) else None
+        target0 = float(result.target_track[0]) if len(result.target_track) else None
+        self.mgc_chart.mirror_trade(
+            entry_pos - lo,
+            exit_pos - lo,
+            float(result.entry_price),
+            stop0,
+            target0,
+            float(result.exit_price),
+        )
+        self.mgc_chart.center_on(entry_pos - lo)
 
     # -- animated replay ---------------------------------------------------
     def _replay_day(self) -> None:

@@ -51,6 +51,17 @@ PySide6 6.11 ships an abi3 wheel and installs on the repo's Python 3.14 venv.
     revealed bars as it runs.
   - **Forensics panel**: a plain-language verdict, a per-horizon MFE/MAE mini-chart,
     and labelled entry-context meters.
+- **Drawing tools** (left Draw bar, View menu Ctrl+4): draggable price levels,
+  trendlines (drag across the chart or click two points), shaded supply/demand
+  zones, and vertical time markers - all with TradingView-style drag gestures, a
+  live preview, right-click to cancel, and Undo/Clear. Drawings live in data
+  coordinates (exact under any zoom), persist per day within the session, and
+  stay visible above the replay curtain while the tape plays.
+- **MGC mirror pane** (row-2 checkbox or Ctrl+5): the micro-gold tape for the
+  same day rendered underneath, with the current GC trade's entry/exit and
+  initial stop/target ghosted onto it by timestamp - a visual check of whether
+  the pattern replicated on the execution instrument. MGC bars load on demand
+  through the same Development+Validation cap.
 - **Light / dark** theme (View menu). Every surface re-themes in place, including
   the heatmap's colour scale and the chart axes/crosshair.
 - **Collapsible panels**: the Exit-rule dock, the analysis sidebar, and the replay
