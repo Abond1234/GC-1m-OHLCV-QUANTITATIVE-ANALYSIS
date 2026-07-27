@@ -43,7 +43,16 @@ PySide6 6.11 ships an abi3 wheel and installs on the repo's Python 3.14 venv.
   - **Bar-by-bar replay**: animate a trade from entry to exit with play/step/speed.
   - **Forensics panel**: a plain-language verdict, a per-horizon MFE/MAE mini-chart,
     and labelled entry-context meters.
-- **Light / dark** theme (View menu).
+- **Light / dark** theme (View menu). Every surface re-themes in place, including
+  the heatmap's colour scale and the chart axes/crosshair.
+- **Collapsible panels**: the Exit-rule dock, the analysis sidebar, and the replay
+  transport each toggle from the View menu (Ctrl+1/2/3); the sidebar can also be
+  dragged shut on its splitter. The layout holds together down to ~1092x614
+  logical pixels (a 1366x768 display at 125% DPI).
+- **Branded launch**: an animated Gold Quant splash (drawn in code from the theme
+  palette - no image assets) covers the data load, and the same GQ coin mark is
+  the window/taskbar icon and, via `scripts/build_app.py`, the packaged
+  executable's icon.
 
 ## Architecture
 

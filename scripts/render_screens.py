@@ -139,6 +139,16 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     saved.append(_grab(win, out_dir / "09_light_theme.png", app))
     win._set_theme("dark")
 
+    # 10-12. Narrow-display pass: 1366x768 at 125% DPI is ~1092x614 logical
+    # pixels. The truncation bugs the wide render can never show live here.
+    win.resize(1092, 614)
+    saved.append(_grab(win, out_dir / "10_narrow_overview.png", app))
+    win._tabs.setCurrentWidget(win.whatif_table)
+    saved.append(_grab(win, out_dir / "11_narrow_whatif.png", app))
+    win._tabs.setCurrentWidget(win.heatmap)
+    saved.append(_grab(win, out_dir / "12_narrow_heatmap.png", app))
+    win.resize(1600, 940)
+
     for pth in saved:
         print(pth)
     return saved
