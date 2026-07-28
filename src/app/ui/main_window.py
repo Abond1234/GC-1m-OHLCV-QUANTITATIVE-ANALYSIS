@@ -33,6 +33,7 @@ from ..datalayer.bar_store import BarStore
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.edge_context import EdgeContextService
 from ..datalayer.forensics import ForensicsService
+from ..datalayer.instruments import REGISTRY, available_instruments, load_instrument_bars
 from ..datalayer.paths import project_root, research_bars_path
 from ..datalayer.session_store import (
     build_payload,
@@ -96,6 +97,23 @@ def load_app_data(root=None, date_floor=None) -> dict:
         "vwap_session": execution_session_vwap(bars),
         "session_code": _session_code(bars.minute_ny),
         "dates": np.sort(dates),
+        "date_floor": date_floor,
+    }
+
+
+def load_instrument_bundle(symbol: str, date_floor=None) -> dict:
+    """Worker payload for a non-GC primary instrument: bars + derived overlays."""
+
+    bars = load_instrument_bars(symbol, date_floor=date_floor)
+    dates = pd.to_datetime(pd.unique(bars.trade_date))
+    return {
+        "symbol": symbol,
+        "bars": bars,
+        "vwap20": rolling_vwap(bars, 20),
+        "vwap_day": research_day_vwap(bars),
+        "vwap_session": execution_session_vwap(bars),
+        "session_code": _session_code(bars.minute_ny),
+        "dates": np.sort(dates),
     }
 
 
@@ -127,6 +145,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._mgc_bars = None  # MGC BarStore, loaded on first toggle
         self._mgc_loading = False
         self._mgc_range: tuple[int, int, int] | None = None  # rendered MGC window + tf
+        self._instrument = "GC"  # active primary instrument symbol
+        self._instrument_data: dict | None = None  # non-GC bundle (None = GC research)
+        self._instrument_loading = False
+        self._pending_session: dict | None = None  # session applied after a switch
         self._range_days = 1  # trade dates shown, anchored at the selected date
         self._range_text = "1D"
         self._edge_service = EdgeContextService()
@@ -212,6 +234,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._populate_view_menu()
 
     def _build_topbar(self) -> None:
+        self.instrument_combo = QtWidgets.QComboBox()
+        self.instrument_combo.setToolTip(
+            "Primary chart instrument. Only assets with local data are listed;\n"
+            "see the app README's 'Adding an instrument' for NQ/ES/BTCUSD.\n"
+            "Strategy replay and Edge context stay GC-only (research validity)."
+        )
+        self.instrument_combo.currentIndexChanged.connect(self._on_instrument_changed)
         self.date_combo = QtWidgets.QComboBox()
         self.date_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.date_combo.currentTextChanged.connect(lambda _t: self._render_view())
@@ -297,6 +326,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # row 1 = what is on the chart, row 2 = acting on it.
         row1 = QtWidgets.QHBoxLayout()
         for w in (
+            self.instrument_combo,
             QtWidgets.QLabel("Date"),
             self.date_combo,
             self.range_combo,
@@ -608,6 +638,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.strategy_combo.view().setMinimumWidth(widest + 48)
         self.strategy_combo.completer().popup().setMinimumWidth(widest + 48)
         self.strategy_combo.setCurrentIndex(0)  # editable combo starts blank otherwise
+        self.instrument_combo.blockSignals(True)
+        self.instrument_combo.clear()
+        for instrument in available_instruments():
+            self.instrument_combo.addItem(instrument.display, instrument.symbol)
+        gc_index = self.instrument_combo.findData("GC")
+        self.instrument_combo.setCurrentIndex(max(0, gc_index))
+        self.instrument_combo.blockSignals(False)
+        self.session_panel.sync_instruments(available_instruments(), self._instrument)
         self._set_status(f"Loaded {data['replay'].bars.n_bars:,} GC bars (Dev+Val).")
         self._render_view()
         self.loadFinished.emit(True)
@@ -615,7 +653,14 @@ class MainWindow(QtWidgets.QMainWindow):
     # -- rendering ---------------------------------------------------------
     @property
     def _bars(self):
+        if self._instrument_data is not None:
+            return self._instrument_data["bars"]
         return self._data["replay"].bars
+
+    def _active_data(self) -> dict:
+        """Overlay/date arrays for the active instrument (GC = research bundle)."""
+
+        return self._instrument_data if self._instrument_data is not None else self._data
 
     def _on_range_changed(self, text: str) -> None:
         presets = {"1D": 1, "1W": 5, "1M": 22}
@@ -642,7 +687,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._animator.stop()  # leaving the window ends any running animation
         bars = self._bars
         anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        dates = self._data["dates"]
+        dates = self._active_data()["dates"]
         anchor_idx = int(np.searchsorted(dates, anchor))
         start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
         # Bars are chronological, so the window is two binary searches, not a
@@ -668,22 +713,22 @@ class MainWindow(QtWidgets.QMainWindow):
         # Always build the overlays; the checkboxes only flip visibility. Lines
         # are display-sampled at each bucket's close, shading at its open.
         self.chart.add_vwap(
-            sample_last(self._data["vwap20"], rs),
+            sample_last(self._active_data()["vwap20"], rs),
             "rolling",
             visible=self.vwap_check.isChecked(),
         )
         self.chart.add_vwap(
-            sample_last(self._data["vwap_day"], rs),
+            sample_last(self._active_data()["vwap_day"], rs),
             "day",
             visible=self.vwap_day_check.isChecked(),
         )
         self.chart.add_vwap(
-            sample_last(self._data["vwap_session"], rs),
+            sample_last(self._active_data()["vwap_session"], rs),
             "session",
             visible=self.vwap_session_check.isChecked(),
         )
         self.chart.shade_sessions(
-            sample_first(self._data["session_code"], rs),
+            sample_first(self._active_data()["session_code"], rs),
             visible=self.session_check.isChecked(),
         )
         self._redraw_overlays()
@@ -794,7 +839,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- replay ------------------------------------------------------------
     def _on_replay(self) -> None:
-        if self._data is None:
+        if self._data is None or self._instrument != "GC":
             return
         name = self.strategy_combo.currentText()
         specs = {s.name: s for s in self._data["replay"].list_strategies()}
@@ -1024,6 +1069,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return build_payload(
             theme_mode=theme.active().name,
             view={
+                "instrument": self._instrument,
                 "anchor_date": self.date_combo.currentText(),
                 "range_text": self._range_text,
                 "range_days": self._range_days,
@@ -1074,6 +1120,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_status(f"Session loaded from {path} (trades re-simulated).")
 
     def _apply_session_payload(self, payload: dict) -> None:
+        wanted = payload.get("view", {}).get("instrument", "GC")
+        if wanted != self._instrument:
+            index = self.instrument_combo.findData(wanted)
+            if index < 0:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Load session",
+                    f"This session was saved on {wanted}, which has no local data.",
+                )
+                return
+            self._pending_session = payload  # applied after the switch completes
+            self.instrument_combo.setCurrentIndex(index)
+            return
         sp = self.session_panel
         account = payload.get("account", {})
         for widget in (
@@ -1161,11 +1220,102 @@ class MainWindow(QtWidgets.QMainWindow):
         if skipped:
             self._set_status(f"Session loaded; {skipped} trade(s) outside the loaded data.")
 
+    # -- instrument switching ----------------------------------------------
+    def _on_instrument_changed(self, index: int) -> None:
+        symbol = self.instrument_combo.itemData(index)
+        if symbol is None or symbol == self._instrument or self._data is None:
+            return
+        if self._instrument_loading:
+            return
+        self._instrument_loading = True
+        self._set_status(f"Loading {symbol} bars ...")
+        if symbol == "GC":
+            self._install_instrument("GC", None)
+            self._instrument_loading = False
+            return
+        task = Task(load_instrument_bundle, symbol, self._data.get("date_floor"))
+        task.signals.finished.connect(self._on_instrument_loaded)
+        task.signals.error.connect(self._on_instrument_error)
+        self._start(task)
+
+    def _on_instrument_loaded(self, bundle: dict) -> None:
+        self._instrument_loading = False
+        self._install_instrument(bundle["symbol"], bundle)
+
+    def _on_instrument_error(self, message: str) -> None:
+        self._instrument_loading = False
+        # Revert the combo to the active instrument and surface the reason.
+        idx = self.instrument_combo.findData(self._instrument)
+        self.instrument_combo.blockSignals(True)
+        self.instrument_combo.setCurrentIndex(idx)
+        self.instrument_combo.blockSignals(False)
+        self._on_error(message)
+
+    def _install_instrument(self, symbol: str, bundle: dict | None) -> None:
+        """Make ``symbol`` the primary instrument and reset per-instrument state.
+
+        Placed trades index into the previous instrument's bar store, so the
+        blotter clears (the status line says so); the strategy catalog, replay
+        markers, MGC mirror, and Edge context stay GC-only with the reason on
+        screen rather than silently computing on unvalidated data.
+        """
+
+        self._animator.stop()
+        self._instrument = symbol
+        self._instrument_data = bundle
+        self._placed.clear()
+        self._active_id = None
+        self._focused_result = None
+        self._focused_obs_id = None
+        self._whatif_runs = []
+        self._log = None
+        self.trade_table.setRowCount(0)
+        self.whatif_table.setRowCount(0)
+        self.blotter.set_trades([])
+        self.forensics.clear()
+        self._edge_day = None
+        self._ny_label = ny_time_label(self._bars)
+        self.blotter.set_time_label(self._ny_label)
+        instrument = REGISTRY[symbol]
+        gc_active = symbol == "GC"
+        for widget in (self.strategy_combo, self.replay_btn, self.custom_check):
+            widget.setEnabled(gc_active)
+        if not gc_active:
+            self.replay_btn.setToolTip(
+                "Strategy catalog and replay are GC-only (research validity)."
+            )
+        self.mgc_check.setVisible(gc_active)
+        if not gc_active:
+            self.mgc_check.setChecked(False)
+            self.mgc_chart.setVisible(False)
+        self.session_panel.sync_instruments(available_instruments(), symbol)
+        dates = self._active_data()["dates"]
+        self.date_combo.blockSignals(True)
+        self.date_combo.clear()
+        self.date_combo.addItems([pd.Timestamp(d).strftime("%Y-%m-%d") for d in dates])
+        self.date_combo.setCurrentIndex(self.date_combo.count() - 1)
+        self.date_combo.blockSignals(False)
+        self.setWindowTitle(f"GQ Trade Simulator - {instrument.display} - Development + Validation")
+        self._render_view()
+        self._recompute_session()
+        note = "" if gc_active else " Blotter cleared; replay and edge context are GC-only."
+        self._set_status(f"{instrument.display}: {self._bars.n_bars:,} bars loaded.{note}")
+        if self._pending_session is not None:
+            payload, self._pending_session = self._pending_session, None
+            self._apply_session_payload(payload)
+
     # -- edge context ------------------------------------------------------
     def _refresh_edge_context(self) -> None:
         """Compute the anchor day's validated features on the worker pool."""
 
         if self._data is None or not self.date_combo.count():
+            return
+        if self._instrument != "GC":
+            self.edge_panel.clear_context(
+                "Edge context is GC-only research evidence; the validated slate "
+                "was established on GC and does not transfer."
+            )
+            self._edge_day = None
             return
         bars = self._bars
         anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
@@ -1404,7 +1554,8 @@ class MainWindow(QtWidgets.QMainWindow):
         """Render the MGC day window and ghost the current GC trade onto it."""
 
         if (
-            self._mgc_bars is None
+            self._instrument != "GC"
+            or self._mgc_bars is None
             or not self.mgc_chart.isVisible()
             or self._data is None
             or not self.date_combo.count()
@@ -1412,7 +1563,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         mgc = self._mgc_bars
         anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        dates = self._data["dates"]
+        dates = self._active_data()["dates"]
         anchor_idx = int(np.searchsorted(dates, anchor))
         start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
         lo = int(np.searchsorted(mgc.trade_date, start_date, side="left"))

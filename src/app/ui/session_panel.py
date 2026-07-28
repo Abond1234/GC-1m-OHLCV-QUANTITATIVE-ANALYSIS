@@ -18,6 +18,7 @@ from ..analysis.account import (
     MGC_SPEC,
     AccountSettings,
     EquityCurve,
+    InstrumentSpec,
     SessionStats,
 )
 from ..analysis.evaluation import PRESETS, EvaluationRules, EvaluationStatus
@@ -95,6 +96,7 @@ class SessionPanel(QtWidgets.QWidget):
         self.balance_spin.setAccelerated(True)
         self.balance_spin.setToolTip("Starting balance for the session's accounting.")
         self.instrument_combo = QtWidgets.QComboBox()
+        self._panel_specs: list[InstrumentSpec] = [GC_SPEC, MGC_SPEC]
         self.instrument_combo.addItems(["GC ($100/pt)", "MGC ($10/pt)"])
         self.instrument_combo.setToolTip(
             "Contract used to convert points to dollars. The chart's simulation\n"
@@ -171,6 +173,21 @@ class SessionPanel(QtWidgets.QWidget):
         self.risk_spin.setEnabled(risk_mode)
         self.contracts_spin.setEnabled(not risk_mode)
 
+    def sync_instruments(self, instruments, active_symbol: str) -> None:
+        """Offer the available instruments' economics; select the active one."""
+
+        self._panel_specs = [inst.spec for inst in instruments]
+        self.instrument_combo.blockSignals(True)
+        self.instrument_combo.clear()
+        active_index = 0
+        for i, inst in enumerate(instruments):
+            per_point = inst.spec.dollars_per_point
+            self.instrument_combo.addItem(f"{inst.symbol} (${per_point:g}/pt)")
+            if inst.symbol == active_symbol:
+                active_index = i
+        self.instrument_combo.setCurrentIndex(active_index)
+        self.instrument_combo.blockSignals(False)
+
     # -- settings ----------------------------------------------------------
     def account_settings(self) -> AccountSettings:
         return AccountSettings(
@@ -180,7 +197,9 @@ class SessionPanel(QtWidgets.QWidget):
             else "fixed_contracts",
             risk_percent=float(self.risk_spin.value()),
             fixed_contracts=int(self.contracts_spin.value()),
-            instrument=GC_SPEC if self.instrument_combo.currentIndex() == 0 else MGC_SPEC,
+            instrument=self._panel_specs[
+                max(0, min(self.instrument_combo.currentIndex(), len(self._panel_specs) - 1))
+            ],
         )
 
     def evaluation_rules(self) -> EvaluationRules | None:

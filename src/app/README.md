@@ -60,6 +60,31 @@ dist\GCTradeSimulator\GCTradeSimulator.exe
 rebuild whenever you want a fresh packaged artifact - day-to-day development
 runs from source.
 
+## Instruments and adding an instrument
+
+The topbar's instrument picker switches the primary chart among assets with
+local data. GC and MGC come from the research bar table (Development+Validation
+capped). The registry also knows NQ ($20/pt, 0.25 tick), ES ($50/pt, 0.25), and
+BTCUSD ($1/pt) - they appear automatically once you provide bars at:
+
+```
+data/processed/instruments/<SYMBOL>_1m.parquet
+```
+
+Required columns (enforced loudly; a wrong file is refused, never rendered):
+`ts_event_utc, open, high, low, close, volume, trade_date_ny,
+minute_of_day_ny, continuous_segment_id, rolling_atr_20m`. One row per minute;
+`continuous_segment_id` must break across data gaps/rolls so no candle or
+simulation window spans a discontinuity; `rolling_atr_20m` is a simple
+20-minute mean of true range (the exit engine sizes ATR stops from it).
+New instruments register in `src/app/datalayer/instruments.py`.
+
+Research validity is instrument-scoped: the strategy catalog, replay markers,
+and the Edge context slate are GC evidence, so they disable - with the reason
+on screen - on every other instrument. Free-play, exits, what-ifs, exit grids,
+drawings, replay-view, and the session money layer (which auto-syncs the
+active contract's dollars-per-point) work on any loaded instrument.
+
 ## Verifying a change
 
 ```powershell
