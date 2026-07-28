@@ -145,10 +145,10 @@ notebooks\exploration\statistical_feature_research.ipynb
 Virtual environment:
 
 ```text
-.venv-1
+.venv
 ```
 
-Active interpreter: `.venv-1/Scripts/python.exe` (Windows) or `.venv-1/bin/python` (POSIX) inside the repository. Install dependencies from `requirements.txt`; `requirements.lock.txt` pins the exact executed environment.
+Active interpreter: `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` (POSIX) inside the repository. Install dependencies from `requirements.txt`; `requirements.lock.txt` pins the exact executed environment.
 
 Existing core packages include:
 
@@ -1370,7 +1370,7 @@ Long and short signed returns are paired algebraic transformations, not independ
 
 The fixed sensitivity grid is **0, 1, 2, 3, 4, 5, and 10 ticks**. At a five-tick hurdle, combined absolute exit-to-exit exceedance rises from **63.49%** at 5 minutes to **93.34%** at 180 minutes. Five-tick long directional exceedance rises from **32.11% to 48.06%** and short directional exceedance from **31.38% to 45.29%**. Exit-to-exit, MFE, MAE, and range hurdle results remain separate movement diagnostics and are not PnL or a cost backtest.
 
-The notebook passed **120/120** Section 5 checks: 8 input/identity, 19 availability, 54 outcome-invariant, 12 path-boundary, 8 aggregation-reconciliation, 2 sampled statistical/visual audit, and 17 save/reload checks. Stable keys, schemas, null behavior, counts, quantile ordering, tick/bps/ATR transformations, classifications, session/time/weekday/year/partition reconciliation, forced-exit boundaries, and deterministic early/late London/New York samples all passed. The notebook was restarted and executed top-to-bottom with `.venv-1`; all **36/36 code cells** executed in order with no error output, ending in `SECTION 5 STATUS: READY`.
+The notebook passed **120/120** Section 5 checks: 8 input/identity, 19 availability, 54 outcome-invariant, 12 path-boundary, 8 aggregation-reconciliation, 2 sampled statistical/visual audit, and 17 save/reload checks. Stable keys, schemas, null behavior, counts, quantile ordering, tick/bps/ATR transformations, classifications, session/time/weekday/year/partition reconciliation, forced-exit boundaries, and deterministic early/late London/New York samples all passed. The notebook was restarted and executed top-to-bottom with `.venv`; all **36/36 code cells** executed in order with no error output, ending in `SECTION 5 STATUS: READY`.
 
 Final-test governance: Section 5 used a metric and code contract frozen before its one-time descriptive Final-test exposure. The exposed Final-test information includes return center, direction rates, magnitude, excursions, range, realized volatility, tails, availability, sessions, time-of-day, weekdays, symmetry, and fixed hurdle sensitivity. Later work must not describe the Final test as completely unseen and must not tune feature definitions, bins, horizons, thresholds, or models to these baseline values. Development and Validation remain the primary interpretation samples.
 
@@ -1436,7 +1436,7 @@ Validation results:
 - **40/40** fixed-seed manual reconstructions passed across five timing/boundary cases and all eight feature families.
 - No infinity, exact duplicate, constant, near-constant, invalid-range, extreme, or excessive-missingness feature was found.
 - Maximum all-sample feature missingness is **0.966873%**; maximum Development missingness is **1.396989%**, explained by continuity resets, zero denominators, or complete-window requirements.
-- The fresh `.venv-1` notebook execution completed **51/51 code cells** sequentially with zero error outputs and recorded `C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv-1\Scripts\python.exe` as the active interpreter. Full-notebook runtime was **488.4 seconds**; the Section 6 block took **49.25 seconds**, including a **34.26-second** feature build.
+- The fresh `.venv` notebook execution completed **51/51 code cells** sequentially with zero error outputs and recorded `C:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv\Scripts\python.exe` as the active interpreter. Full-notebook runtime was **488.4 seconds**; the Section 6 block took **49.25 seconds**, including a **34.26-second** feature build.
 
 Saved generated artifacts (Parquet files remain excluded from Git):
 
@@ -1599,3 +1599,25 @@ Executed exactly per the pre-declared contract in `project_docs/section12b_resea
 Result: `NO_ADVANCE` on all three. H1 proportional sizing is the instructive near-miss - positive mean/MAD ratio effects with 0.81-1.07 Validation retention, but the Development interval includes zero at base costs and the scheme shifts mean R by +0.04 to +0.08R, breaching materiality: the lift is the same high-quintile return concentration Section 12 already rejected, relabeled as sizing. H2's Development-fitted mapping flips negative in Validation (retention -2.0). H3 improves both co-primary effects in Development and flips both in Validation. The one-time Final-test read (after verdicts were fixed) shows every effect within 0.03R of zero. Per the linkage in `project_docs/section8_authorization_memo.md`, with Option 1 already SEQUENTIAL_REJECTED, Option 3 applies: the S7P02 family is archived with the complete evidence chain.
 
 Implementation: `src/research/opportunity_conditioning.py`, `tests/test_opportunity_conditioning.py` (10 synthetic tests with planted effects proving each pass and veto path), `scripts/update_statistical_section12b_notebook.py`. Tracked record: `reports/statistical_research/summaries/section12b_opportunity_conditioning_summary.md` plus CSVs under `reports/statistical_research/tables/section12b/`. Generated artifacts remain excluded from Git.
+
+## Portable Compute and Cross-Machine Reproducibility
+
+**Status:** COMPLETE — the project runs on hosts with or without a CUDA GPU, and research numbers no longer depend on which machine produced them.
+
+Contributors now work on materially different hardware (a CPU-only 8 GB laptop and a 32 GB workstation with a 4 GB NVIDIA T500), which surfaced two distinct problems.
+
+*Portability.* The notebook asserted an exact virtual-environment directory name, so each machine's run broke the other's. It now accepts any virtual environment inside the repository. Compute device selection lives in `src/compute.py` (`tests/test_compute.py`): the backend resolves to CUDA when a usable GPU array module is importable and to CPU otherwise, and `PROJECT_COMPUTE=cpu|gpu|auto` overrides detection - `cpu` lets a GPU host reproduce a CPU-only host exactly, and `gpu` fails loudly rather than degrading silently. Parallelism is planned against memory rather than core count: `cpu_worker_count` bounds workers by available RAM and the `src/resources.py` memory tier, and `plan_batches` sizes batches to free device or host memory so a 4 GB card splits a workload that a large-memory host takes in one pass. GPU support is an optional install (`requirements-gpu.txt`) and is not required by anything.
+
+*Reproducibility.* Executing the notebook on two machines produced different committed Section 6 missingness figures (`two_bar_directional_balance` 1.396989 percent versus 1.149136 percent) from byte-identical input data - the local `research_bars` table matches on both hosts at 3,487,656 rows. A differential test showed the two `_rolling_sum` implementations to be bit-identical under one NumPy build, and a decomposition of the affected nulls on real data found 61,796 exact-zero denominators and zero near-zero denominators, ruling out floating-point residue in that path. The divergence therefore tracks the numerical stack itself (NumPy 2.4.6 on one host, 2.5.1 on the other), not the source change. Two controls follow: `requirements.txt` pins numpy, pandas, scipy, and pyarrow to exact versions rather than floors, and the notebook verifies those pins at startup and fails with an explicit remedy, so a divergent artifact cannot be committed silently. The canonical Section 6 figures are those produced under the pinned stack.
+
+*Determinism policy.* Floating-point reductions are not associative, so frozen research artifacts are computed on the deterministic CPU path regardless of host; the GPU is reserved for work whose result cannot move. `_rolling_sum` was returned to a single implementation for this reason - the device-dispatching version wrapped the numerics in a bare `except Exception` that silently fell back to a duplicated code path, and the two paths had already diverged (the dispatching path truncated the continuity-run key to int32). Index and count arrays are int64 so a run identifier can never be conflated by truncation, and `tests/test_feature_window_determinism.py` pins the correctness oracle, the group-key integrity case, and the requirement that results are unchanged when a GPU is present.
+
+## GARCH Volatility Feature — Implementation Complete, Hypotheses Outstanding
+
+**Status:** FEATURE IMPLEMENTED — `GARCH SECTION STATUS: READY` — **H1 and H2 not evaluated; blockers recorded**
+
+The contract in `project_docs/garch_volatility_research_contract.md` was declared before implementation, as required. The feature side is now complete and lives in `src/statistical_research/garch_volatility.py` with `tests/test_garch_volatility.py`, replacing a notebook-only implementation; the notebook section is regenerated by `scripts/update_statistical_garch_notebook.py`. Parameters are fitted on Development bars only and frozen, the recursion is applied forward using only prior information, and the regime threshold is the Development 75th percentile. Leakage is asserted by test and re-verified on the full dataset: perturbing final-test prices leaves every earlier feature value bit-identical.
+
+Two implementation defects were corrected: the recursion was seeded with the last Development bar's conditional volatility but applied from the first bar of the series (now seeded with the Development return variance, which is Development-only and remains defined when the fit sits on the stationarity boundary), and a comment claiming the recursion was vectorised was removed, the recursion being sequential by definition.
+
+The hypotheses are deliberately not evaluated. H1 names "the primary research horizon" without pinning one of the six available, and selecting it after fitting results are visible is the degree of freedom the contract's own voiding clause exists to prevent. Separately, both products fit with persistence at the stationarity boundary and a non-convergence code from the optimizer, which is a known consequence of fitting GARCH(1,1) directly to one-minute bars carrying intraday volatility seasonality; H3 as written would read as a pass on a degenerate fit. Both resolutions are contract amendments and belong to the contract owner. Measured values and the full diagnostic record are in `reports/statistical_research/summaries/garch_volatility_status.md`. The final-test partition is excluded from every GARCH summary until verdicts are fixed.

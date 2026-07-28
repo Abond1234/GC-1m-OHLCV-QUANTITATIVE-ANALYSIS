@@ -1,19 +1,37 @@
-# Top-level project dependencies with version bounds for research reproducible uniformity.
-# See requirements.lock.txt for the exact frozen environment used in execution.
+# Top-level project dependencies.
+#
+# The numerical stack is pinned to exact versions rather than floors.  The
+# feature matrix is a frozen research artefact, and the committed Section 6
+# missingness figures have been observed to differ between NumPy builds on
+# byte-identical input data, so a floor such as "numpy>=2.0" is not enough to
+# make two machines agree.  Reproducing committed results requires these exact
+# versions; requirements.lock.txt records the full frozen environment.
+numpy==2.5.1
+pandas==3.0.3
+scipy==1.18.0
+pyarrow==25.0.0
 
-numpy>=2.0.0
-pandas>=2.2.0
-scipy>=1.12.0
-pyarrow>=15.0.0
-matplotlib>=3.8.0
-seaborn>=0.13.0
-databento>=0.80.0
+# Research and modelling libraries.
 arch>=7.0.0
 statsmodels>=0.14.0
-jupyter>=1.0.0
-nbformat>=5.9.0
-psutil>=5.9.0
-pytest>=8.0.0
-cupy-cuda12x>=13.0.0
+databento>=0.80.0
 scikit-learn>=1.9.0
 joblib>=1.5.0
+
+# Notebook execution and reporting.
+jupyter>=1.0.0
+nbformat>=5.9.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# Host inspection for memory tiering and compute planning (src/resources.py,
+# src/compute.py).
+psutil>=5.9.0
+
+# GPU acceleration is optional and lives in requirements-gpu.txt.  It is kept
+# out of this file because it is a large CUDA-only download that every CPU-only
+# machine and every CI runner would otherwise have to fetch; the project runs
+# fully on CPU.  See src/compute.py for the device and determinism policy.
+#
+# The test suite uses the standard library's unittest, so no test runner is
+# required here.  Linting pins ruff in .github/workflows/tests.yml.

@@ -298,13 +298,13 @@ Project 1/
 ## Virtual Environment
 
 ```text
-.venv-1
+.venv
 ```
 
 ## Active Python Interpreter
 
 ```text
-c:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv-1\Scripts\python.exe
+c:\Users\abond\Desktop\WORK FILES\Systemic\Project 1\.venv\Scripts\python.exe
 ```
 
 ### Environment Status

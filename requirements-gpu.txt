@@ -1,0 +1,16 @@
+# Optional GPU acceleration (NVIDIA CUDA 12.x only).
+#
+# Install on top of requirements.txt when the host has a CUDA device:
+#
+#     python -m pip install -r requirements.txt -r requirements-gpu.txt
+#
+# Nothing in the project requires this file.  With no GPU array module present
+# the compute backend resolves to CPU automatically, and every pipeline, test
+# and notebook runs unchanged.  Set PROJECT_COMPUTE=cpu to force the CPU path
+# on a machine that does have a GPU - which is how a CUDA workstation
+# reproduces a CPU-only colleague's environment exactly.
+#
+# Note that research-artefact numerics stay on the deterministic CPU path by
+# design, so installing this will not change any committed research value.
+# See the determinism policy in src/compute.py.
+cupy-cuda12x>=13.0.0
