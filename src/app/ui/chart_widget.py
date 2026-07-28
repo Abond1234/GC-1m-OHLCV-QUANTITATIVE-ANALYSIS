@@ -137,6 +137,7 @@ class ChartWidget(QtWidgets.QWidget):
     """Backend-agnostic chart surface used by the main window."""
 
     bar_clicked = QtCore.Signal(int)  # emits the global bar index under the cursor
+    bar_hovered = QtCore.Signal(int)  # hovered displayed bar's last 1m index (crosshair)
     drawing_placed = QtCore.Signal()  # a one-shot draw mode finished placing
 
     def __init__(self, parent=None):
@@ -695,6 +696,18 @@ class ChartWidget(QtWidgets.QWidget):
             self._create_drawing(local)
         self._drawing_store = keep
 
+    def export_drawings(self) -> list[dict]:
+        """Every drawing (live and stored) as global-coordinate specs."""
+
+        return [*self._drawing_store, *self._serialize_drawings()]
+
+    def import_drawings(self, specs: list[dict]) -> None:
+        """Replace all drawings from serialized global specs."""
+
+        self.clear_drawings()
+        self._drawing_store = [dict(spec) for spec in specs]
+        self._restore_drawings()
+
     def set_reveal(self, up_to_global: int | None) -> None:
         """Show only fully-elapsed displayed bars at 1m time ``up_to_global``.
 
@@ -1227,6 +1240,7 @@ class ChartWidget(QtWidgets.QWidget):
         if 0 <= i < n and i != self._last_readout_i:
             self._last_readout_i = i  # the readout only changes per bar, not per pixel
             self._readout_label.setText(self._readout(i))
+            self.bar_hovered.emit(self._view_map.local_to_global_end(i))
 
     def _update_badges(self, x: float, y: float, i: int) -> None:
         """Pin the exact time and tick-formatted price to the view edges."""

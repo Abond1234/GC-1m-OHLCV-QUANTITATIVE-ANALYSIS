@@ -16,6 +16,7 @@ what the research engine would record.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 import numpy as np
@@ -30,8 +31,17 @@ from ..analysis.placed_trade import place_trade, recompute_config, recompute_lev
 from ..analysis.whatif import run_whatifs
 from ..datalayer.bar_store import BarStore
 from ..datalayer.catalog_service import StrategyReplayService
+from ..datalayer.edge_context import EdgeContextService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.paths import project_root, research_bars_path
+from ..datalayer.session_store import (
+    build_payload,
+    default_sessions_dir,
+    exit_config_from_dict,
+    exit_config_to_dict,
+    read_session,
+    write_session,
+)
 from ..datalayer.timeframe import (
     TIMEFRAMES,
     ViewMap,
@@ -47,6 +57,7 @@ from ..workers.tasks import Task
 from . import theme
 from .blotter import TradeBlotter, ny_time_label
 from .chart_widget import ChartWidget
+from .edge_panel import EdgeContextPanel
 from .exit_panel import ExitPanel
 from .forensics_panel import ForensicsPanel
 from .heatmap_widget import HeatmapWidget
@@ -118,6 +129,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._mgc_range: tuple[int, int, int] | None = None  # rendered MGC window + tf
         self._range_days = 1  # trade dates shown, anchored at the selected date
         self._range_text = "1D"
+        self._edge_service = EdgeContextService()
+        self._edge_token = 0
+        self._edge_day: tuple[int, int] | None = None  # anchor day's 1m [lo, hi]
 
         self._build_ui()
         if data is not None:
@@ -155,6 +169,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_ui(self) -> None:
         self.chart = ChartWidget()
         self.chart.bar_clicked.connect(self._on_bar_clicked)
+        self.chart.bar_hovered.connect(self._on_bar_hovered)
         self._animator = ReplayAnimator(self.chart)
         self._animator.stateChanged.connect(self._on_replay_state)
         self._animator.positionChanged.connect(self._on_replay_position)
@@ -360,6 +375,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session_panel = SessionPanel()
         self.session_panel.settingsChanged.connect(self._recompute_session)
         self._tabs.addTab(self.session_panel, "Session")
+        self.edge_panel = EdgeContextPanel()
+        self._tabs.addTab(self.edge_panel, "Edge context")
 
         self.forensics = ForensicsPanel()
 
@@ -384,6 +401,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._exit_dock = dock
 
     def _build_menu(self) -> None:
+        file_menu = self.menuBar().addMenu("File")
+        save_act = file_menu.addAction("Save session...")
+        save_act.setShortcut("Ctrl+S")
+        save_act.triggered.connect(self._save_session)
+        load_act = file_menu.addAction("Load session...")
+        load_act.setShortcut("Ctrl+O")
+        load_act.triggered.connect(self._load_session)
         self._view_menu = self.menuBar().addMenu("View")
         for label, mode in (("Dark theme", "dark"), ("Light theme", "light")):
             act = self._view_menu.addAction(label)
@@ -663,6 +687,7 @@ class MainWindow(QtWidgets.QMainWindow):
             visible=self.session_check.isChecked(),
         )
         self._redraw_overlays()
+        self._refresh_edge_context()
 
     def _in_view(self, position: int) -> bool:
         return self._view_start <= position <= self._view_end
@@ -983,6 +1008,205 @@ class MainWindow(QtWidgets.QMainWindow):
         self._recompute_session()
         self._redraw_overlays()
 
+    # -- session persistence -----------------------------------------------
+    def _collect_session_payload(self) -> dict:
+        sp = self.session_panel
+        placed = [
+            {
+                "id": int(trade.id),
+                "entry_position": int(trade.entry_position),
+                "direction": int(trade.direction),
+                "color": trade.color,
+                "cfg": exit_config_to_dict(trade.cfg),
+            }
+            for trade in self._placed.values()
+        ]
+        return build_payload(
+            theme_mode=theme.active().name,
+            view={
+                "anchor_date": self.date_combo.currentText(),
+                "range_text": self._range_text,
+                "range_days": self._range_days,
+                "timeframe": self.tf_combo.currentText(),
+            },
+            account={
+                "starting_balance": float(sp.balance_spin.value()),
+                "sizing_index": sp.sizing_combo.currentIndex(),
+                "risk_percent": float(sp.risk_spin.value()),
+                "fixed_contracts": int(sp.contracts_spin.value()),
+                "instrument_index": sp.instrument_combo.currentIndex(),
+            },
+            evaluation_preset=sp.preset_combo.currentText(),
+            placed=placed,
+            active_id=self._active_id,
+            next_id=self._next_id,
+            drawings=self.chart.export_drawings(),
+        )
+
+    def _save_session(self) -> None:
+        if self._data is None:
+            return
+        sessions_dir = default_sessions_dir(project_root())
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        path, _filter = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save session", str(sessions_dir / "session.json"), "Session (*.json)"
+        )
+        if not path:
+            return
+        write_session(path, self._collect_session_payload())
+        self._set_status(f"Session saved to {path}")
+
+    def _load_session(self) -> None:
+        if self._data is None:
+            return
+        sessions_dir = default_sessions_dir(project_root())
+        path, _filter = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load session", str(sessions_dir), "Session (*.json)"
+        )
+        if not path:
+            return
+        try:
+            payload = read_session(path)
+        except (ValueError, OSError, json.JSONDecodeError) as error:
+            QtWidgets.QMessageBox.warning(self, "Load session", str(error))
+            return
+        self._apply_session_payload(payload)
+        self._set_status(f"Session loaded from {path} (trades re-simulated).")
+
+    def _apply_session_payload(self, payload: dict) -> None:
+        sp = self.session_panel
+        account = payload.get("account", {})
+        for widget in (
+            sp.balance_spin,
+            sp.sizing_combo,
+            sp.risk_spin,
+            sp.contracts_spin,
+            sp.instrument_combo,
+            sp.preset_combo,
+        ):
+            widget.blockSignals(True)
+        sp.balance_spin.setValue(float(account.get("starting_balance", 100_000.0)))
+        sp.sizing_combo.setCurrentIndex(int(account.get("sizing_index", 0)))
+        sp.risk_spin.setValue(float(account.get("risk_percent", 1.0)))
+        sp.contracts_spin.setValue(int(account.get("fixed_contracts", 1)))
+        sp.instrument_combo.setCurrentIndex(int(account.get("instrument_index", 0)))
+        preset = payload.get("evaluation_preset", "Practice - no rules")
+        if sp.preset_combo.findText(preset) >= 0:
+            sp.preset_combo.setCurrentText(preset)
+        for widget in (
+            sp.balance_spin,
+            sp.sizing_combo,
+            sp.risk_spin,
+            sp.contracts_spin,
+            sp.instrument_combo,
+            sp.preset_combo,
+        ):
+            widget.blockSignals(False)
+
+        # Re-simulate every trade through the verified engine; results are
+        # recomputed, never trusted from disk.
+        bars = self._bars
+        self._placed.clear()
+        skipped = 0
+        for record in payload.get("placed", []):
+            entry = int(record.get("entry_position", -1))
+            if not (0 <= entry < bars.n_bars):
+                skipped += 1
+                continue
+            cfg = exit_config_from_dict(record.get("cfg", {}))
+            trade = place_trade(
+                int(record["id"]),
+                entry,
+                int(record.get("direction", 1)),
+                cfg,
+                bars.atr20,
+                bars.bar_arrays(),
+                color=record.get("color", ""),
+            )
+            self._placed[trade.id] = trade
+        self._active_id = payload.get("active_id")
+        if self._active_id is not None and self._active_id not in self._placed:
+            self._active_id = next(iter(self._placed), None)
+        self._next_id = max(
+            int(payload.get("next_id", 1)),
+            max(self._placed, default=0) + 1,
+        )
+        self._focused_result = None
+        self._focused_obs_id = None
+        self._whatif_runs = []
+
+        view = payload.get("view", {})
+        self._range_text = view.get("range_text", "1D")
+        self._range_days = int(view.get("range_days", 1))
+        for combo, value in (
+            (self.range_combo, self._range_text),
+            (self.tf_combo, view.get("timeframe", "1m")),
+        ):
+            combo.blockSignals(True)
+            if combo.findText(value) >= 0:
+                combo.setCurrentText(value)
+            combo.blockSignals(False)
+        self._set_theme(payload.get("theme", theme.active().name))
+        anchor = view.get("anchor_date", "")
+        if self.date_combo.findText(anchor) >= 0 and self.date_combo.currentText() != anchor:
+            self.date_combo.setCurrentText(anchor)  # triggers _render_view
+        else:
+            self._render_view()
+        self.chart.import_drawings(payload.get("drawings", []))
+        self.blotter.set_trades(list(self._placed.values()))
+        if self._active_id is not None:
+            self.blotter.select_trade(self._active_id)
+        self._recompute_session()
+        self._redraw_overlays()
+        if skipped:
+            self._set_status(f"Session loaded; {skipped} trade(s) outside the loaded data.")
+
+    # -- edge context ------------------------------------------------------
+    def _refresh_edge_context(self) -> None:
+        """Compute the anchor day's validated features on the worker pool."""
+
+        if self._data is None or not self.date_combo.count():
+            return
+        bars = self._bars
+        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
+        day_lo = int(np.searchsorted(bars.trade_date, anchor, side="left"))
+        day_hi = int(np.searchsorted(bars.trade_date, anchor, side="right")) - 1
+        if day_hi < day_lo:
+            return
+        if self._edge_day == (day_lo, day_hi):
+            return  # this day is already loaded or loading
+        self._edge_day = (day_lo, day_hi)
+        self._edge_token += 1
+        token = self._edge_token
+        self.edge_panel.clear_context("Computing the day's context ...")
+        minute_slice = bars.minute_ny[day_lo : day_hi + 1].copy()
+        task = Task(self._edge_service.day_context, self.date_combo.currentText(), minute_slice)
+        task.signals.finished.connect(
+            lambda context, tok=token: self._on_edge_context(context, tok)
+        )
+        task.signals.error.connect(
+            lambda message, tok=token: self._on_edge_context_error(message, tok)
+        )
+        self._start(task)
+
+    def _on_edge_context(self, context, token: int) -> None:
+        if token != self._edge_token:
+            return
+        self.edge_panel.set_context(context)
+
+    def _on_edge_context_error(self, message: str, token: int) -> None:
+        if token != self._edge_token:
+            return
+        first_line = message.strip().splitlines()[-1] if message.strip() else "unknown error"
+        self.edge_panel.clear_context(f"Edge context unavailable: {first_line}")
+
+    def _on_bar_hovered(self, global_index: int) -> None:
+        if self._edge_day is None:
+            return
+        day_lo, day_hi = self._edge_day
+        if day_lo <= global_index <= day_hi:
+            self.edge_panel.show_bar(global_index - day_lo)
+
     # -- session accounting ------------------------------------------------
     def _recompute_session(self) -> None:
         """Rebuild the dollar equity curve, stats, and evaluation verdict."""
@@ -1288,6 +1512,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.heatmap.refresh_theme()
         self.forensics.retheme()
         self.session_panel.retheme()
+        self.edge_panel.retheme()
         self._recompute_session()
         if self._placed:
             self.blotter.set_trades(list(self._placed.values()))

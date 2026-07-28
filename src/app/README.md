@@ -114,6 +114,30 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
   initial stop/target ghosted onto it by timestamp - a visual check of whether
   the pattern replicated on the execution instrument. MGC bars load on demand
   through the same Development+Validation cap.
+- **Multi-day ranges and display timeframes**: a range preset (1D/1W/1M/custom)
+  anchored at the selected date, and a timeframe selector (1m to 1D). The
+  aggregation is display-only - every simulation, entry, exit, and replay stays
+  on true 1-minute bars - and every overlay (trades, ribbons, replay curtain,
+  drawings, free-play clicks) maps through a single ViewMap, so everything
+  works identically at any timeframe. TradingView-style price-axis handling:
+  left-drag the price axis to scale, double-click it to auto-fit.
+- **Session tab (money layer)**: a dollar account model (GC $100/pt or MGC
+  $10/pt, risk-percent or fixed-contract sizing) turns the blotter into an
+  equity curve with desk stats, and an optional prop-style evaluation preset
+  arms hard rules (daily loss, max drawdown, profit target, minimum days) with
+  live meters and a pass/fail verdict. Simulated fills on historical Dev+Val
+  data - explicitly not live results.
+- **Edge context tab**: the four features that ADVANCED through the FES
+  Project 1 locked Validation batch, computed per bar for the selected day with
+  the research module's own frozen helpers (a golden test pins the app's
+  values to ``build_scalar_feature_matrix`` exactly). Session-honest display -
+  London-validated and New York-validated features dim outside their windows -
+  under the verbatim verdict: PREDICTIVE_ONLY_NOT_DIRECTIONAL, FROZEN_NO_POLICY,
+  not a trade signal.
+- **Sessions (File menu)**: save/load the working session (trades by entry and
+  exit config, drawings, view, account and evaluation settings) as versioned
+  JSON under the git-ignored ``reports/sessions/``. Loaded trades are
+  re-simulated through the verified engine - results are never read from disk.
 - **Light / dark** theme (View menu). Every surface re-themes in place, including
   the heatmap's colour scale and the chart axes/crosshair.
 - **Collapsible panels**: the Exit-rule dock, the analysis sidebar, and the replay
