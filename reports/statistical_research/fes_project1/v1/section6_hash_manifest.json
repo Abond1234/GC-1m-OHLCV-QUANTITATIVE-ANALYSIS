@@ -1,0 +1,162 @@
+{
+  "artifacts": [
+    {
+      "artifact_class": "data",
+      "bytes": 16183517,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_candidate_flags.parquet",
+      "sha256": "55c2da77dd94e572210dbc3505913e3c46ff52fbf7af8c4f34f2d673f1b78dc0"
+    },
+    {
+      "artifact_class": "data",
+      "bytes": 20770,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_complete_trial_ledger.parquet",
+      "sha256": "1af75c08c1e6075f3e799b71f4c806dae4abd0e1a2fb518927f444a664971f26"
+    },
+    {
+      "artifact_class": "data",
+      "bytes": 55270,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_feature_validation_daily_ic.parquet",
+      "sha256": "a4ce7d34660e44e1ea4bbe7c2cca0eb011b85c0d18493e5f5a82f010a944ee9f"
+    },
+    {
+      "artifact_class": "data",
+      "bytes": 64317,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_interaction_validation_daily_delta.parquet",
+      "sha256": "dab5134f30c3f357d4a9c042d12f9279f53190d23797432bddd25b24cd55a61f"
+    },
+    {
+      "artifact_class": "data",
+      "bytes": 1275,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_runtime_config.json",
+      "sha256": "cd6fb6aec46b5cd409ac2958d35f2c7caa3d9c19b328bfed78295436ef2c841b"
+    },
+    {
+      "artifact_class": "data",
+      "bytes": 43751,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_validation_continuous_daily.parquet",
+      "sha256": "993cf0e9a2b28682fe86ab0c9542648a9a56bcf81640746f885f823f47ae9e1d"
+    },
+    {
+      "artifact_class": "data",
+      "bytes": 14104892,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_validation_continuous_predictions.parquet",
+      "sha256": "fe63c5a9988d68d9c78ceca9b99189363156be18e47fe07c382a3b1deb9f83db"
+    },
+    {
+      "artifact_class": "data",
+      "bytes": 4930783,
+      "path": "data/processed/statistical_research/fes_project1/v1/section6_validation_expansion_predictions.parquet",
+      "sha256": "4a1718ccbcca6c0634e116ae25c9c254a6fcdbfbd2c0c397464c43f03386745b"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 830,
+      "path": "reports/statistical_research/fes_project1/v1/section6_access_audit.csv",
+      "sha256": "4ccbce2aa57c0a17f2de871479f6b0887f2f3ede0da8e6fa8268c108662c097c"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 1385,
+      "path": "reports/statistical_research/fes_project1/v1/section6_candidate_counts.csv",
+      "sha256": "e7bec96a7f3070720a1ad65a16457e12bb7050a2a8993621ff989d0a7d2d9e4b"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 12668,
+      "path": "reports/statistical_research/fes_project1/v1/section6_comparator_registry.csv",
+      "sha256": "abd9ac30da1071a9917b05efc613e8fea6f1c46ecd2f8c3ebe3235744a801c56"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 55632,
+      "path": "reports/statistical_research/fes_project1/v1/section6_complete_trial_ledger.csv",
+      "sha256": "4d32ef2b7b0930c033f3c685f13da535fc03914645a3048c8fb382e1f067646e"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 603,
+      "path": "reports/statistical_research/fes_project1/v1/section6_daily_net_r_sharpe.csv",
+      "sha256": "8c0e934bdbf44ef63537a730ae221529866b47419d472050f417641f993522b9"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 12422,
+      "path": "reports/statistical_research/fes_project1/v1/section6_final_feature_gates.csv",
+      "sha256": "84f29d064e772533e09389bce4f79fc91c59ac06d2a233738eb137a6366c0617"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 3996,
+      "path": "reports/statistical_research/fes_project1/v1/section6_final_interaction_gates.csv",
+      "sha256": "7d6e17111c7a4c49715a18dc52250009f3030d9b1a60b23751c28befbc81fc03"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 3114,
+      "path": "reports/statistical_research/fes_project1/v1/section6_final_model_gates.csv",
+      "sha256": "201ee33bcbdb1d39d23731a0a98bb5e04dc4e7b29d93b5a93685dbe95522c506"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 666,
+      "path": "reports/statistical_research/fes_project1/v1/section6_gc_drawdown.csv",
+      "sha256": "02b930677e0b9da6ccae5b398c6abeaf106c266c53abdf01be52622c22187e17"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 2367,
+      "path": "reports/statistical_research/fes_project1/v1/section6_gc_economics.csv",
+      "sha256": "f6df5426af6a85db04a71219ea8ef07420fac76a18342af9a442cc8350adb11e"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 449,
+      "path": "reports/statistical_research/fes_project1/v1/section6_gc_gate_verdict.csv",
+      "sha256": "b26f0d71643d69fa4415d7f2d07a00b0188f58d150c094b35f6587b49793754a"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 7640,
+      "path": "reports/statistical_research/fes_project1/v1/section6_validation_continuous_deciles.csv",
+      "sha256": "1b134228ece1c3dd268c8d9266b3cc9e31f4e636184db45441eb4ce63ed609e2"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 2775,
+      "path": "reports/statistical_research/fes_project1/v1/section6_validation_continuous_metrics.csv",
+      "sha256": "5baeaba0b1510382825988ec6fba1d92874dfbcc0276c85ac0b20d8b02817375"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 2989,
+      "path": "reports/statistical_research/fes_project1/v1/section6_validation_continuous_subperiods.csv",
+      "sha256": "499ff514a42d8029333fa33913c3c4fa3d295dd42c735e1d7319c4f6078440a6"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 1478,
+      "path": "reports/statistical_research/fes_project1/v1/section6_validation_expansion_metrics.csv",
+      "sha256": "809961e4cbcdda14117a41cda2e90bf7f1debc96a8a3727c6de918d6d34b5acf"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 1845,
+      "path": "reports/statistical_research/fes_project1/v1/section6_validation_expansion_reliability.csv",
+      "sha256": "19392bf08db5257f5184a6fe3fe1d1d396c9804ce518d4b651e255bab60f72ce"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 3680,
+      "path": "reports/statistical_research/fes_project1/v1/section6_validation_integrity.csv",
+      "sha256": "b6ab9989dbe5d08145d301228ec328d9e79be36225ddeb28e0b40f8173065139"
+    },
+    {
+      "artifact_class": "report",
+      "bytes": 4232,
+      "path": "reports/statistical_research/fes_project1/v1/section6_validation_missingness.csv",
+      "sha256": "a3a76234ee89229a6dd0798a5091e64b3d20717b1f9d77623003ea650346d2e0"
+    }
+  ],
+  "schema_version": "1.0.0",
+  "section": 6
+}

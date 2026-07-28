@@ -15,6 +15,8 @@ pyarrow==25.0.0
 arch>=7.0.0
 statsmodels>=0.14.0
 databento>=0.80.0
+scikit-learn>=1.9.0
+joblib>=1.5.0
 
 # Notebook execution and reporting.
 jupyter>=1.0.0

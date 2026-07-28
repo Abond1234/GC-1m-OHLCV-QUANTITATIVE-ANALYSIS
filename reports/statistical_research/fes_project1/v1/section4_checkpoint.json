@@ -1,0 +1,379 @@
+{
+  "access_boundary": {
+    "development_outcome_rows": 306230,
+    "historical_final_outcome_rows": 0,
+    "physical_development_filter_verified": true,
+    "retrospective_validation_outcome_rows": 0
+  },
+  "base_feature_support": [
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_partial_overlap|gate_direction_spread",
+      "feature_name": "ret_trimmed_mean_30_bps",
+      "session": "London",
+      "trial_id": "UCONF_london_ret_trimmed_mean_30_bps"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_direction_spread",
+      "feature_name": "ret_tail_balance_60",
+      "session": "London",
+      "trial_id": "UCONF_london_ret_tail_balance_60"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_partial_overlap|gate_direction_spread",
+      "feature_name": "price_path_curvature_30_atr",
+      "session": "London",
+      "trial_id": "UCONF_london_price_path_curvature_30_atr"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_partial_overlap|gate_direction_spread",
+      "feature_name": "ordered_draw_balance_30",
+      "session": "London",
+      "trial_id": "UCONF_london_ordered_draw_balance_30"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_direction_spread",
+      "feature_name": "lagged_volume_return_spearman_30",
+      "session": "London",
+      "trial_id": "UCONF_london_lagged_volume_return_spearman_30"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_partial_overlap",
+      "feature_name": "ret_mad_30_bps",
+      "session": "London",
+      "trial_id": "UCONF_london_ret_mad_30_bps"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity",
+      "feature_name": "ret_outlier_fraction_60",
+      "session": "London",
+      "trial_id": "UCONF_london_ret_outlier_fraction_60"
+    },
+    {
+      "development_label": "DEV_SUPPORT",
+      "failed_gates": "",
+      "feature_name": "return_acf_energy_60",
+      "session": "London",
+      "trial_id": "UCONF_london_return_acf_energy_60"
+    },
+    {
+      "development_label": "DEV_SUPPORT",
+      "failed_gates": "",
+      "feature_name": "range_volume_spearman_30",
+      "session": "London",
+      "trial_id": "UCONF_london_range_volume_spearman_30"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_partial_overlap",
+      "feature_name": "volume_profile_slope_30",
+      "session": "London",
+      "trial_id": "UCONF_london_volume_profile_slope_30"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_direction_spread",
+      "feature_name": "ret_trimmed_mean_30_bps",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_ret_trimmed_mean_30_bps"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_direction_spread",
+      "feature_name": "ret_tail_balance_60",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_ret_tail_balance_60"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_partial_overlap|gate_direction_spread",
+      "feature_name": "price_path_curvature_30_atr",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_price_path_curvature_30_atr"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_partial_overlap|gate_direction_spread",
+      "feature_name": "ordered_draw_balance_30",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_ordered_draw_balance_30"
+    },
+    {
+      "development_label": "DEV_SUPPORT",
+      "failed_gates": "",
+      "feature_name": "lagged_volume_return_spearman_30",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_lagged_volume_return_spearman_30"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_partial_overlap",
+      "feature_name": "ret_mad_30_bps",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_ret_mad_30_bps"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity",
+      "feature_name": "ret_outlier_fraction_60",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_ret_outlier_fraction_60"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_bucket_monotonicity",
+      "feature_name": "return_acf_energy_60",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_return_acf_energy_60"
+    },
+    {
+      "development_label": "DEV_NO_SUPPORT",
+      "failed_gates": "gate_bucket_monotonicity|gate_partial_overlap",
+      "feature_name": "range_volume_spearman_30",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_range_volume_spearman_30"
+    },
+    {
+      "development_label": "DEV_SUPPORT",
+      "failed_gates": "",
+      "feature_name": "volume_profile_slope_30",
+      "session": "New York",
+      "trial_id": "UCONF_new_york_volume_profile_slope_30"
+    }
+  ],
+  "branch": "AMM",
+  "config_sha256": "efb7ee9a79a81b96023fd20ae747a99129809ba4307a314d482b0370b648401f",
+  "focused_tests": "16 passed",
+  "frozen_quintile_hashes": [
+    {
+      "edge_set_sha256": "e82ebc55d018c328e070d5a1b8e23873019b986d8680767fa53836743eb5d3c8",
+      "feature_name": "lagged_volume_return_spearman_30",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "6faf422a32e12b178e547f7f7ca7c4ece3220795a0b2b3ddf1f4d2fb6e4d3cd3",
+      "feature_name": "ordered_draw_balance_30",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "8896431457029d6e5f11f5a460d3895bd4956d0b103ab7a362f3300bde2bdfc5",
+      "feature_name": "price_path_curvature_30_atr",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "f35381de9f6a43b7cfe51a62aa89615fe58619529df8835b4b4ba8f6cc1a99e8",
+      "feature_name": "range_volume_spearman_30",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "f510f0796aad3e5d7153e184f66b7f8a30cdaf1ad36655e8bdc22a42b0bef08c",
+      "feature_name": "ret_mad_30_bps",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "f7e0a5f2e2cf6ae771492cfb654c6dcffacf0e220e522d5a99a1249c7d1e6f4a",
+      "feature_name": "ret_outlier_fraction_60",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "68abe94342ef44520e31d36df2456b92cf0c384dbb5e7d6e8f48b7b82cf48c5f",
+      "feature_name": "ret_tail_balance_60",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "ab6e8b581e661f8e33728e543f64b39f138d4f44a99edff0e7700da78a0494bf",
+      "feature_name": "ret_trimmed_mean_30_bps",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "b583f9e492d690507257d3c7d520c8250fac25eb151225db0778439d93b02e14",
+      "feature_name": "return_acf_energy_60",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "0a37f8c2fb1192c9d9732ac6ba515fd3497f50bf15f0664567a29d23ea6ebf99",
+      "feature_name": "volume_profile_slope_30",
+      "quantile_method": "linear",
+      "session": "London"
+    },
+    {
+      "edge_set_sha256": "dce1e935a85f0868188eb80a50863576b9fc12adb3ad61e510f24f97a039931c",
+      "feature_name": "lagged_volume_return_spearman_30",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "d749ecc12c8668d58326616e468a24f16676eab4209d9e706f9316e305b522d6",
+      "feature_name": "ordered_draw_balance_30",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "59989d00dfe9b81ebacb82ecc2f07ccf19ce149fe6e4c3e0292d177d982fab10",
+      "feature_name": "price_path_curvature_30_atr",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "eddb5715f0b7fa4532fc949242aca70e6b3383339f599f0c1370faaa46e00851",
+      "feature_name": "range_volume_spearman_30",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "0bc7048011f4de02c6cc3ebee07c1e694441a9fb504e666e88f3ad8d67f220cd",
+      "feature_name": "ret_mad_30_bps",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "b0cc8e67cef0ead6d3fdc06cc72c82caac86a2e6b714c27f72fe13d7bf2830f3",
+      "feature_name": "ret_outlier_fraction_60",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "c0b4813cde684e9f16c37c6c36a4903c2f8364aedbdc654c437de240bd28638e",
+      "feature_name": "ret_tail_balance_60",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "f1defd34124f9e064bf79358895c45a219e275ba03a60a590bbb9a7e0dedf225",
+      "feature_name": "ret_trimmed_mean_30_bps",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "2b58ff194e7035b3fe263a7f5e00cf4b6d01d657d8117e99521893298d429771",
+      "feature_name": "return_acf_energy_60",
+      "quantile_method": "linear",
+      "session": "New York"
+    },
+    {
+      "edge_set_sha256": "98c425c80d093dcc5e3dee3bb3e6694025c0274e8b3f2323c20ea1f580d22f62",
+      "feature_name": "volume_profile_slope_30",
+      "quantile_method": "linear",
+      "session": "New York"
+    }
+  ],
+  "git_commit": "e75cab144f9f2096d51262c5da478166e116c9c5",
+  "impact_analysis": {
+    "_walk_forward_folds": {
+      "affected_modules": 1,
+      "affected_processes": 1,
+      "direct_callers": 2,
+      "risk": "LOW",
+      "shared_symbol_modified": false
+    },
+    "implementation": "additive fes_project1_modeling.py",
+    "load_forward_labels_for_evaluation": {
+      "affected_modules": 1,
+      "affected_processes": 1,
+      "direct_callers": 1,
+      "risk": "LOW",
+      "shared_symbol_modified": false
+    }
+  },
+  "interaction_support": [
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I01",
+      "session": "London",
+      "trial_id": "INT_london_I01"
+    },
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I02",
+      "session": "London",
+      "trial_id": "INT_london_I02"
+    },
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I03",
+      "session": "London",
+      "trial_id": "INT_london_I03"
+    },
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I04",
+      "session": "London",
+      "trial_id": "INT_london_I04"
+    },
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I01",
+      "session": "New York",
+      "trial_id": "INT_new_york_I01"
+    },
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I02",
+      "session": "New York",
+      "trial_id": "INT_new_york_I02"
+    },
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I03",
+      "session": "New York",
+      "trial_id": "INT_new_york_I03"
+    },
+    {
+      "development_label": "DEV_NO_INCREMENTAL_SUPPORT",
+      "failed_gates": "gate_bh_q|gate_mean_delta|gate_ci_above_zero",
+      "interaction_id": "I04",
+      "session": "New York",
+      "trial_id": "INT_new_york_I04"
+    }
+  ],
+  "modeling_remains_justified": true,
+  "modeling_rule": "Proceed with predeclared nested model ladder; Development labels do not alter frozen M2-M4 matrices.",
+  "multiplicity_families": {
+    "CONFIRMATORY_20": {
+      "bh_q_values": 20,
+      "declared": 20,
+      "raw_p_values": 20
+    },
+    "EXPLORATORY_40": {
+      "advancement_role": false,
+      "bh_q_values": 40,
+      "declared": 40,
+      "raw_p_values": 40
+    },
+    "INTERACTION_8": {
+      "bh_q_values": 8,
+      "declared": 8,
+      "raw_p_values": 8
+    }
+  },
+  "schema_version": "1.0.0",
+  "section_5_started": false,
+  "section_completed": 4,
+  "trial_ledger": {
+    "later_planned_rows": 82,
+    "section4_completed_rows": 68,
+    "total_rows": 150
+  }
+}
