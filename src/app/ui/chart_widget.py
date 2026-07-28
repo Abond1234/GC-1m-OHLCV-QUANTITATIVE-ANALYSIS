@@ -18,7 +18,44 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..datalayer.timeframe import ViewMap
 from . import theme
+
+
+class _PriceAxis(pg.AxisItem):
+    """Price axis with TradingView interactions.
+
+    Stock pyqtgraph left-drags an axis into a PAN of the linked ViewBox; here a
+    left-drag on the price axis expands or compresses the visible price range,
+    anchored near where the drag started, and a double-click re-arms Y
+    autorange (auto-fit). Wheel, right-drag, and the context menu keep their
+    inherited behaviour.
+    """
+
+    def mouseDragEvent(self, event):  # noqa: N802 - pyqtgraph override
+        lv = self.linkedView()
+        if lv is None:
+            return super().mouseDragEvent(event)
+        if lv.sceneBoundingRect().contains(event.buttonDownScenePos()):
+            event.ignore()  # the press began inside the plot; not an axis drag
+            return
+        if event.button() != QtCore.Qt.LeftButton:
+            return super().mouseDragEvent(event)
+        if event.isStart():
+            self._anchor_y = lv.mapSceneToView(event.buttonDownScenePos()).y()
+        dy = event.pos().y() - event.lastPos().y()
+        scale = float(np.exp(dy * 0.01))  # drag down = expand range (TradingView feel)
+        anchor_y = getattr(self, "_anchor_y", lv.viewRect().center().y())
+        lv.scaleBy(y=scale, center=pg.Point(lv.viewRect().center().x(), anchor_y))
+        event.accept()
+
+    def mouseClickEvent(self, event):  # noqa: N802 - pyqtgraph override
+        lv = self.linkedView()
+        if lv is not None and event.double():
+            lv.enableAutoRange(axis=pg.ViewBox.YAxis)
+            event.accept()
+            return
+        super().mouseClickEvent(event)
 
 
 def _seg_runs(segment: np.ndarray) -> list[tuple[int, int]]:
@@ -108,7 +145,15 @@ class ChartWidget(QtWidgets.QWidget):
         pg.setConfigOptions(antialias=True, background=p.bg, foreground=p.text_faint)
         self._time_axis = _TimeAxis(np.array([]), orientation="bottom")
         self._layout = pg.GraphicsLayoutWidget()
-        self._price = self._layout.addPlot(row=0, col=0, axisItems={"bottom": self._time_axis})
+        self._price = self._layout.addPlot(
+            row=0,
+            col=0,
+            axisItems={
+                "bottom": self._time_axis,
+                "left": _PriceAxis(orientation="left"),
+                "right": _PriceAxis(orientation="right"),
+            },
+        )
         self._volume = self._layout.addPlot(row=1, col=0)
         self._layout.ci.layout.setRowStretchFactor(0, 4)
         self._layout.ci.layout.setRowStretchFactor(1, 1)
@@ -134,7 +179,9 @@ class ChartWidget(QtWidgets.QWidget):
         box.addWidget(self._readout_label)
         box.addWidget(self._layout)
 
-        self._view_start = 0  # global index of the first rendered bar
+        self._view_start = 0  # global index of the first rendered 1m bar
+        self._view_map: ViewMap = ViewMap.identity(0, 0)  # replaced by set_view
+        self._minute_close: np.ndarray = np.array([])  # 1m closes for the window
         self._trade_items: list = []
         self._whatif_items: list = []  # alternative-exit overlays, cleared separately
         self._level_lines: list = []  # draggable stop/target lines (kept across path redraws)
@@ -155,8 +202,8 @@ class ChartWidget(QtWidgets.QWidget):
         # User drawings (levels/trendlines/time markers). Live items for the
         # current day plus a per-day store so annotations survive date switches.
         self._draw_mode: str | None = None
-        self._drawing_items: list[tuple[str, object]] = []  # (kind, item), creation order
-        self._drawing_store: dict[int, list[dict]] = {}  # view_start -> serialized specs
+        self._drawing_items: list[tuple[str, object]] = []  # (kind, items), creation order
+        self._drawing_store: list[dict] = []  # global-coordinate specs not currently live
         self._trend_anchor: tuple[float, float] | None = None
         self._trend_anchor_dot = None
         self._trend_preview = None  # rubber-band line while placing a trendline
@@ -174,11 +221,31 @@ class ChartWidget(QtWidgets.QWidget):
             line.setVisible(False)
             line.setZValue(20)
             self._price.addItem(line, ignoreBounds=True)
+        # Axis badges: exact time (bottom edge) and tick-formatted price (right
+        # edge) that follow the crosshair, TradingView-style.
+        self._x_badge = self._make_badge(anchor=(0.5, 1.0))
+        self._y_badge = self._make_badge(anchor=(1.0, 0.5))
 
         self._price.scene().sigMouseClicked.connect(self._on_click)
         self._mouse_proxy = pg.SignalProxy(
             self._price.scene().sigMouseMoved, rateLimit=60, slot=self._on_mouse_moved
         )
+
+    def _make_badge(self, anchor) -> pg.TextItem:
+        p = theme.active()
+        badge = pg.TextItem(
+            "", color=p.bg, anchor=anchor, fill=pg.mkBrush(p.gold), border=pg.mkPen(None)
+        )
+        badge.setVisible(False)
+        badge.setZValue(25)
+        self._price.addItem(badge, ignoreBounds=True)
+        return badge
+
+    def _restyle_badges(self) -> None:
+        p = theme.active()
+        for badge in (self._x_badge, self._y_badge):
+            badge.setColor(p.bg)
+            badge.fill = pg.mkBrush(p.gold)
 
     def apply_theme(self) -> None:
         """Repaint the chart surface with the active palette (light/dark switch).
@@ -193,6 +260,7 @@ class ChartWidget(QtWidgets.QWidget):
         cross = pg.mkPen(p.text_faint, width=1, style=QtCore.Qt.DashLine)
         self._vline.setPen(cross)
         self._hline.setPen(cross)
+        self._restyle_badges()
         self._legend.setLabelTextColor(p.text_dim)
         for plot in (self._price, self._volume):
             for name in ("left", "right", "bottom"):
@@ -202,17 +270,28 @@ class ChartWidget(QtWidgets.QWidget):
                     axis.setTextPen(pg.mkPen(p.text_dim))
 
     # -- rendering ---------------------------------------------------------
-    def set_view(self, ohlc: dict, labels: np.ndarray, start_index: int) -> None:
-        """Render a contiguous window.
+    def set_view(
+        self,
+        ohlc: dict,
+        labels: np.ndarray,
+        view_map: ViewMap,
+        *,
+        minute_close: np.ndarray | None = None,
+    ) -> None:
+        """Render a window of displayed bars described by ``view_map``.
 
-        ``ohlc`` has open/high/low/close/volume arrays and, optionally, a
-        ``segment`` array; candles are split at segment breaks so none is drawn
-        across a roll/data discontinuity.
+        ``ohlc`` holds one entry per displayed bar (1m bars or aggregated
+        buckets) plus optionally ``segment``; candles are split at segment
+        breaks so none is drawn across a roll/data discontinuity. ``view_map``
+        converts between global 1-minute indices - the simulation truth every
+        caller keeps speaking - and displayed x positions. ``minute_close`` is
+        the raw 1m close slice for ``[view_start, view_end]``, used so the
+        replay marker can ride actual minute prices at any timeframe; at 1m it
+        simply equals ``ohlc["close"]``.
         """
 
         p = theme.active()
-        if self._ohlc is not None:  # keep this day's annotations for when we return
-            self._drawing_store[self._view_start] = self._serialize_drawings()
+        self._stash_live_drawings()  # keep annotations for when this window returns
         self._price.clear()
         self._volume.clear()
         self._trade_items.clear()
@@ -234,8 +313,15 @@ class ChartWidget(QtWidgets.QWidget):
         for line in (self._vline, self._hline):
             line.setVisible(False)
             self._price.addItem(line, ignoreBounds=True)
-        self._view_start = int(start_index)
+        for badge in (self._x_badge, self._y_badge):
+            badge.setVisible(False)
+            self._price.addItem(badge, ignoreBounds=True)
+        self._view_map = view_map
+        self._view_start = view_map.view_start
         self._ohlc = ohlc
+        self._minute_close = (
+            np.asarray(minute_close) if minute_close is not None else np.asarray(ohlc["close"])
+        )
         self._labels = np.asarray(labels)
         n = len(ohlc["close"])
         x = np.arange(n)
@@ -273,9 +359,8 @@ class ChartWidget(QtWidgets.QWidget):
             plot.addItem(curtain, ignoreBounds=True)
             self._curtains.append(curtain)
 
-        # Bring back any annotations drawn on this day earlier in the session.
-        for spec in self._drawing_store.get(self._view_start, []):
-            self._create_drawing(spec)
+        # Bring back annotations whose global coordinates intersect this window.
+        self._restore_drawings()
 
     # -- user drawings (levels / trendlines / time markers) -----------------
     def set_draw_mode(self, mode: str | None) -> None:
@@ -305,7 +390,10 @@ class ChartWidget(QtWidgets.QWidget):
                 self.drawing_placed.emit()  # hand the toolbar back to the cursor
                 return True
             if event.button() == QtCore.Qt.LeftButton:
-                self._draw_press_view = self._map_pixel_to_view(event.position())
+                pressed_view = self._map_pixel_to_view(event.position())
+                if pressed_view is None:
+                    return False  # axis strip or volume pane: let scaling/panning work
+                self._draw_press_view = pressed_view
                 self._draw_press_pixel = event.position()
                 return True
         elif etype == QtCore.QEvent.MouseMove:
@@ -506,7 +594,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._drawing_items.append((kind, items))
 
     def undo_drawing(self) -> None:
-        """Remove the most recent drawing on this day (or a pending anchor)."""
+        """Remove the most recent drawing on this view (or a pending anchor)."""
 
         if self._trend_anchor is not None:
             self._clear_trend_anchor()
@@ -518,7 +606,7 @@ class ChartWidget(QtWidgets.QWidget):
                 self._price.removeItem(item)
 
     def clear_drawings(self) -> None:
-        """Remove every drawing on this day."""
+        """Remove every drawing on this view (other windows' drawings survive)."""
 
         self._clear_trend_anchor()
         self._remove_drag_preview()
@@ -526,7 +614,6 @@ class ChartWidget(QtWidgets.QWidget):
             for item in items:
                 self._price.removeItem(item)
         self._drawing_items.clear()
-        self._drawing_store.pop(self._view_start, None)
 
     def _clear_trend_anchor(self) -> None:
         self._trend_anchor = None
@@ -535,34 +622,96 @@ class ChartWidget(QtWidgets.QWidget):
             self._trend_anchor_dot = None
 
     def _serialize_drawings(self) -> list[dict]:
+        """Live drawings as JSON-safe specs in GLOBAL coordinates.
+
+        X positions are fractional global 1m indices via the view map, so a
+        drawing lands on the same timestamps whatever timeframe or range is
+        showing when it is restored.
+        """
+
+        vm = self._view_map
         specs: list[dict] = []
         for kind, items in self._drawing_items:
             if kind == "hline":
-                specs.append({"kind": "hline", "y": float(items[0].value())})
+                specs.append(
+                    {
+                        "kind": "hline",
+                        "y": float(items[0].value()),
+                        "gspan": [vm.view_start, vm.view_end],
+                    }
+                )
             elif kind == "vline":
-                specs.append({"kind": "vline", "x": float(items[0].value())})
+                specs.append({"kind": "vline", "gx": vm.local_f_to_global(items[0].value())})
             elif kind in ("trend", "rect"):
                 _shape, h1, h2 = items
                 specs.append(
                     {
                         "kind": kind,
-                        "p1": (float(h1.pos().x()), float(h1.pos().y())),
-                        "p2": (float(h2.pos().x()), float(h2.pos().y())),
+                        "p1": (vm.local_f_to_global(h1.pos().x()), float(h1.pos().y())),
+                        "p2": (vm.local_f_to_global(h2.pos().x()), float(h2.pos().y())),
                     }
                 )
         return specs
 
-    def set_reveal(self, up_to_local: int | None) -> None:
-        """Show bars only up to ``up_to_local`` (None reveals the whole day)."""
+    def _stash_live_drawings(self) -> None:
+        """Move live drawings into the store (called before the view rebuilds)."""
+
+        if self._ohlc is None:
+            return
+        self._drawing_store.extend(self._serialize_drawings())
+        self._drawing_items.clear()  # the graphics items die with _price.clear()
+
+    def _spec_intersects_view(self, spec: dict) -> bool:
+        vm = self._view_map
+        lo, hi = vm.view_start, vm.view_end
+        kind = spec["kind"]
+        if kind == "hline":
+            a, b = spec.get("gspan", [lo, hi])
+            return a <= hi and b >= lo
+        if kind == "vline":
+            return lo <= spec["gx"] <= hi
+        return any(lo <= spec[key][0] <= hi for key in ("p1", "p2"))
+
+    def _restore_drawings(self) -> None:
+        """Materialize stored specs that intersect the current view."""
+
+        vm = self._view_map
+        keep: list[dict] = []
+        for spec in self._drawing_store:
+            if not self._spec_intersects_view(spec):
+                keep.append(spec)
+                continue
+            kind = spec["kind"]
+            if kind == "hline":
+                local = dict(spec)
+            elif kind == "vline":
+                local = {"kind": "vline", "x": vm.global_to_local_f(spec["gx"])}
+            else:
+                local = {
+                    "kind": kind,
+                    "p1": (vm.global_to_local_f(spec["p1"][0]), spec["p1"][1]),
+                    "p2": (vm.global_to_local_f(spec["p2"][0]), spec["p2"][1]),
+                }
+            self._create_drawing(local)
+        self._drawing_store = keep
+
+    def set_reveal(self, up_to_global: int | None) -> None:
+        """Show only fully-elapsed displayed bars at 1m time ``up_to_global``.
+
+        Whole buckets only: revealing a forming bucket's candle would leak its
+        aggregated high/low/close - minutes the replay clock has not reached.
+        ``None`` reveals the whole window.
+        """
 
         if self._ohlc is None or not self._curtains:
             return
-        if up_to_local is None:
+        if up_to_global is None:
             for curtain in self._curtains:
                 curtain.setVisible(False)
             return
         n = len(self._ohlc["close"])
-        edge = min(float(up_to_local) + 0.5, n + 1.0)
+        last_complete = self._view_map.last_complete_local(int(up_to_global))
+        edge = min(float(last_complete) + 0.5, n + 1.0)
         for curtain in self._curtains:
             curtain.setRegion((edge, n + 1.0))
             curtain.setVisible(True)
@@ -619,14 +768,15 @@ class ChartWidget(QtWidgets.QWidget):
         for region in self._session_regions:
             region.setVisible(on)
 
-    def mark_trades(self, local_entries, y, directions, gross_r) -> None:
-        """Scatter entry markers at entry price, coloured by outcome (local indices)."""
+    def mark_trades(self, entries_global, y, directions, gross_r) -> None:
+        """Scatter entry markers at entry price, coloured by outcome (global 1m indices)."""
 
         p = theme.active()
         brushes = [pg.mkBrush(p.up) if r > 0 else pg.mkBrush(p.down) for r in gross_r]
         symbols = ["t1" if d > 0 else "t" for d in directions]
+        xs = self._view_map.global_to_local_f(np.asarray(entries_global))
         item = pg.ScatterPlotItem(
-            x=list(local_entries),
+            x=list(np.atleast_1d(xs)),
             y=list(y),
             symbol=symbols,
             brush=brushes,
@@ -639,8 +789,8 @@ class ChartWidget(QtWidgets.QWidget):
 
     def draw_trade(
         self,
-        entry_local,
-        exit_local,
+        entry_global,
+        exit_global,
         entry_price,
         stop_track,
         target_track,
@@ -650,12 +800,17 @@ class ChartWidget(QtWidgets.QWidget):
     ):
         """Draw (or update) the one detailed trade: level tracks and entry/exit.
 
-        The four items persist between calls, so a stop/target drag at 60 Hz is
-        four ``setData`` calls, not a teardown of the overlay layer.
+        Positions are global 1m indices; per-minute tracks render at each
+        minute's fractional x inside its displayed bucket, so a trailing stop's
+        ratchet stays pixel-honest at any timeframe. The items persist between
+        calls, so a stop/target drag at 60 Hz is a handful of ``setData`` calls,
+        not a teardown of the overlay layer.
         """
 
         p = theme.active()
         marker = color or p.entry
+        entry_local = self._view_map.global_to_local_f(entry_global)
+        exit_local = self._view_map.global_to_local_f(exit_global)
         items = self._active_trade_items
         if items is None:
             entry_line = pg.PlotDataItem(pen=None)  # invisible anchor for the zones
@@ -690,7 +845,7 @@ class ChartWidget(QtWidgets.QWidget):
         items["risk_fill"].setBrush(pg.mkBrush(risk))
         items["reward_fill"].setBrush(pg.mkBrush(reward))
         if len(stop_track):
-            held = np.arange(entry_local, entry_local + len(stop_track))
+            held = self._view_map.minute_positions(int(entry_global), len(stop_track))
             items["entry_line"].setData(held, np.full(len(held), float(entry_price)))
             items["stop"].setData(held, stop_track)
             items["target"].setData(held, target_track)
@@ -701,16 +856,19 @@ class ChartWidget(QtWidgets.QWidget):
         items["exit"].setData(x=[exit_local], y=[exit_price], pen=pg.mkPen(marker, width=2))
 
     def mirror_trade(
-        self, entry_local, exit_local, entry_price, stop_level, target_level, exit_price
+        self, entry_global, exit_global, entry_price, stop_level, target_level, exit_price
     ) -> None:
         """Ghost a trade from the other instrument onto this tape.
 
-        Entry/exit markers at the times mapped from the source trade plus its
-        initial stop/target levels, so "did the pattern replicate" is a visual
-        check rather than a spreadsheet exercise.
+        Entry/exit markers at the times mapped from the source trade (global 1m
+        indices on THIS chart's clock) plus its initial stop/target levels, so
+        "did the pattern replicate" is a visual check rather than a spreadsheet
+        exercise.
         """
 
         p = theme.active()
+        entry_local = self._view_map.global_to_local_f(entry_global)
+        exit_local = self._view_map.global_to_local_f(exit_global)
         span = [entry_local, max(exit_local, entry_local + 1)]
         if stop_level is not None:
             self._add_trade_item(
@@ -743,11 +901,13 @@ class ChartWidget(QtWidgets.QWidget):
             ignore_bounds=True,
         )
 
-    def light_marker(self, entry_local, entry_price, exit_local, exit_price, gross_r, color):
-        """A faint entry-to-exit connector for a non-active placed trade."""
+    def light_marker(self, entry_global, entry_price, exit_global, exit_price, gross_r, color):
+        """A faint entry-to-exit connector for a non-active placed trade (global 1m)."""
 
         p = theme.active()
         outcome = p.up if gross_r > 0 else p.down
+        entry_local = self._view_map.global_to_local_f(entry_global)
+        exit_local = self._view_map.global_to_local_f(exit_global)
         self._add_trade_item(
             pg.PlotDataItem(
                 [entry_local, exit_local],
@@ -777,7 +937,7 @@ class ChartWidget(QtWidgets.QWidget):
         """
 
         p = theme.active()
-        x = np.asarray(exc.x) - self._view_start
+        x = self._view_map.global_to_local_f(np.asarray(exc.x))
         items = self._excursion_items
         if items is None:
             baseline = pg.PlotDataItem(pen=None)
@@ -810,21 +970,23 @@ class ChartWidget(QtWidgets.QWidget):
         items["adv_curve"].setData(x, exc.adv_price)
         items["fav_fill"].setBrush(pg.mkBrush(*(p.hook_fill if hook else p.mfe_fill)))
         items["adv_fill"].setBrush(pg.mkBrush(*p.mae_fill))
+        peak_x = self._view_map.global_to_local_f(exc.peak_x)
+        trough_x = self._view_map.global_to_local_f(exc.trough_x)
         items["peak"].setData(
-            x=[exc.peak_x - self._view_start],
+            x=[peak_x],
             y=[exc.peak_price],
             brush=pg.mkBrush(p.hook if hook else p.target),
             pen=pg.mkPen(p.bg),
         )
         items["trough"].setData(
-            x=[exc.trough_x - self._view_start],
+            x=[trough_x],
             y=[exc.trough_price],
             brush=pg.mkBrush(p.stop),
             pen=pg.mkPen(p.bg),
         )
         items["label"].setColor(p.hook if hook else p.target)
         items["label"].setText(f"+{exc.mfe_r:.1f} R @ +{exc.time_to_peak_min}m")
-        items["label"].setPos(exc.peak_x - self._view_start, exc.peak_price)
+        items["label"].setPos(peak_x, exc.peak_price)
 
     def draw_whatif(self, runs) -> None:
         """Overlay each alternative-exit run's stop track and exit in its colour."""
@@ -832,9 +994,8 @@ class ChartWidget(QtWidgets.QWidget):
         self.clear_whatif()
         for run in runs:
             r = run.result
-            start = r.entry_position - self._view_start
             if len(r.stop_track):
-                held = np.arange(start, start + len(r.stop_track))
+                held = self._view_map.minute_positions(int(r.entry_position), len(r.stop_track))
                 item = pg.PlotDataItem(
                     held,
                     r.stop_track,
@@ -843,7 +1004,7 @@ class ChartWidget(QtWidgets.QWidget):
                 self._price.addItem(item, ignoreBounds=True)
                 self._whatif_items.append(item)
             marker = pg.ScatterPlotItem(
-                x=[r.exit_position - self._view_start],
+                x=[self._view_map.global_to_local_f(r.exit_position)],
                 y=[r.exit_price],
                 symbol="x",
                 size=11,
@@ -950,21 +1111,26 @@ class ChartWidget(QtWidgets.QWidget):
         for item in self._replay_items:
             item.setZValue(10)  # ride above the reveal curtain (z=8)
             self._price.addItem(item, ignoreBounds=True)
-        self.set_reveal(start - self._view_start)
+        self.set_reveal(start)
 
     def replay_frame(self, result, t: int, *, start_global: int | None = None) -> None:
-        """Advance the animation to global bar ``t`` (``result`` may be None)."""
+        """Advance the animation to global 1m bar ``t`` (``result`` may be None).
+
+        The gold marker rides actual minute closes at fractional x inside the
+        displayed bucket, so playback stays continuous between candle
+        completions at any timeframe.
+        """
 
         if not self._replay_items or self._ohlc is None:
             return
         start = int(result.entry_position) if result is not None else int(start_global)
-        local = int(t) - self._view_start
-        n = len(self._ohlc["close"])
-        if not (0 <= local < n):
+        vm = self._view_map
+        if not vm.in_view(int(t)):
             return
-        price = float(self._ohlc["close"][local])
-        self.set_reveal(local)  # the bar at "now" appears; the future stays hidden
-        # Auto-scroll when the revealed edge nears the right of the view.
+        local = vm.global_to_local_f(int(t))
+        price = float(self._minute_close[int(t) - vm.view_start])
+        self.set_reveal(int(t))  # whole elapsed buckets appear; the future stays hidden
+        # Auto-scroll when the marker nears the right of the view.
         (x0, x1), _y = self._price.viewRange()
         if local > x1 - 8:
             width = x1 - x0
@@ -991,8 +1157,17 @@ class ChartWidget(QtWidgets.QWidget):
         self._replay_items = []
         self.set_reveal(None)  # lift the curtain; the whole day returns
 
-    def center_on(self, local_index: int, pad: int | None = None) -> None:
-        pad = theme.CHART_PAD_BARS if pad is None else int(pad)
+    def center_on(self, global_index: int, pad: int | None = None) -> None:
+        """Centre the view on a global 1m bar; ``pad`` is in displayed bars."""
+
+        local_index = self._view_map.global_to_local(int(global_index))
+        if pad is None:
+            if self._view_map.tf_minutes <= 1:
+                pad = theme.CHART_PAD_BARS
+            else:  # coarser buckets: keep a sensible share of the window visible
+                pad = max(10, min(theme.CHART_PAD_BARS, self._view_map.n_display // 4))
+        else:
+            pad = int(pad)
         x0, x1 = local_index - pad, local_index + pad
         self._price.setXRange(x0, x1, padding=0)
         # Fit Y to the candles actually visible so a single trade isn't squashed
@@ -1028,13 +1203,18 @@ class ChartWidget(QtWidgets.QWidget):
         local = int(round(mouse_point.x()))
         if not (0 <= local < len(self._ohlc["close"])):
             return
-        self.bar_clicked.emit(self._view_start + local)
+        # Emit the clicked displayed bar's LAST 1m index: the free-play caller
+        # adds one, entering at the first minute of the NEXT displayed bar -
+        # the honest next-bar-open at any timeframe (identical at 1m).
+        self.bar_clicked.emit(self._view_map.local_to_global_end(local))
 
     def _on_mouse_moved(self, evt) -> None:
         pos = evt[0]
         if self._ohlc is None or not self._price.sceneBoundingRect().contains(pos):
             self._vline.setVisible(False)
             self._hline.setVisible(False)
+            self._x_badge.setVisible(False)
+            self._y_badge.setVisible(False)
             return
         mp = self._price.vb.mapSceneToView(pos)
         i = int(round(mp.x()))
@@ -1042,10 +1222,28 @@ class ChartWidget(QtWidgets.QWidget):
         self._hline.setPos(mp.y())
         self._vline.setVisible(True)
         self._hline.setVisible(True)
+        self._update_badges(mp.x(), mp.y(), i)
         n = len(self._ohlc["close"])
         if 0 <= i < n and i != self._last_readout_i:
             self._last_readout_i = i  # the readout only changes per bar, not per pixel
             self._readout_label.setText(self._readout(i))
+
+    def _update_badges(self, x: float, y: float, i: int) -> None:
+        """Pin the exact time and tick-formatted price to the view edges."""
+
+        (x0, x1), (y0, y1) = self._price.vb.viewRange()
+        xr, yr = (x1 - x0) or 1.0, (y1 - y0) or 1.0
+        if 0 <= i < len(self._labels):
+            self._x_badge.setText(f" {self._labels[i]} ")
+            # Clamp so the badge stays readable at the left/right extremes.
+            self._x_badge.setPos(min(max(x, x0 + xr * 0.03), x1 - xr * 0.03), y0)
+            self._x_badge.setVisible(True)
+        else:
+            self._x_badge.setVisible(False)
+        tick_price = round(y / 0.1) * 0.1  # GC/MGC tick size
+        self._y_badge.setText(f" {tick_price:,.1f} ")
+        self._y_badge.setPos(x1, min(max(y, y0 + yr * 0.02), y1 - yr * 0.02))
+        self._y_badge.setVisible(True)
 
     def _readout(self, i: int) -> str:
         p = theme.active()

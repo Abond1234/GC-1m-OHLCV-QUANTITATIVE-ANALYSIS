@@ -14,7 +14,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from ..analysis.placed_trade import PlacedTrade
 from . import theme
 
-_COLUMNS = ["#", "Entry (NY)", "Dir", "Exit", "R", "Held"]
+_COLUMNS = ["#", "Entry (NY)", "Dir", "Exit", "R", "P&L $", "Held"]
 
 
 class TradeBlotter(QtWidgets.QWidget):
@@ -27,10 +27,26 @@ class TradeBlotter(QtWidgets.QWidget):
     def __init__(self, time_label=None, parent=None):
         super().__init__(parent)
         self._time_label = time_label  # callable(entry_position) -> str
+        self._dollars: dict[int, float] = {}  # trade id -> session-account P&L $
         self._build()
 
     def set_time_label(self, fn) -> None:
         self._time_label = fn
+
+    def set_dollars(self, dollars: dict[int, float]) -> None:
+        """Refresh the P&L column from the session account model."""
+
+        self._dollars = dict(dollars)
+        p = theme.active()
+        for r in range(self.table.rowCount()):
+            tid = self.table.item(r, 0).data(QtCore.Qt.UserRole)
+            value = self._dollars.get(int(tid))
+            item = self.table.item(r, 5)
+            if item is None:
+                continue
+            item.setText("-" if value is None else f"{value:+,.0f}")
+            if value is not None:
+                item.setForeground(QtGui.QColor(p.up if value > 0 else p.down))
 
     def _build(self) -> None:
         layout = QtWidgets.QVBoxLayout(self)
@@ -76,12 +92,14 @@ class TradeBlotter(QtWidgets.QWidget):
         r = self.table.rowCount()
         self.table.insertRow(r)
         res = t.result
+        dollars = self._dollars.get(int(t.id))
         values = [
             str(t.id),
             self._time(t.entry_position),
             "L" if t.direction > 0 else "S",
             str(res.exit_reason),
             f"{res.gross_r:+.2f}",
+            "-" if dollars is None else f"{dollars:+,.0f}",
             str(res.holding_minutes),
         ]
         for c, v in enumerate(values):
@@ -93,6 +111,9 @@ class TradeBlotter(QtWidgets.QWidget):
             if c == 4:
                 p = theme.active()
                 item.setForeground(QtGui.QColor(p.up if res.gross_r > 0 else p.down))
+            if c == 5 and dollars is not None:
+                p = theme.active()
+                item.setForeground(QtGui.QColor(p.up if dollars > 0 else p.down))
             self.table.setItem(r, c, item)
 
     def update_trade(self, t: PlacedTrade) -> None:
@@ -107,7 +128,7 @@ class TradeBlotter(QtWidgets.QWidget):
             r_item = self.table.item(r, 4)
             r_item.setText(f"{res.gross_r:+.2f}")
             r_item.setForeground(QtGui.QColor(p.up if res.gross_r > 0 else p.down))
-            self.table.item(r, 5).setText(str(res.holding_minutes))
+            self.table.item(r, 6).setText(str(res.holding_minutes))
             return
 
     def select_trade(self, trade_id: int) -> None:

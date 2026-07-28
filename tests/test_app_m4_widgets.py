@@ -9,6 +9,7 @@ import unittest
 import numpy as np
 
 from src.app.analysis.grid_sweep import sweep_entry
+from src.app.datalayer.timeframe import ViewMap
 from src.app.sim.exit_config import ExitConfig
 from src.app.sim.flex_exit import single_flex_exit
 
@@ -59,7 +60,7 @@ class M4WidgetTests(unittest.TestCase):
         arrays = _uptrend()
         chart = ChartWidget()
         labels = np.array([f"{i:02d}:00" for i in range(30)])
-        chart.set_view(arrays, labels, start_index=0)
+        chart.set_view(arrays, labels, ViewMap.identity(0, 29))
         result = single_flex_exit(1, 1, 1.5, 3.0, _CFG, arrays)
         animator = ReplayAnimator(chart)
         animator.load(result)

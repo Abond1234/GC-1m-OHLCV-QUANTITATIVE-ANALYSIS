@@ -22,6 +22,8 @@ import numpy as np
 import pandas as pd
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..analysis.account import build_equity_curve, session_stats
+from ..analysis.evaluation import evaluate
 from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
@@ -30,6 +32,14 @@ from ..datalayer.bar_store import BarStore
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.paths import project_root, research_bars_path
+from ..datalayer.timeframe import (
+    TIMEFRAMES,
+    ViewMap,
+    bucket_labels,
+    resample_window,
+    sample_first,
+    sample_last,
+)
 from ..datalayer.vwap import execution_session_vwap, research_day_vwap, rolling_vwap
 from ..sim.exit_config import frozen_config
 from ..sim.flex_exit import single_flex_exit
@@ -41,6 +51,7 @@ from .exit_panel import ExitPanel
 from .forensics_panel import ForensicsPanel
 from .heatmap_widget import HeatmapWidget
 from .replay_animator import ReplayAnimator
+from .session_panel import SessionPanel
 
 _WHATIF_COLUMNS = ["Exit rule", "Survived?", "R", "Exit", "Held"]
 
@@ -104,7 +115,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ny_label = None
         self._mgc_bars = None  # MGC BarStore, loaded on first toggle
         self._mgc_loading = False
-        self._mgc_range: tuple[int, int] | None = None  # rendered MGC day window
+        self._mgc_range: tuple[int, int, int] | None = None  # rendered MGC window + tf
+        self._range_days = 1  # trade dates shown, anchored at the selected date
+        self._range_text = "1D"
 
         self._build_ui()
         if data is not None:
@@ -186,7 +199,21 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_topbar(self) -> None:
         self.date_combo = QtWidgets.QComboBox()
         self.date_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.date_combo.currentTextChanged.connect(lambda _t: self._render_current_date())
+        self.date_combo.currentTextChanged.connect(lambda _t: self._render_view())
+        self.range_combo = QtWidgets.QComboBox()
+        self.range_combo.addItems(["1D", "1W", "1M", "Custom..."])
+        self.range_combo.setToolTip(
+            "How many trade dates to show, ending at the selected date.\n"
+            "1W = 5 trade dates, 1M = 22; Custom asks for a day count."
+        )
+        self.range_combo.currentTextChanged.connect(self._on_range_changed)
+        self.tf_combo = QtWidgets.QComboBox()
+        self.tf_combo.addItems(list(TIMEFRAMES))
+        self.tf_combo.setToolTip(
+            "Chart display timeframe. Aggregation is display-only: every\n"
+            "simulation, entry, exit, and replay stays on true 1-minute bars."
+        )
+        self.tf_combo.currentTextChanged.connect(lambda _t: self._render_view())
         self.vwap_check = QtWidgets.QCheckBox("VWAP 20")
         self.vwap_check.setChecked(True)
         self.vwap_check.setToolTip("Rolling 20-bar volume-weighted average price.")
@@ -212,6 +239,13 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
         )
         self.strategy_combo.setMinimumContentsLength(16)
+        # Searchable: type to filter ~200 catalog names by substring, Enter selects.
+        self.strategy_combo.setEditable(True)
+        self.strategy_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        completer = self.strategy_combo.completer()
+        completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
+        completer.setFilterMode(QtCore.Qt.MatchContains)
+        completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         self.custom_check = QtWidgets.QCheckBox("Custom exits")
         self.custom_check.setToolTip(
             "Replay using the Exit-rule panel instead of the frozen contract."
@@ -250,6 +284,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for w in (
             QtWidgets.QLabel("Date"),
             self.date_combo,
+            self.range_combo,
+            self.tf_combo,
             self.vwap_check,
             self.vwap_day_check,
             self.vwap_session_check,
@@ -321,6 +357,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tabs.addTab(self.blotter, "Free-play")
         self._tabs.addTab(self.whatif_table, "What-if")
         self._tabs.addTab(self.heatmap, "Exit grid")
+        self.session_panel = SessionPanel()
+        self.session_panel.settingsChanged.connect(self._recompute_session)
+        self._tabs.addTab(self.session_panel, "Session")
 
         self.forensics = ForensicsPanel()
 
@@ -382,9 +421,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_transport(self) -> None:
         bar = QtWidgets.QToolBar("Replay")
         bar.setMovable(False)
-        self.replay_day_btn = QtWidgets.QPushButton("Replay day")
+        self.replay_day_btn = QtWidgets.QPushButton("Replay view")
         self.replay_day_btn.setToolTip(
-            "Hide this day's bars and play the tape from its first bar - candles\n"
+            "Hide the visible range and play its tape from the first bar - candles\n"
             "appear one by one with the future hidden. Free-play entries can be\n"
             "placed on revealed bars while it runs."
         )
@@ -543,8 +582,10 @@ class MainWindow(QtWidgets.QMainWindow):
             default=0,
         )
         self.strategy_combo.view().setMinimumWidth(widest + 48)
+        self.strategy_combo.completer().popup().setMinimumWidth(widest + 48)
+        self.strategy_combo.setCurrentIndex(0)  # editable combo starts blank otherwise
         self._set_status(f"Loaded {data['replay'].bars.n_bars:,} GC bars (Dev+Val).")
-        self._render_current_date()
+        self._render_view()
         self.loadFinished.emit(True)
 
     # -- rendering ---------------------------------------------------------
@@ -552,45 +593,74 @@ class MainWindow(QtWidgets.QMainWindow):
     def _bars(self):
         return self._data["replay"].bars
 
-    def _render_current_date(self) -> None:
+    def _on_range_changed(self, text: str) -> None:
+        presets = {"1D": 1, "1W": 5, "1M": 22}
+        if text in presets:
+            self._range_days = presets[text]
+        else:  # Custom...
+            days, ok = QtWidgets.QInputDialog.getInt(
+                self, "Custom range", "Trade dates to show:", self._range_days, 2, 60
+            )
+            if not ok:
+                self.range_combo.blockSignals(True)
+                self.range_combo.setCurrentText(self._range_text)
+                self.range_combo.blockSignals(False)
+                return
+            self._range_days = days
+        self._range_text = text
+        self._render_view()
+
+    def _render_view(self) -> None:
+        """Render the anchored date range at the selected display timeframe."""
+
         if self._data is None or not self.date_combo.count():
             return
-        self._animator.stop()  # leaving a day ends any running animation
+        self._animator.stop()  # leaving the window ends any running animation
         bars = self._bars
-        date = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        # Bars are chronological, so the day window is two binary searches, not
-        # a full-array comparison over the whole Dev+Val history.
-        lo = int(np.searchsorted(bars.trade_date, date, side="left"))
-        hi = int(np.searchsorted(bars.trade_date, date, side="right")) - 1
+        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
+        dates = self._data["dates"]
+        anchor_idx = int(np.searchsorted(dates, anchor))
+        start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
+        # Bars are chronological, so the window is two binary searches, not a
+        # full-array comparison over the whole Dev+Val history.
+        lo = int(np.searchsorted(bars.trade_date, start_date, side="left"))
+        hi = int(np.searchsorted(bars.trade_date, anchor, side="right")) - 1
         if hi < lo:
             return
         self._view_start, self._view_end = lo, hi
-        sl = slice(lo, hi + 1)
-        minute = bars.minute_ny[sl]
-        labels = np.array([f"{m // 60:02d}:{m % 60:02d}" for m in minute])
+        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        rs = resample_window(bars, lo, hi, tf)
+        view_map = ViewMap.from_resampled(rs, tf)
+        labels = bucket_labels(bars, rs, tf, multi_day=self._range_days > 1)
         ohlc = {
-            "open": bars.open[sl],
-            "high": bars.high[sl],
-            "low": bars.low[sl],
-            "close": bars.close[sl],
-            "volume": bars.volume[sl],
-            "segment": bars.segment[sl],
+            "open": rs.open,
+            "high": rs.high,
+            "low": rs.low,
+            "close": rs.close,
+            "volume": rs.volume,
+            "segment": rs.segment,
         }
-        self.chart.set_view(ohlc, labels, lo)
-        # Always build the overlays; the checkboxes only flip visibility.
+        self.chart.set_view(ohlc, labels, view_map, minute_close=bars.close[lo : hi + 1])
+        # Always build the overlays; the checkboxes only flip visibility. Lines
+        # are display-sampled at each bucket's close, shading at its open.
         self.chart.add_vwap(
-            self._data["vwap20"][sl], "rolling", visible=self.vwap_check.isChecked()
+            sample_last(self._data["vwap20"], rs),
+            "rolling",
+            visible=self.vwap_check.isChecked(),
         )
         self.chart.add_vwap(
-            self._data["vwap_day"][sl], "day", visible=self.vwap_day_check.isChecked()
+            sample_last(self._data["vwap_day"], rs),
+            "day",
+            visible=self.vwap_day_check.isChecked(),
         )
         self.chart.add_vwap(
-            self._data["vwap_session"][sl],
+            sample_last(self._data["vwap_session"], rs),
             "session",
             visible=self.vwap_session_check.isChecked(),
         )
         self.chart.shade_sessions(
-            self._data["session_code"][sl], visible=self.session_check.isChecked()
+            sample_first(self._data["session_code"], rs),
+            visible=self.session_check.isChecked(),
         )
         self._redraw_overlays()
 
@@ -644,8 +714,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _draw_result_path(self, result, color=None) -> None:
         self.chart.draw_trade(
-            result.entry_position - self._view_start,
-            result.exit_position - self._view_start,
+            result.entry_position,
+            result.exit_position,
             result.entry_price,
             result.stop_track,
             result.target_track,
@@ -656,9 +726,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _draw_light(self, t) -> None:
         r = t.result
         self.chart.light_marker(
-            r.entry_position - self._view_start,
+            r.entry_position,
             r.entry_price,
-            r.exit_position - self._view_start,
+            r.exit_position,
             r.exit_price,
             r.gross_r,
             t.color,
@@ -676,7 +746,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         entries = inside["entry_position"].to_numpy()
         self.chart.mark_trades(
-            entries - self._view_start,
+            entries,
             bars.open[entries],
             inside["direction"].to_numpy(),
             inside["gross_r"].to_numpy(),
@@ -693,7 +763,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         date = pd.Timestamp(self._bars.trade_date[position]).strftime("%Y-%m-%d")
         if self.date_combo.currentText() != date:
-            self.date_combo.setCurrentText(date)  # triggers _render_current_date
+            self.date_combo.setCurrentText(date)  # triggers _render_view
             return True
         return False
 
@@ -731,7 +801,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for _, row in log.head(theme.TABLE_ROW_CAP).iterrows():
             self._append_trade_row(row)
         self._tabs.setCurrentWidget(self.trade_table)
-        self._render_current_date()
+        self._render_view()
 
     def _append_trade_row(self, row) -> None:
         r = self.trade_table.rowCount()
@@ -780,7 +850,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # redraw explicitly when the view stayed put.
         if not self._ensure_date_for(int(trade["entry_position"])):
             self._redraw_overlays()
-        self.chart.center_on(result.entry_position - self._view_start)
+        self.chart.center_on(result.entry_position)
         self._explain(result, observation_id=self._focused_obs_id)
 
     # -- free-play ---------------------------------------------------------
@@ -815,9 +885,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self._ensure_date_for(active.entry_position):  # a switch redraws itself
             self._redraw_overlays()
         if center:
-            self.chart.center_on(active.entry_position - self._view_start)
+            self.chart.center_on(active.entry_position)
         self.blotter.set_trades(list(self._placed.values()))
         self.blotter.select_trade(active.id)
+        self._recompute_session()
         self._tabs.setCurrentWidget(self.blotter)
         self._explain(active.result, observation_id=None)
 
@@ -841,8 +912,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.chart.clear_whatif()
         result = updated.result
         self.chart.draw_trade(
-            result.entry_position - self._view_start,
-            result.exit_position - self._view_start,
+            result.entry_position,
+            result.exit_position,
             result.entry_price,
             result.stop_track,
             result.target_track,
@@ -853,6 +924,7 @@ class MainWindow(QtWidgets.QMainWindow):
             exc = compute_excursion(result, self._bars.high, self._bars.low)
             self.chart.draw_excursion(exc, hook=is_winner_on_the_hook(result, theme.HOOK_R))
         self.blotter.update_trade(updated)
+        self._recompute_session()
         self._explain(updated.result, observation_id=None)
 
     def _on_config_changed(self, cfg) -> None:
@@ -868,6 +940,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._redraw_overlays(reset_levels=True)
         self.blotter.set_trades(list(self._placed.values()))
         self.blotter.select_trade(active.id)
+        self._recompute_session()
         self._explain(updated.result, observation_id=None)
 
     def _on_placed_selected(self, trade_id: int) -> None:
@@ -899,6 +972,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._active_id is not None:
             self.blotter.select_trade(self._active_id)
         self._drop_stale_analysis()
+        self._recompute_session()
         self._redraw_overlays()
 
     def _on_placed_cleared(self) -> None:
@@ -906,7 +980,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self._active_id = None
         self.blotter.set_trades([])
         self._drop_stale_analysis()
+        self._recompute_session()
         self._redraw_overlays()
+
+    # -- session accounting ------------------------------------------------
+    def _recompute_session(self) -> None:
+        """Rebuild the dollar equity curve, stats, and evaluation verdict."""
+
+        if self._data is None:
+            return
+        settings = self.session_panel.account_settings()
+        curve = build_equity_curve(list(self._placed.values()), settings, self._bars.trade_date)
+        order = {int(tid): i for i, tid in enumerate(curve.trade_ids)}
+        r_list = [0.0] * curve.n_trades
+        dollars: dict[int, float] = {}
+        for trade in self._placed.values():
+            i = order.get(int(trade.id))
+            if i is not None:
+                r_list[i] = float(trade.result.gross_r)
+                dollars[int(trade.id)] = float(curve.pnl[i])
+        stats = session_stats(curve, r_list, settings)
+        rules = self.session_panel.evaluation_rules()
+        status = evaluate(curve, rules, settings.starting_balance) if rules else None
+        self.session_panel.update_session(curve, stats, status)
+        self.blotter.set_dollars(dollars)
 
     # -- forensics ---------------------------------------------------------
     def _explain(self, result, observation_id) -> None:
@@ -1090,32 +1187,37 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             return
         mgc = self._mgc_bars
-        date = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        lo = int(np.searchsorted(mgc.trade_date, date, side="left"))
-        hi = int(np.searchsorted(mgc.trade_date, date, side="right")) - 1
+        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
+        dates = self._data["dates"]
+        anchor_idx = int(np.searchsorted(dates, anchor))
+        start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
+        lo = int(np.searchsorted(mgc.trade_date, start_date, side="left"))
+        hi = int(np.searchsorted(mgc.trade_date, anchor, side="right")) - 1
         if hi < lo:
             self.mgc_chart.clear_trades()
-            self._set_status("No MGC bars on this trade date.")
+            self._set_status("No MGC bars in this range.")
             return
-        if force_render or self._mgc_range != (lo, hi):
-            self._mgc_range = (lo, hi)
-            sl = slice(lo, hi + 1)
-            minute = mgc.minute_ny[sl]
-            labels = np.array([f"{m // 60:02d}:{m % 60:02d}" for m in minute])
+        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        if force_render or self._mgc_range != (lo, hi, tf):
+            self._mgc_range = (lo, hi, tf)
+            rs = resample_window(mgc, lo, hi, tf)
+            labels = bucket_labels(mgc, rs, tf, multi_day=self._range_days > 1)
             self.mgc_chart.set_view(
                 {
-                    "open": mgc.open[sl],
-                    "high": mgc.high[sl],
-                    "low": mgc.low[sl],
-                    "close": mgc.close[sl],
-                    "volume": mgc.volume[sl],
-                    "segment": mgc.segment[sl],
+                    "open": rs.open,
+                    "high": rs.high,
+                    "low": rs.low,
+                    "close": rs.close,
+                    "volume": rs.volume,
+                    "segment": rs.segment,
                 },
                 labels,
-                lo,
+                ViewMap.from_resampled(rs, tf),
+                minute_close=mgc.close[lo : hi + 1],
             )
             self.mgc_chart.shade_sessions(
-                _session_code(minute), visible=self.session_check.isChecked()
+                sample_first(_session_code(mgc.minute_ny), rs),
+                visible=self.session_check.isChecked(),
             )
         self.mgc_chart.clear_trades()
         result, _cfg = self._current()
@@ -1138,14 +1240,14 @@ class MainWindow(QtWidgets.QMainWindow):
         stop0 = float(result.stop_track[0]) if len(result.stop_track) else None
         target0 = float(result.target_track[0]) if len(result.target_track) else None
         self.mgc_chart.mirror_trade(
-            entry_pos - lo,
-            exit_pos - lo,
+            entry_pos,
+            exit_pos,
             float(result.entry_price),
             stop0,
             target0,
             float(result.exit_price),
         )
-        self.mgc_chart.center_on(entry_pos - lo)
+        self.mgc_chart.center_on(entry_pos)
 
     # -- animated replay ---------------------------------------------------
     def _replay_day(self) -> None:
@@ -1161,7 +1263,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if result is None:
             return
         self._ensure_date_for(result.entry_position)
-        self.chart.center_on(result.entry_position - self._view_start)
+        self.chart.center_on(result.entry_position)
         self._animator.load(result)
         self._animator.play()
 
@@ -1181,10 +1283,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if app is not None:
             theme.apply(app, mode)
         self.chart.apply_theme()
-        self._render_current_date()
+        self._render_view()
         # Re-render everything that baked the previous palette into itself.
         self.heatmap.refresh_theme()
         self.forensics.retheme()
+        self.session_panel.retheme()
+        self._recompute_session()
         if self._placed:
             self.blotter.set_trades(list(self._placed.values()))
             if self._active_id is not None:
@@ -1199,7 +1303,7 @@ class MainWindow(QtWidgets.QMainWindow):
             obs = self._focused_obs_id if self._focused_result is not None else None
             self._explain(result, observation_id=obs)
             if self._in_view(result.entry_position):
-                self.chart.center_on(result.entry_position - self._view_start)
+                self.chart.center_on(result.entry_position)
 
     # -- lifecycle ---------------------------------------------------------
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override

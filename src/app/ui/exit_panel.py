@@ -109,7 +109,7 @@ class ExitPanel(QtWidgets.QWidget):
         self.be_check = QtWidgets.QCheckBox("enabled")
         self.be_check.setToolTip(_TIP["breakeven"])
         self.be_trigger = self._spin(0.1, 10.0, 1.0, 0.1, _TIP["be_trigger"])
-        self.be_offset = self._spin(0.0, 100.0, 0.0, 1.0, _TIP["be_offset"])
+        self.be_offset = self._spin(0.0, 100.0, 0.0, 1.0, _TIP["be_offset"], decimals=0)
         be_form.addRow(self.be_check)
         be_form.addRow("trigger R", self.be_trigger)
         be_form.addRow("offset ticks", self.be_offset)
@@ -121,6 +121,7 @@ class ExitPanel(QtWidgets.QWidget):
         self.hold_spin.setRange(1, 1440)
         self.hold_spin.setValue(120)
         self.hold_spin.setToolTip(_TIP["hold"])
+        self.hold_spin.setAccelerated(True)
         self.forced_check = QtWidgets.QCheckBox("force flat 15:30 NY")
         self.forced_check.setChecked(True)
         self.forced_check.setToolTip(_TIP["forced"])
@@ -149,12 +150,14 @@ class ExitPanel(QtWidgets.QWidget):
         combo.setToolTip(tip)
         return combo
 
-    def _spin(self, lo, hi, val, step, tip) -> QtWidgets.QDoubleSpinBox:
+    def _spin(self, lo, hi, val, step, tip, decimals: int = 2) -> QtWidgets.QDoubleSpinBox:
         spin = QtWidgets.QDoubleSpinBox()
         spin.setRange(lo, hi)
         spin.setSingleStep(step)
+        spin.setDecimals(decimals)
         spin.setValue(val)
         spin.setToolTip(tip)
+        spin.setAccelerated(True)  # press-and-hold steppers ramp up
         return spin
 
     def _wire_signals(self) -> None:

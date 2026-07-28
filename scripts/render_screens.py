@@ -146,6 +146,13 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     saved.append(_grab(win, out_dir / "09_light_theme.png", app))
     win._set_theme("dark")
 
+    # 9b. Multi-day range at an aggregated timeframe: a trading week at 15m.
+    win.range_combo.setCurrentText("1W")
+    win.tf_combo.setCurrentText("15m")
+    saved.append(_grab(win, out_dir / "09b_week_15m.png", app))
+    win.range_combo.setCurrentText("1D")
+    win.tf_combo.setCurrentText("1m")
+
     # 10-12. Narrow-display pass: 1366x768 at 125% DPI is ~1092x614 logical
     # pixels. The truncation bugs the wide render can never show live here.
     win.resize(1092, 614)

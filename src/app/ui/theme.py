@@ -169,6 +169,39 @@ def qss(p: Palette) -> str:
         border: 1px solid {p.border}; border-radius: 5px; padding: 3px 6px;
         color: {p.text}; selection-background-color: {p.gold}; }}
     QComboBox:hover, QDoubleSpinBox:hover, QSpinBox:hover {{ border-color: {p.gold}; }}
+    QLineEdit {{ background: {p.panel_alt}; border: 1px solid {p.border};
+        border-radius: 5px; padding: 2px 6px; color: {p.text};
+        selection-background-color: {p.gold}; selection-color: {p.bg}; }}
+    QComboBox QLineEdit {{ border: none; padding: 0; }}
+    QDoubleSpinBox, QSpinBox {{ padding-right: 22px; }}
+    QDoubleSpinBox::up-button, QSpinBox::up-button {{
+        subcontrol-origin: border; subcontrol-position: top right;
+        width: 18px; background: {p.panel_alt};
+        border-left: 1px solid {p.border}; border-bottom: 1px solid {p.border};
+        border-top-right-radius: 5px; }}
+    QDoubleSpinBox::down-button, QSpinBox::down-button {{
+        subcontrol-origin: border; subcontrol-position: bottom right;
+        width: 18px; background: {p.panel_alt};
+        border-left: 1px solid {p.border};
+        border-bottom-right-radius: 5px; }}
+    QDoubleSpinBox::up-button:hover, QSpinBox::up-button:hover,
+    QDoubleSpinBox::down-button:hover, QSpinBox::down-button:hover {{
+        background: {p.border}; }}
+    QDoubleSpinBox::up-button:pressed, QSpinBox::up-button:pressed,
+    QDoubleSpinBox::down-button:pressed, QSpinBox::down-button:pressed {{
+        background: {p.gold}; }}
+    QDoubleSpinBox::up-arrow, QSpinBox::up-arrow {{
+        width: 0; height: 0; border-left: 4px solid transparent;
+        border-right: 4px solid transparent; border-bottom: 5px solid {p.text_dim}; }}
+    QDoubleSpinBox::down-arrow, QSpinBox::down-arrow {{
+        width: 0; height: 0; border-left: 4px solid transparent;
+        border-right: 4px solid transparent; border-top: 5px solid {p.text_dim}; }}
+    QDoubleSpinBox::up-arrow:disabled, QSpinBox::up-arrow:disabled,
+    QDoubleSpinBox::up-arrow:off, QSpinBox::up-arrow:off {{
+        border-bottom-color: {p.text_faint}; }}
+    QDoubleSpinBox::down-arrow:disabled, QSpinBox::down-arrow:disabled,
+    QDoubleSpinBox::down-arrow:off, QSpinBox::down-arrow:off {{
+        border-top-color: {p.text_faint}; }}
     QComboBox QAbstractItemView {{ background: {p.panel_alt}; color: {p.text};
         selection-background-color: {p.gold}; selection-color: {p.bg};
         border: 1px solid {p.border}; }}
