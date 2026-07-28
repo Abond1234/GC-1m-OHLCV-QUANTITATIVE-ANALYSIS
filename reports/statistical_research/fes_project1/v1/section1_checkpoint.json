@@ -1,0 +1,45 @@
+{
+  "baseline_full_tests": "224 passed, 1 warning, 3 subtests passed in 24.63s",
+  "config_sha256": "efb7ee9a79a81b96023fd20ae747a99129809ba4307a314d482b0370b648401f",
+  "discrepancies": [
+    "GitNexus branch label twatski differs from active branch AMM; commit matches",
+    "Notebook filename follows explicit user override",
+    "scikit-learn and joblib are absent; resolve before Section 5",
+    "saved dictionary pandas metadata requires ignore_metadata=True under current pandas/pyarrow",
+    "MLAT namespace is untracked and unverified; excluded",
+    "O1 content matches exactly as a set; artifact row order differs from prompt listing"
+  ],
+  "output_namespaces": {
+    "data": "data/processed/statistical_research/fes_project1/v1",
+    "reports": "reports/statistical_research/fes_project1/v1"
+  },
+  "planned_additive_files": [
+    "notebooks/exploration/feature_research_1.ipynb",
+    "src/statistical_research/fes_project1_config.py",
+    "src/statistical_research/fes_project1_features.py",
+    "src/statistical_research/fes_project1_modeling.py",
+    "src/statistical_research/fes_project1_evaluation.py",
+    "src/execution/fes_project1_mgc_adapter.py",
+    "scripts/run_fes_project1_research.py",
+    "tests/test_fes_project1_features.py",
+    "tests/test_fes_project1_modeling.py",
+    "tests/test_fes_project1_evaluation.py",
+    "tests/test_fes_project1_mgc_adapter.py"
+  ],
+  "section_2_started": false,
+  "section_completed": 1,
+  "trial_count": 150,
+  "trial_ledger_sha256": "60eadc61477430b3fb6e4ba7719db983270c4d8ea5a49c747d1827d1009cbb5a",
+  "verified": {
+    "eligible_rows": 586530,
+    "feature_registry_rows": 85,
+    "forced_exit_1530": true,
+    "git_commit_matches_gitnexus": true,
+    "locked_entry_windows": true,
+    "next_bar_entry_exact": true,
+    "o1_feature_content": true,
+    "observation_ids_unique_and_aligned": true,
+    "tracked_sharpe_absent": true,
+    "trusted_bar_rows": 3487656
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "artifact_version": "v1",
+  "artifacts": {
+    "data/processed/statistical_research/fes_project1/v1/scalar_feature_registry_gc.parquet": "11f71f250fd79088b04f69f30b17c3390138e5213705ce78925d900f6956b962",
+    "data/processed/statistical_research/fes_project1/v1/scalar_features_development_gc.parquet": "0e75bf4020d3dd1cbcb96a753bec2c3bbb2008a75d3b37f0491e83e8a1d574ee",
+    "data/processed/statistical_research/fes_project1/v1/scalar_features_validation_sealed_gc.parquet": "5950626330be14308539d8e3b168a381439d1ce24fe5ffbbc52c2674c478d9fd",
+    "data/processed/statistical_research/fes_project1/v1/scalar_missing_reasons_development_gc.parquet": "6bdf797da2bf15e1639b2fe0b28fa1cb59568a5282a80b60b0c30fdc5347672b",
+    "data/processed/statistical_research/fes_project1/v1/scalar_missing_reasons_validation_sealed_gc.parquet": "9529c12f4b850ec4ca856b19b48e9d8bf9b9e5bd84f53f0217fd035fe347fed9",
+    "data/processed/statistical_research/fes_project1/v1/scalar_zero_scale_flags_development_gc.parquet": "b8d59be7285bcccf041c6d58064307c0b26f4e380cfb336c59cd4ffe0711e18b",
+    "data/processed/statistical_research/fes_project1/v1/scalar_zero_scale_flags_validation_sealed_gc.parquet": "86194a719dab753751d4f7ef8d78931a5a5cc04419bef53d5a9b2eaf40a29c09",
+    "reports/statistical_research/fes_project1/v1/section2_checkpoint.json": "a3799aed122a37bd55cd48a1bcb11960123423b12a4601de2ff56b1faf2343c3",
+    "reports/statistical_research/fes_project1/v1/section2_construction_audit.csv": "a2d319cb734cbd03a9dd9034a6e3d1c91ba0f1aad0930161b5d59e72fbb03114",
+    "reports/statistical_research/fes_project1/v1/section2_coverage_missingness_development.csv": "cc29d7cff72125f88966b03fae1e85983bd32d4fc1eea973cea9c68d10bda2da",
+    "reports/statistical_research/fes_project1/v1/section2_distribution_development.csv": "7cbf474e9e5da8608f949bc1603b07e2415befddc5c3f4e994c32cd1c44fe15e",
+    "reports/statistical_research/fes_project1/v1/section2_environment_update.json": "2e1ec7faef762f940d73bffb72bf7efc4e4db73f10596b948957399605a29a35",
+    "reports/statistical_research/fes_project1/v1/section2_formula_causality_boundary_tests.csv": "c442e468906ae7df0c367322783b35b1a3e76f9e00175ec9f5d514b5ee6e3f33",
+    "reports/statistical_research/fes_project1/v1/section2_missingness_actions.csv": "191472f6c46a2d98f95ea4370d2661182199bac285a76dcd21cacdca48ecb3ce",
+    "reports/statistical_research/fes_project1/v1/section2_named_comparator_correlations_development.csv": "a6b23cbe3965e822ae4bf5fa43e9a1a2101e886c70e6fe0f3a5f7897cf76aad6",
+    "reports/statistical_research/fes_project1/v1/section2_named_comparator_heatmap_development.png": "a1b14d091301e0ccb4a3ce35de593e90e2f1e637ed8902bc5c1483c6c6220488",
+    "reports/statistical_research/fes_project1/v1/section2_scalar_integrity_development.csv": "56054829b15f216e34e34dda6f3e7c7791f43b5db2965ce30f7d15646aa3fad4"
+  },
+  "config_sha256": "efb7ee9a79a81b96023fd20ae747a99129809ba4307a314d482b0370b648401f",
+  "research_id": "fes_project1",
+  "schema_version": "1.0.0",
+  "section": 2
+}

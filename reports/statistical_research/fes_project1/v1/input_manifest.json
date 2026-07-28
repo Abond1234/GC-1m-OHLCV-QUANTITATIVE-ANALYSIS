@@ -1,0 +1,161 @@
+{
+  "artifact_version": "v1",
+  "config_sha256": "efb7ee9a79a81b96023fd20ae747a99129809ba4307a314d482b0370b648401f",
+  "inputs": [
+    {
+      "bytes": 2650,
+      "path": "AGENTS.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "021fe07ac8115fa749fdc5f69f04074469ea38fa11f72ad028369be0ea37a911",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 80938,
+      "path": "project_docs/feature_engineering_selection_project1_agent_prompt.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "c7c87fe613788ecb4cbde8bb7973def9014b7572ebb9d5351d714f004342eb3a",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 632699346,
+      "path": "data/processed/research_bars_gc_mgc_1m.parquet",
+      "role": "trusted input",
+      "rows": 3487656,
+      "sha256": "ffef1ba20d6d1d7affd3cb0dbb291137b36e70fba839facc8ef82f844b85d90b",
+      "status": "VERIFIED_INPUT"
+    },
+    {
+      "bytes": 19596893,
+      "path": "data/processed/statistical_research/eligible_observations_gc.parquet",
+      "role": "trusted input",
+      "rows": 586530,
+      "sha256": "e465056243c6c84114808f5940f2837e1a2415966548892226da788a1ab551a5",
+      "status": "VERIFIED_INPUT"
+    },
+    {
+      "bytes": 283358656,
+      "path": "data/processed/statistical_research/forward_labels_gc.parquet",
+      "role": "trusted input",
+      "rows": 586530,
+      "sha256": "79f3c1996fa17dd88b0fecffa9cc072bf96ec60a1e1dc56ce64cd8dcd6cfeea4",
+      "status": "VERIFIED_INPUT"
+    },
+    {
+      "bytes": 145730309,
+      "path": "data/processed/statistical_research/feature_matrix_gc.parquet",
+      "role": "trusted input",
+      "rows": 586530,
+      "sha256": "28157cf8ed50544962666fd681f9d20d48188e964e724f1eb676372b42e5b4b8",
+      "status": "VERIFIED_INPUT"
+    },
+    {
+      "bytes": 25848,
+      "path": "data/processed/statistical_research/feature_registry_gc.parquet",
+      "role": "trusted input",
+      "rows": 85,
+      "sha256": "9b4c1bc43452371d188f41549f26db53bd4b1dcebdaa9193043a9293243a5ef0",
+      "status": "VERIFIED_INPUT"
+    },
+    {
+      "bytes": 5775,
+      "path": "data/processed/statistical_research/frozen_expansion_feature_set_gc.parquet",
+      "role": "trusted input",
+      "rows": 30,
+      "sha256": "d6ead201808c7cb45f238060f3781cc31b6790facffe3bcbd3c31dfc128c8c7f",
+      "status": "VERIFIED_INPUT"
+    },
+    {
+      "bytes": 18934,
+      "path": "src/statistical_research/sequential_backtest.py",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "47262e2163bf8600d09b0692a2a488df2e128f27641f40737a3b90abfcad0230",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 30400,
+      "path": "README.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "e486d1522e54bf9f567173aaf15a1c77c0a489d733e2d60cdad0f1d11b544044",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 3898,
+      "path": "project_docs/forward_test_plan.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "6d7471c19a26594206706c91956672ba892acaeadb768142b0b412738f0054ca",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 5004418,
+      "path": "notebooks/exploration/exp1.ipynb",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "730fcf3afa11766b09b19318350366e24c22c431b34552a063d2f75ab750a3e5",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 1305935,
+      "path": "notebooks/exploration/statistical_feature_research.ipynb",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "6056d0d6a1f25857588c2674c0b9d391040da3770c5b509988eeb9cfd040abd0",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 199773,
+      "path": "notebooks/exploration/exp1 appendix.ipynb",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "eee4ceed4c4d9ad8da34acf82134713033252eda504e554d7b3915db13a73205",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 4020,
+      "path": "reports/statistical_research/summaries/section8_redundancy_summary.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "540a8221754face19fb134d7375c42f97b6c2f54c597ca295a50ed2ea650d007",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 3486,
+      "path": "reports/statistical_research/summaries/section9_multivariate_summary.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "e813ae986e998b019134e279bf0ac81efa203e320f0f0ca6e0102c50560db9bd",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 3565,
+      "path": "reports/statistical_research/summaries/section11_sequential_backtest_summary.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "8e2156420a8df20dafcacac78c4a9342781629f5587f6b6b83c3878e6bc856a3",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 3260,
+      "path": "reports/statistical_research/summaries/section8_poi_sequential_backtest_summary.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "cd99a622a0940c7ac8693b4387d7a0097423194e3cc9ffbd68ac8d3f1f63c68c",
+      "status": "VERIFIED_CONTEXT"
+    },
+    {
+      "bytes": 2974,
+      "path": "reports/execution/mgc_transfer_validation_summary.md",
+      "role": "contract/context provenance",
+      "rows": null,
+      "sha256": "68aa9a0103ca06301876f493202c99e9df9b6bfedcb3a8a03619c92b81bd3387",
+      "status": "VERIFIED_CONTEXT"
+    }
+  ],
+  "research_id": "fes_project1",
+  "schema_version": "1.0.0",
+  "trial_ledger_sha256": "60eadc61477430b3fb6e4ba7719db983270c4d8ea5a49c747d1827d1009cbb5a"
+}

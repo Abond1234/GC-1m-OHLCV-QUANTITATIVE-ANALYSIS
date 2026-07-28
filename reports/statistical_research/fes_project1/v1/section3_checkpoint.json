@@ -1,0 +1,108 @@
+{
+  "branch": "AMM",
+  "config_sha256": "efb7ee9a79a81b96023fd20ae747a99129809ba4307a314d482b0370b648401f",
+  "coverage_development": {
+    "London": {
+      "complete_ny_dates": 638,
+      "complete_rate": 0.9973091593082188,
+      "complete_rows": 114525
+    },
+    "New York": {
+      "complete_ny_dates": 638,
+      "complete_rate": 0.998672908524734,
+      "complete_rows": 191142
+    }
+  },
+  "diagnostic_scope": "Development only; outcome-free",
+  "focused_tests": "24 passed",
+  "fold_local_interfaces": {
+    "column_standardization": true,
+    "full_data_learned_transform_persisted": false,
+    "pca": true,
+    "pls_p2_only_and_target_required": true,
+    "trusted_pls_fit_in_section3": false
+  },
+  "git_commit": "e75cab144f9f2096d51262c5da478166e116c9c5",
+  "historical_final_materialized": false,
+  "impact_analysis": {
+    "affected_modules": 2,
+    "affected_processes": 1,
+    "direct_callers": 3,
+    "risk": "LOW",
+    "shared_symbol_modified": false,
+    "symbol": "build_continuity_run_id"
+  },
+  "model_performance_reported": false,
+  "p1_zero_scale_rows": {
+    "G": 0,
+    "Q": 0,
+    "R": 0
+  },
+  "rank_condition_development": {
+    "P0": {
+      "columns": 90,
+      "condition_number_standardized": 6.155540133916366,
+      "effective_rank_entropy": 65.02440335067428,
+      "numerical_rank": 90,
+      "pca_components_80_percent": 51,
+      "pca_components_90_percent": 61,
+      "pca_components_95_percent": 72
+    },
+    "P1": {
+      "columns": 90,
+      "condition_number_standardized": 8.822739742973527,
+      "effective_rank_entropy": 70.95532426549424,
+      "numerical_rank": 90,
+      "pca_components_80_percent": 51,
+      "pca_components_90_percent": 62,
+      "pca_components_95_percent": 74
+    },
+    "P2": {
+      "columns": 87,
+      "condition_number_standardized": 23.974635588536497,
+      "effective_rank_entropy": 60.5951723291717,
+      "numerical_rank": 87,
+      "pca_components_80_percent": 40,
+      "pca_components_90_percent": 52,
+      "pca_components_95_percent": 61
+    },
+    "P3": {
+      "columns": 84,
+      "condition_number_standardized": 9.029318995608048,
+      "effective_rank_entropy": 44.208249588129945,
+      "numerical_rank": 84,
+      "pca_components_80_percent": 29,
+      "pca_components_90_percent": 45,
+      "pca_components_95_percent": 60
+    }
+  },
+  "raw_profile_contract": {
+    "complete_rows_only": true,
+    "dimensions": {
+      "P0": 90,
+      "P1": 90,
+      "P2": 87,
+      "P3": 84
+    },
+    "predecessor_t_minus_30_required": true,
+    "stored_dtype": "float32",
+    "stored_order": "R_0..R_29|G_0..G_29|Q_0..Q_29"
+  },
+  "sample_floor": {
+    "minimum_complete_dates_per_session": 400,
+    "minimum_complete_rows_per_session": 10000,
+    "passed": true
+  },
+  "schema_version": "1.0.0",
+  "section_4_started": false,
+  "section_completed": 3,
+  "storage": {
+    "development_raw_memory_bytes": 112485588,
+    "development_raw_rows": 305667,
+    "hash_verification": true,
+    "reload_equality": true,
+    "validation_raw_rows_sealed": 117712
+  },
+  "target_tables_loaded": false,
+  "validation_scope": "sealed outcome-free P0/index artifacts only"
+}

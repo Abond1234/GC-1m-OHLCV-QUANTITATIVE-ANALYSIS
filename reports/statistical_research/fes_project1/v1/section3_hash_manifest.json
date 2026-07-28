@@ -1,0 +1,26 @@
+{
+  "artifact_version": "v1",
+  "artifacts": {
+    "data/processed/statistical_research/fes_project1/v1/profile_channel_lag_schema_gc.parquet": "f3f54e08ab6a450ad79b35f8ad437abaf37da62b88bf5c1c334c2c4a4ea48b10",
+    "data/processed/statistical_research/fes_project1/v1/profile_index_development_gc.parquet": "7e7fdc2f3ecc3cda11bcb5904772e1f90879d174322fb284b06a6b63865e5fd0",
+    "data/processed/statistical_research/fes_project1/v1/profile_index_validation_sealed_gc.parquet": "7ee83393139c83d62a8db18cac9149378cc4549a81086e4e2c3a360025ed50e7",
+    "data/processed/statistical_research/fes_project1/v1/raw_profile_p0_development_gc.parquet": "57a4c90ad465936a19c87c1bdcac588e2098f64a1a13e473f120450a823c1790",
+    "data/processed/statistical_research/fes_project1/v1/raw_profile_p0_validation_sealed_gc.parquet": "3ae87365d87cfd84e855a5d1e8130d9facbedf9b93f9f0061435fbcc49d2283d",
+    "reports/statistical_research/fes_project1/v1/section3_autocorrelation_development.csv": "79f0a9b7174271dfb55273c964b51c12cb3599b8521d5dec3b61ef78ee6f4067",
+    "reports/statistical_research/fes_project1/v1/section3_checkpoint.json": "d6a9ad6a0e86ad9b2b75c60eea2175679a0958869acdf5236dcaa8d4a7353a8c",
+    "reports/statistical_research/fes_project1/v1/section3_construction_audit.csv": "4b02e688376f80bbd361c9028ac7693c9a16c89727aa01ab977e241b776b431b",
+    "reports/statistical_research/fes_project1/v1/section3_formula_causality_boundary_tests.csv": "4d039a7bab21195553c75c86885453c5724e834a1ab26bc84008cfb00bbadf64",
+    "reports/statistical_research/fes_project1/v1/section3_illustrative_profile_selection.csv": "72da11be16970366e7e68f0332305c71093e980af2aa32d3eeb01e3e4b77345d",
+    "reports/statistical_research/fes_project1/v1/section3_illustrative_profiles_development.png": "9c7f961972810d75cc1b12e5ec5155619b4026547f30f18395d513a95cde4ef8",
+    "reports/statistical_research/fes_project1/v1/section3_memory_footprint.csv": "a4a4fdf2c9d03dec8f1115e9a827012190f46aeb320c2377abe0d5b8f05abce4",
+    "reports/statistical_research/fes_project1/v1/section3_p1_zero_scale_development.csv": "062247a65ba1eeead69194eedd0067db78288411e3572b6db7f681da44dfd99f",
+    "reports/statistical_research/fes_project1/v1/section3_profile_coverage_development.csv": "8f824c7aafceb0f7177439f1b986ac294fc2c6982a2e27a29651341cf24bad2e",
+    "reports/statistical_research/fes_project1/v1/section3_rank_condition_development.csv": "8fa6a5269573051952b89ad95d6c506699274a555ef78d69b2b0a367bc50ad51",
+    "reports/statistical_research/fes_project1/v1/section3_representation_schema.csv": "ff2201b22fbdd79d9e1bdac76420b7a8e199d85a9790c67ce67b6901990f523b",
+    "reports/statistical_research/fes_project1/v1/section3_transformer_interface_audit.csv": "aa997fd812a8c1bf469fc47adfd9e2cd30def2e9d5c8170b07c7c32f6c0ddc15"
+  },
+  "config_sha256": "efb7ee9a79a81b96023fd20ae747a99129809ba4307a314d482b0370b648401f",
+  "research_id": "fes_project1",
+  "schema_version": "1.0.0",
+  "section": 3
+}
