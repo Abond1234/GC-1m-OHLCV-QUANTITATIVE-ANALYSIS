@@ -192,7 +192,8 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
 
 ## Deferred
 
-A statistics view (deflated Sharpe / CSCV / equity curves), MGC and multi-instrument,
-multiple simultaneous positions, and a per-strategy (rather than per-entry) exit-grid
-sweep. The finplot backend is an optional future enhancement behind the same
-`ChartWidget` interface.
+Deflated-Sharpe / CSCV statistics for the session view, multiple simultaneous
+positions, and a per-strategy (rather than per-entry) exit-grid sweep. The
+finplot backend is an optional future enhancement behind the same `ChartWidget`
+interface. (Formerly deferred and since shipped: the MGC mirror pane, the
+multi-instrument layer, session equity curves, and the evaluation-account view.)
