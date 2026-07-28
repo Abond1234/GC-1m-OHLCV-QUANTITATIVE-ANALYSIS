@@ -1,0 +1,46 @@
+{
+  "batch_completion_file_sha256": "72c410b0ff77dac3d2bf4790a92f6668e964b28e6d49ab95690abf8905a490ae",
+  "batch_completion_sha256": "72ff658248cae3b6408641c8b08316c5878623d826b16f896cfaf4dd24c4d32f",
+  "classifier_advancers": 0,
+  "continuous_model_advancers": 0,
+  "costs_ticks": {
+    "base": 2.6,
+    "frictionless": 0.0,
+    "pessimistic": 4.6
+  },
+  "economics_status": "NOT_APPLICABLE_NO_DIRECTIONAL_MODEL_PASSED_FROZEN_GATE",
+  "feature_advancers": 4,
+  "gc_economic_bars_read": false,
+  "gc_economics_executed": false,
+  "gc_gate_verdict": {
+    "directional_model_gate_pass_count": 0,
+    "gc_economics_executed": false,
+    "gc_gate_verdict": "GC_GATE_NOT_APPLICABLE_NO_DIRECTIONAL_MODEL",
+    "gc_strategy_gate_pass": false,
+    "headline_verdict": "PREDICTIVE_ONLY_NOT_DIRECTIONAL",
+    "mgc_work_permitted": false,
+    "policies_sequenced": 0,
+    "policy_status": "FROZEN_NO_POLICY",
+    "reason": "NO_DIRECTIONAL_MODEL_HAS_COMPLETE_DEVELOPMENT_SUPPORT: the exact six outer folds provide 378 valid OOF dates per session, below the frozen 400-date model gate."
+  },
+  "historical_final_outcomes_read": false,
+  "interaction_advancers": 0,
+  "mgc_work_permitted": false,
+  "policy_sha256": "5ba74d5f44100be957254857f9b0aea51a95ab68f1260395667c991abc82c4fc",
+  "policy_status": "FROZEN_NO_POLICY",
+  "retrospective_validation_outcomes_read": true,
+  "schema_version": "1.0.0",
+  "section": 6,
+  "section5_manifest_sha256": "5a5513722f49a552fa17793cc0a71fb831ea6897d29b9252a3839dc6db6e67c3",
+  "section6_manifest_sha256": "d496653b5ff6a26dc8f69c2c7d9c91031e3c9c49eada20452ce58e613ba1a2ab",
+  "sharpe_status": "NOT_APPLICABLE_NO_DIRECTIONAL_MODEL_PASSED_FROZEN_GATE",
+  "single_locked_validation_batch_completed": true,
+  "status": "COMPLETED_STOP_BEFORE_SECTION_7",
+  "stop_boundary": "Section 6 complete. Do not start MGC transfer or read Historical Final before explicit Section 7 instruction.",
+  "test_results": {
+    "full_repository": "319 passed, 1 warning, 3 subtests passed",
+    "notebook": "67 cells, 28 code cells executed sequentially 1-28, 0 error outputs",
+    "section6_focused": "10 passed"
+  },
+  "tests_status": "PASS"
+}
