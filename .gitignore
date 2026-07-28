@@ -37,6 +37,13 @@ work_quant_review/
 reports/figures/
 reports/results/
 reports/statistical_research/figures/section5/
+reports/ui_smoke/
+
+# Packaged desktop app (PyInstaller); code is the source of truth, not the build.
+dist/
+build/
+/*.spec
+GCTradeSimulator.spec
 
 # Secrets and local configuration
 .env
