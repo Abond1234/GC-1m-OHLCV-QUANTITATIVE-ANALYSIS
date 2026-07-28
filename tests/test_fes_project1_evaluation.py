@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
+
+try:
+    import pytest
+except ModuleNotFoundError:  # pragma: no cover - unittest discovery without pytest
+    import unittest
+
+    raise unittest.SkipTest("pytest is not installed; run this module with pytest") from None
 
 from src.statistical_research.fes_project1_evaluation import (
     NO_POLICY_REASON_CODE,
@@ -54,12 +60,8 @@ def test_daily_net_r_sharpe_includes_zero_trade_dates() -> None:
 
 
 def test_stationary_bootstrap_indices_are_deterministic_and_chronological() -> None:
-    first = stationary_bootstrap_indices(
-        20, replicates=30, restart_probability=0.2, seed=20260726
-    )
-    second = stationary_bootstrap_indices(
-        20, replicates=30, restart_probability=0.2, seed=20260726
-    )
+    first = stationary_bootstrap_indices(20, replicates=30, restart_probability=0.2, seed=20260726)
+    second = stationary_bootstrap_indices(20, replicates=30, restart_probability=0.2, seed=20260726)
     np.testing.assert_array_equal(first, second)
     assert first.shape == (30, 20)
     assert ((first >= 0) & (first < 20)).all()
@@ -68,12 +70,8 @@ def test_stationary_bootstrap_indices_are_deterministic_and_chronological() -> N
 def test_stationary_bootstrap_sharpe_interval_is_reproducible() -> None:
     config = Section6Config(stationary_bootstrap_replicates=100)
     values = np.array([0.4, -0.2, 0.0, 0.1, 0.3, -0.1] * 8)
-    first = stationary_bootstrap_sharpe_ci(
-        values, seed=20260726, config=config
-    )
-    second = stationary_bootstrap_sharpe_ci(
-        values, seed=20260726, config=config
-    )
+    first = stationary_bootstrap_sharpe_ci(values, seed=20260726, config=config)
+    second = stationary_bootstrap_sharpe_ci(values, seed=20260726, config=config)
     assert first == pytest.approx(second)
     assert first[0] <= first[1]
 
@@ -105,8 +103,7 @@ def test_continuous_validation_evidence_detects_planted_signal() -> None:
                     "target": "forward_return_60_atr",
                     "model_family": "M8",
                     "trade_date_ny": date,
-                    "decision_timestamp_utc": date
-                    + pd.Timedelta(minutes=row_index),
+                    "decision_timestamp_utc": date + pd.Timedelta(minutes=row_index),
                     "observation_id": date_index * 100 + row_index,
                     "observed_atr": observed[row_index],
                     "observed_ticks": observed[row_index] * 10.0,
@@ -115,11 +112,9 @@ def test_continuous_validation_evidence_detects_planted_signal() -> None:
                     "decision_atr_20m": 1.0,
                 }
             )
-    metrics, daily, deciles, subperiods = (
-        build_validation_continuous_evidence(
-            pd.DataFrame.from_records(rows),
-            config=Section6Config(bootstrap_replicates=100),
-        )
+    metrics, daily, deciles, subperiods = build_validation_continuous_evidence(
+        pd.DataFrame.from_records(rows),
+        config=Section6Config(bootstrap_replicates=100),
     )
     assert metrics.loc[0, "daily_ic_mean"] > 0.9
     assert metrics.loc[0, "paired_daily_ic_delta_mean"] > 0.8
@@ -192,9 +187,7 @@ def test_no_policy_economics_are_explicitly_not_applicable() -> None:
         "policy_status": "FROZEN_NO_POLICY",
         "no_policy_reason": "synthetic hard gate failure",
     }
-    economics, drawdown, sharpe, verdict = build_not_applicable_economics(
-        counts, policy
-    )
+    economics, drawdown, sharpe, verdict = build_not_applicable_economics(counts, policy)
     assert len(economics) == 12
     assert economics["executed_trades"].eq(0).all()
     assert economics["economics_status"].eq(NO_POLICY_REASON_CODE).all()

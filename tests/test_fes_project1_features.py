@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
+
+try:
+    import pytest
+except ModuleNotFoundError:  # pragma: no cover - unittest discovery without pytest
+    import unittest
+
+    raise unittest.SkipTest("pytest is not installed; run this module with pytest") from None
 
 from src.statistical_research.fes_project1_features import (
     BASE_FEATURE_NAMES,
@@ -94,9 +100,7 @@ def _observations(
                 "decision_bar_id": int(bars.loc[position, "source_row_id"]),
                 "decision_timestamp_utc": timestamp,
                 "trade_date_ny": pd.Timestamp(bars.loc[position, "trade_date_ny"]),
-                "entry_session": (
-                    "London" if timestamp_ny.hour < 7 else "New York"
-                ),
+                "entry_session": ("London" if timestamp_ny.hour < 7 else "New York"),
                 "research_partition": partition,
             }
         )
@@ -174,9 +178,7 @@ def test_known_quadratic_curvature(beta2: float) -> None:
 
 
 def test_ordered_runup_drawdown_balance() -> None:
-    windows = np.vstack(
-        [np.arange(31.0), np.arange(31.0)[::-1], np.ones(31)]
-    )
+    windows = np.vstack([np.arange(31.0), np.arange(31.0)[::-1], np.ones(31)])
     actual, zero = _ordered_draw_balance(windows)
     assert actual.tolist() == pytest.approx([1.0, -1.0, 0.0])
     assert zero.tolist() == [False, False, True]
@@ -184,9 +186,7 @@ def test_ordered_runup_drawdown_balance() -> None:
 
 def test_known_acf_energy_and_degeneracy() -> None:
     alternating = np.resize(np.array([-1.0, 1.0]), 60)
-    actual, degenerate = _acf_energy(
-        np.vstack([alternating, np.ones(60)])
-    )
+    actual, degenerate = _acf_energy(np.vstack([alternating, np.ones(60)]))
     assert actual[0] == pytest.approx(1.0)
     assert not degenerate[0]
     assert np.isnan(actual[1])
@@ -195,9 +195,7 @@ def test_known_acf_energy_and_degeneracy() -> None:
 
 def test_known_spearman_correlations_with_ties() -> None:
     tied = np.repeat(np.arange(10.0), 3)[None, :]
-    actual, degenerate = _spearman_rows(
-        np.vstack([tied, tied]), np.vstack([tied, tied[:, ::-1]])
-    )
+    actual, degenerate = _spearman_rows(np.vstack([tied, tied]), np.vstack([tied, tied[:, ::-1]]))
     assert actual.tolist() == pytest.approx([1.0, -1.0])
     assert not degenerate.any()
     _, insufficient = _spearman_rows(np.ones((1, 30)), np.arange(30.0)[None, :])
@@ -244,25 +242,17 @@ def test_interaction_formulas_clipping_and_exact_observation_join() -> None:
         (matrix["relative_volume_20_clipped"] >= 0.5)
         & (matrix["relative_volume_20_clipped"] <= 2.0)
     )
-    expected_i01 = (
-        matrix["price_path_curvature_30_atr"].to_numpy()
-        * np.array([0.25, 0.75])
-    )
-    assert matrix["curvature_coherence_30"].to_numpy() == pytest.approx(
-        expected_i01
-    )
+    expected_i01 = matrix["price_path_curvature_30_atr"].to_numpy() * np.array([0.25, 0.75])
+    assert matrix["curvature_coherence_30"].to_numpy() == pytest.approx(expected_i01)
     assert matrix["tail_pressure_activity_60"].to_numpy() == pytest.approx(
-        matrix["ret_tail_balance_60"].to_numpy()
-        * matrix["relative_volume_20_clipped"].to_numpy()
+        matrix["ret_tail_balance_60"].to_numpy() * matrix["relative_volume_20_clipped"].to_numpy()
     )
     assert matrix["lagged_volume_confirmation_30"].to_numpy() == pytest.approx(
         matrix["lagged_volume_return_spearman_30"].to_numpy()
         * matrix["relative_volume_20_clipped"].to_numpy()
     )
     expected_i04 = np.array([-1.0, 1.0]) * np.array([0.5, -0.5])
-    assert matrix["vwap_trend_alignment_30"].to_numpy() == pytest.approx(
-        expected_i04
-    )
+    assert matrix["vwap_trend_alignment_30"].to_numpy() == pytest.approx(expected_i04)
 
 
 def test_future_mutation_and_source_truncation_are_causal() -> None:
@@ -307,9 +297,7 @@ def test_boundaries_reset_full_windows(mutation: str, expected_cause: str) -> No
     elif mutation == "roll":
         bars.loc[boundary, "roll_window_flag"] = True
     result = _build(bars, [decision])
-    cause = result.missing_reasons.loc[
-        0, "ret_trimmed_mean_30_bps__missing_reason"
-    ]
+    cause = result.missing_reasons.loc[0, "ret_trimmed_mean_30_bps__missing_reason"]
     assert str(cause) == expected_cause
     assert np.isnan(result.matrix.loc[0, "ret_trimmed_mean_30_bps"])
 
@@ -335,37 +323,21 @@ def test_source_null_nonpositive_atr_and_degeneracy_causes() -> None:
     null_bars.loc[175, "close"] = np.nan
     null_result = _build(null_bars, [180])
     assert (
-        str(
-            null_result.missing_reasons.loc[
-                0, "ret_trimmed_mean_30_bps__missing_reason"
-            ]
-        )
+        str(null_result.missing_reasons.loc[0, "ret_trimmed_mean_30_bps__missing_reason"])
         == "SOURCE_INPUT_NULL"
     )
 
     flat_bars = _bars(flat_price=True)
     flat_result = _build(flat_bars, [180])
     assert (
-        str(
-            flat_result.missing_reasons.loc[
-                0, "price_path_curvature_30_atr__missing_reason"
-            ]
-        )
+        str(flat_result.missing_reasons.loc[0, "price_path_curvature_30_atr__missing_reason"])
         == "NONPOSITIVE_ATR"
     )
     assert (
-        str(
-            flat_result.missing_reasons.loc[
-                0, "return_acf_energy_60__missing_reason"
-            ]
-        )
+        str(flat_result.missing_reasons.loc[0, "return_acf_energy_60__missing_reason"])
         == "DEGENERATE_STATISTIC"
     )
-    assert bool(
-        flat_result.missing_reasons.loc[
-            0, "return_acf_energy_60__degenerate"
-        ]
-    )
+    assert bool(flat_result.missing_reasons.loc[0, "return_acf_energy_60__degenerate"])
 
 
 def test_lagged_volume_profile_order_is_exact() -> None:
@@ -381,9 +353,7 @@ def test_lagged_volume_profile_order_is_exact() -> None:
     returns = np.full(len(close), np.nan)
     returns[1:] = 10_000.0 * np.log(close[1:] / close[:-1])
     expected, _ = _spearman_rows(zv[150:180][None, :], returns[151:181][None, :])
-    concurrent, _ = _spearman_rows(
-        zv[151:181][None, :], returns[151:181][None, :]
-    )
+    concurrent, _ = _spearman_rows(zv[151:181][None, :], returns[151:181][None, :])
     actual = result.matrix.loc[0, "lagged_volume_return_spearman_30"]
     assert actual == pytest.approx(expected[0], abs=1.0e-6)
     assert actual != pytest.approx(concurrent[0], abs=1.0e-4)
@@ -395,12 +365,8 @@ def test_no_eligible_feature_window_crosses_1530_or_ny_date() -> None:
     # cross the prior 15:30 mandatory-flat boundary.
     bars = _bars(181, start="2024-01-02 14:00:00+00:00")  # 09:00 New York
     decision = 179  # 11:59 New York
-    timestamp_ny = pd.Timestamp(bars.loc[decision, "ts_event_utc"]).tz_convert(
-        "America/New_York"
-    )
-    start_ny = pd.Timestamp(
-        bars.loc[decision - 89, "ts_event_utc"]
-    ).tz_convert("America/New_York")
+    timestamp_ny = pd.Timestamp(bars.loc[decision, "ts_event_utc"]).tz_convert("America/New_York")
+    start_ny = pd.Timestamp(bars.loc[decision - 89, "ts_event_utc"]).tz_convert("America/New_York")
     assert timestamp_ny.strftime("%H:%M") == "11:59"
     assert start_ny.strftime("%H:%M") == "10:30"
     assert timestamp_ny.date() == start_ny.date()
