@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
+
+try:
+    import pytest
+except ModuleNotFoundError:  # pragma: no cover - unittest discovery without pytest
+    import unittest
+
+    raise unittest.SkipTest("pytest is not installed; run this module with pytest") from None
 from sklearn.linear_model import Ridge
 
 from src.statistical_research.fes_project1_config import (
@@ -51,9 +57,7 @@ def test_bh_uses_declared_family_size_and_preserves_nan() -> None:
 def test_daily_spearman_uses_dates_and_average_ranks() -> None:
     frame = pd.DataFrame(
         {
-            "trade_date_ny": pd.to_datetime(
-                ["2024-01-02"] * 4 + ["2024-01-03"] * 4
-            ),
+            "trade_date_ny": pd.to_datetime(["2024-01-02"] * 4 + ["2024-01-03"] * 4),
             "x": [1, 2, 2, 4, 1, 2, 3, 4],
             "y": [10, 20, 20, 40, 4, 3, 2, 1],
         }
@@ -65,24 +69,16 @@ def test_daily_spearman_uses_dates_and_average_ranks() -> None:
 
 def test_bootstrap_is_date_deterministic() -> None:
     values = np.linspace(-0.2, 0.3, 20)
-    first = _bootstrap_mean_ci(
-        values, seed=20260726, replicates=200, confidence=0.95
-    )
-    second = _bootstrap_mean_ci(
-        values, seed=20260726, replicates=200, confidence=0.95
-    )
+    first = _bootstrap_mean_ci(values, seed=20260726, replicates=200, confidence=0.95)
+    second = _bootstrap_mean_ci(values, seed=20260726, replicates=200, confidence=0.95)
     assert first == second
 
 
 def test_quintiles_use_linear_interpolation_and_stable_hash() -> None:
     edges = _fit_quintile_edges(np.arange(10, dtype=float), 5)
     np.testing.assert_allclose(edges, [1.8, 3.6, 5.4, 7.2])
-    assert _edge_hash("F", "London", edges) == _edge_hash(
-        "F", "London", edges.copy()
-    )
-    assert _edge_hash("F", "London", edges) != _edge_hash(
-        "F", "New York", edges
-    )
+    assert _edge_hash("F", "London", edges) == _edge_hash("F", "London", edges.copy())
+    assert _edge_hash("F", "London", edges) != _edge_hash("F", "New York", edges)
 
 
 def test_joint_partial_ic_removes_comparator_overlap() -> None:
@@ -98,9 +94,7 @@ def test_joint_partial_ic_removes_comparator_overlap() -> None:
                 "target": comparator + independent + rng.normal(scale=0.05),
                 "comparator": comparator,
             }
-            for comparator, independent in zip(
-                comparator, independent, strict=True
-            )
+            for comparator, independent in zip(comparator, independent, strict=True)
         )
     daily = _daily_partial_rank_ic(
         pd.DataFrame(rows),
@@ -123,21 +117,15 @@ def test_partial_ic_skips_rank_deficient_comparator_design() -> None:
             "c2": np.arange(12),
         }
     )
-    daily = _daily_partial_rank_ic(
-        frame, "candidate", "target", ["c1", "c2"], min_observations=10
-    )
+    daily = _daily_partial_rank_ic(frame, "candidate", "target", ["c1", "c2"], min_observations=10)
     assert daily.empty
 
 
 def test_development_guard_rejects_locked_partitions() -> None:
-    _assert_development_only(
-        pd.DataFrame({"research_partition": ["Development"]}), "safe"
-    )
+    _assert_development_only(pd.DataFrame({"research_partition": ["Development"]}), "safe")
     with pytest.raises(PermissionError, match="locked outcome"):
         _assert_development_only(
-            pd.DataFrame(
-                {"research_partition": ["Development", "Validation"]}
-            ),
+            pd.DataFrame({"research_partition": ["Development", "Validation"]}),
             "unsafe",
         )
 
@@ -151,9 +139,7 @@ def test_physical_parquet_filter_loads_development_only(tmp_path) -> None:
             "value": [10.0, 20.0, 30.0],
         }
     ).to_parquet(path, index=False)
-    loaded = _read_development_table(
-        path, ["observation_id", "research_partition", "value"]
-    )
+    loaded = _read_development_table(path, ["observation_id", "research_partition", "value"])
     assert loaded["observation_id"].tolist() == [1]
     assert loaded["research_partition"].tolist() == ["Development"]
 
@@ -189,9 +175,7 @@ def test_cached_svd_ridge_path_matches_sklearn_solver() -> None:
     x_assessment = rng.normal(size=(25, 6))
     y = rng.normal(size=100)
     alphas = (0.001, 0.1, 10.0)
-    actual = _ridge_svd_path_predictions(
-        x_train, y, x_assessment, alphas
-    )
+    actual = _ridge_svd_path_predictions(x_train, y, x_assessment, alphas)
     expected = np.column_stack(
         [
             Ridge(alpha=alpha, fit_intercept=True, solver="svd")
@@ -221,9 +205,7 @@ def test_degenerate_f08_is_imputable_but_unflagged_nan_is_excluded() -> None:
     frame["forward_return_60_atr"] = [0.1, 0.2]
     frame["lagged_volume_return_spearman_30"] = [np.nan, np.nan]
     frame["lagged_volume_return_spearman_30__degenerate"] = [True, False]
-    valid = _comparison_valid_mask(
-        frame, columns, "forward_return_60_atr"
-    )
+    valid = _comparison_valid_mask(frame, columns, "forward_return_60_atr")
     assert valid.tolist() == [True, False]
 
 
@@ -250,9 +232,7 @@ def test_development_support_labels_are_mechanical() -> None:
             "partial_overlap_gate": [True, True],
         }
     )
-    result = _merge_development_support_labels(
-        confirmatory, partial, Section4EvidenceConfig()
-    )
+    result = _merge_development_support_labels(confirmatory, partial, Section4EvidenceConfig())
     assert result["development_label"].tolist() == [
         "DEV_SUPPORT",
         "DEV_NO_SUPPORT",
@@ -263,9 +243,7 @@ def test_development_support_labels_are_mechanical() -> None:
 def _minimal_completed_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     skeleton = pd.DataFrame(build_trial_ledger_skeleton())
     section4 = skeleton.loc[skeleton["notebook_section"].eq(4)]
-    base = section4.loc[
-        section4["analysis_role"].eq("confirmatory")
-    ][["trial_id"]].copy()
+    base = section4.loc[section4["analysis_role"].eq("confirmatory")][["trial_id"]].copy()
     base["development_label"] = "DEV_NO_SUPPORT"
     base["raw_p_value"] = 0.5
     base["bh_q_value"] = 0.5
@@ -273,17 +251,15 @@ def _minimal_completed_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFram
     base["daily_ic_ci_low"] = -0.1
     base["daily_ic_ci_high"] = 0.1
     base["failed_gates"] = "gate_bh_q"
-    exploratory = section4.loc[
-        section4["analysis_role"].eq("exploratory")
-    ][["trial_id"]].copy()
+    exploratory = section4.loc[section4["analysis_role"].eq("exploratory")][["trial_id"]].copy()
     exploratory["raw_p_value"] = 0.5
     exploratory["bh_q_value"] = 0.5
     exploratory["daily_ic_mean"] = 0.0
     exploratory["daily_ic_ci_low"] = -0.1
     exploratory["daily_ic_ci_high"] = 0.1
-    interactions = section4.loc[
-        section4["analysis_role"].eq("confirmatory_incremental")
-    ][["trial_id"]].copy()
+    interactions = section4.loc[section4["analysis_role"].eq("confirmatory_incremental")][
+        ["trial_id"]
+    ].copy()
     interactions["development_label"] = "DEV_NO_INCREMENTAL_SUPPORT"
     interactions["raw_p_value"] = 0.5
     interactions["bh_q_value"] = 0.5
@@ -321,9 +297,7 @@ def _synthetic_interaction_frame() -> pd.DataFrame:
                 records.append(
                     {
                         "observation_id": observation_id,
-                        "decision_timestamp_utc": pd.Timestamp(
-                            date, tz="UTC"
-                        )
+                        "decision_timestamp_utc": pd.Timestamp(date, tz="UTC")
                         + pd.Timedelta(hours=8, minutes=minute),
                         "exit_timestamp_utc_60": pd.Timestamp(date, tz="UTC")
                         + pd.Timedelta(hours=9, minutes=minute),
@@ -360,18 +334,10 @@ def test_nested_interaction_screen_detects_planted_signal_and_rejects_noise() ->
     results, daily, folds, tuning = _build_interaction_evidence(
         _synthetic_interaction_frame(), config
     )
-    planted = results.loc[
-        results["interaction_id"].eq("I01")
-    ]
-    noise = results.loc[
-        results["interaction_id"].isin(["I02", "I03"])
-    ]
-    assert planted["development_label"].eq(
-        "DEV_INCREMENTAL_SUPPORT"
-    ).all()
-    assert noise["development_label"].eq(
-        "DEV_NO_INCREMENTAL_SUPPORT"
-    ).all()
+    planted = results.loc[results["interaction_id"].eq("I01")]
+    noise = results.loc[results["interaction_id"].isin(["I02", "I03"])]
+    assert planted["development_label"].eq("DEV_INCREMENTAL_SUPPORT").all()
+    assert noise["development_label"].eq("DEV_NO_INCREMENTAL_SUPPORT").all()
     assert len(daily) > 0
     assert folds["status"].eq("EVALUATED").all()
     assert tuning["ridge_alpha"].isin(config.ridge_alpha_grid).all()
