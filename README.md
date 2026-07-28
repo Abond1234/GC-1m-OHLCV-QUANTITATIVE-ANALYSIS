@@ -14,9 +14,9 @@
 
 Quant Project 1 is a systematic intraday research codebase for CME Gold Futures (GC) and Micro Gold Futures (MGC) using Databento one-minute OHLCV data. It converts a discretionary Point of Interest (POI) concept into testable rules while developing a second, deliberately independent statistical-feature research branch.
 
-This repository is a research environment, not a live trading system. It does not contain an approved strategy or production execution. What it does contain is a completed, honestly-reported research program: two independent branches taken through pre-declared contracts, cost-aware sequential backtests, and integration research, ending in defensible rejections.
+This repository is a research environment, not a live trading system. It does not contain an approved strategy or production execution. What it does contain is a completed, honestly-reported research program - two independent branches plus the FES Project 1 and MLAT feature lines, taken through pre-declared contracts, cost-aware sequential backtests, and integration research, ending in defensible rejections - together with a desktop practice platform (`src/app`, the GQ Trade Simulator) and forward-test/prop-firm engineering (`src/execution`) built on the same verified engines.
 
-> **Current decision:** the Phase 2 research program is closed for both branches. The S7P02 continuation-short family — the only policy that ever survived screening — shows a real frictionless event-level edge but was SEQUENTIAL_REJECTED at base costs (Section 8), and every conditioning form in the frozen Section 12B contract (sizing, exits, suppression) failed Validation. Per the authorization memo's linkage the family is **archived** with its evidence chain. Remaining PRD work is engineering: GC-to-MGC transfer validation, prop-firm rules, and forward-test scaffolding. Any new research question requires a fresh pre-declared contract.
+> **Current decision:** the Phase 2 research program is closed for both branches. The S7P02 continuation-short family — the only policy that ever survived screening — shows a real frictionless event-level edge but was SEQUENTIAL_REJECTED at base costs (Section 8), and every conditioning form in the frozen Section 12B contract (sizing, exits, suppression) failed Validation. Per the authorization memo's linkage the family is **archived** with its evidence chain. Remaining PRD work is engineering: GC-to-MGC transfer validation, prop-firm rules, and forward-test scaffolding. Any new research question requires a fresh pre-declared contract. FES Project 1 subsequently completed its single locked Validation batch with verdict **PREDICTIVE_ONLY_NOT_DIRECTIONAL**: four scalar features advance (range/participation, session-specific), zero models or policies advance, and **FROZEN_NO_POLICY** remains in force.
 
 ## Project at a glance
 
@@ -30,8 +30,39 @@ This repository is a research environment, not a live trading system. It does no
 | Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
 | Business timezone | `America/New_York`; UTC timestamps remain immutable join keys |
 | Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
-| Automated tests | 363 tests across 36 modules |
-| Repository state | Research complete for Phase 2; no strategy approved; S7P02 family archived |
+| Automated tests | 480 unittest cases across 63 test modules, plus 83 pytest-only FES research tests |
+| Desktop application | GQ Trade Simulator (`src/app`): charting, bar replay, evaluation accounts, validated edge context, sessions, multi-asset switching |
+| Repository state | Phase 2 research complete; FES Project 1 Validation batch locked; no strategy approved; S7P02 family archived |
+
+## Repository layout
+
+~~~text
+project-1/
+|-- README.md / CLAUDE.md / AGENTS.md   Orientation and binding contributor governance
+|-- STRATEGIES.md                       Strategy-lab record: 196 catalog strategies, 0 advanced
+|-- requirements*.txt                   Pinned numerical core, app extras, optional GPU
+|-- assets/readme/                      README visual assets
+|-- notebooks/exploration/              Executed research records (do not edit cells)
+|   |-- exp1.ipynb                      POI chain, Sections 1-7 (backs merged verdicts)
+|   |-- exp1 appendix.ipynb             Superseded prototype archive (referenced by frozen FES config)
+|   |-- statistical_feature_research.ipynb  Branch B, Sections 1-12B plus GARCH
+|   |-- feature_research_1.ipynb        FES Project 1 record (locked Validation batch)
+|   `-- mlat_feature_research.ipynb     MLAT v1 record (failed closed)
+|-- project_docs/                       Contracts, context reports, authorization memos, MLAT docs
+|-- reports/                            Tracked summaries and frozen manifests (bulk outputs gitignored)
+|   |-- execution/                      MGC transfer validation summary
+|   `-- statistical_research/           Baseline/feature summaries; fes_project1/v1 checkpoints and hash manifests
+|-- deliverables/                       External review documents
+|-- scripts/                            Research runners, notebook-section generators, app build/run
+|-- src/
+|   |-- compute.py / resources.py       Deterministic backend and memory planning
+|   |-- features/                       POI construction, refinement, context, first passage
+|   |-- research/                       True POI pipeline, opportunity conditioning, hybrid integration
+|   |-- statistical_research/           Branch B pipeline and the frozen fes_project1_* research modules
+|   |-- execution/                      Prop-firm rules engine, shadow-mode harness, MGC transfer gate
+|   `-- app/                            GQ Trade Simulator (datalayer, analysis, sim, ui, workers)
+`-- tests/                              480 unittest cases; test_fes_project1_* additionally run under pytest
+~~~
 
 ## Project status
 
@@ -106,6 +137,15 @@ Before extending this line, the sequential-backtest engine was independently re-
 A separate research line ingests a machine-learning-for-trading textbook (858 pages, 23 chapters, all accounted for once) and derives 12 GC-only candidate features grounded in cited book concepts — Bollinger location and bandwidth, a Cutler RSI variant, Chaikin money flow, Amihud illiquidity, Parkinson and Rogers–Satchell volatility, realized-semivariance balance, a bipower jump ratio, a variance ratio, return-sign entropy, and volatility-of-volatility. Construction is causal and continuity-aware, and evaluation reuses Branch B's governance: Development/Validation only, a frozen contract, per-date rank ICs, Benjamini–Hochberg control, Development-fitted quantile spreads, and incremental information beyond `atr_20` and the frozen 15-feature anchor set.
 
 The v1 result is **0 of 12 features authorized — all `RESEARCH_ONLY`**, failing closed. This is *not* a clean empirical rejection of the raw relationships: the frozen v1 horizon-thinning gate is **structurally non-evaluable** — 0 of 384 required 60/180-minute feature-family-session-partition cells (including 0 Development cells) retain finite thinned daily-IC evidence under the ≥10-observations-per-New-York-date rule, so advancement cannot be authorized. The multivariate authorization gate is consequently CLOSED, and a separately governed audit records the plain GARCH(1,1) implementation as `REJECTED_IMPLEMENTATION`, consistent with Branch B's own boundary/explosive fit. The corrective for a v2 is a gate specification that leaves evaluable evidence at the longer horizons, declared before any recomputation. Full record: `project_docs/mlat_feature_research/mlat_final_research_report.md`.
+
+### FES Project 1 and the application milestones (July 2026)
+
+| Milestone | Status |
+|---|---|
+| FES Project 1 Sections 1-6 (150-trial frozen ledger, locked Validation batch) | Complete - **PREDICTIVE_ONLY_NOT_DIRECTIONAL**; 4 of 20 confirmatory features advance (London `return_acf_energy_60`, `range_volume_spearman_30`; New York `lagged_volume_return_spearman_30`, `volume_profile_slope_30`); 0 interactions, 0 models, 0 classifiers advance; **FROZEN_NO_POLICY** |
+| FES Section 7 (MGC transfer) | Not permitted by the Section 6 verdict; Historical Final unread |
+| GQ Trade Simulator (`src/app`) | Complete and merged: TradingView-style charting, hidden-future bar replay, drawing tools, dollar accounts with prop-style evaluation rules, Edge-context panel (golden-tested against the frozen FES arithmetic), session persistence |
+| Multi-asset instrument layer | Complete and merged: GC/MGC switching live; NQ/ES/BTCUSD registered behind a strict external-data contract; GC-only research surfaces disable off-GC with the reason on screen |
 
 The line's Sharpe-governance and external-figure additions to the statistical notebook are carried at module level (`performance_diagnostics.py`, `research_figures.py`) but not yet wired into the notebook: their cells anchor on the pre-rewrite GARCH section and need reconciliation with the current GARCH implementation first.
 
@@ -249,28 +289,6 @@ These are research observations, not trading claims:
 
 For exact estimates, sample sizes, and qualification language, use the context reports linked under [Authoritative project documentation](#authoritative-project-documentation).
 
-## Repository layout
-
-~~~text
-project-1/
-├── assets/readme/                 README visual assets
-├── notebooks/exploration/
-│   ├── exp1.ipynb                 Main POI notebook; Sections 1–7
-│   ├── exp1 appendix.ipynb        Superseded prototype event-study archive
-│   └── statistical_feature_research.ipynb
-│                                   Independent statistical notebook; Sections 1–6
-├── project_docs/                  Strategy specification and project handoffs
-├── reports/statistical_research/
-│   └── summaries/                 Tracked baseline and feature summaries
-├── scripts/                       Full-run and notebook-maintenance utilities
-├── src/
-│   ├── features/                  POI construction, refinement, context, and paths
-│   ├── research/                  True POI research pipeline
-│   └── statistical_research/      Independent labels, baselines, and features
-├── tests/                         363 synthetic and unit tests
-└── .gitignore                     Excludes data, environments, logs, and outputs
-~~~
-
 ## Getting started
 
 ### 1. Obtain repository access
@@ -358,11 +376,11 @@ python -m unittest discover -s tests -v
 Current verified result:
 
 ~~~text
-Ran 363 tests
+Ran 480 tests
 OK
 ~~~
 
-The suite uses Python’s standard `unittest` runner; `pytest` is not required. It runs identically with or without a GPU; `PROJECT_COMPUTE=cpu` forces the CPU path if you want to confirm that explicitly.
+The suite uses Python’s standard `unittest` runner. The six `test_fes_project1_*` modules additionally require `pytest` (they skip cleanly under plain unittest); install it locally to run their 83 research tests. It runs identically with or without a GPU; `PROJECT_COMPUTE=cpu` forces the CPU path if you want to confirm that explicitly.
 
 ## Running the project
 
@@ -374,7 +392,9 @@ jupyter notebook notebooks/exploration/statistical_feature_research.ipynb
 ~~~
 
 - `exp1.ipynb` is the authoritative POI reader flow. Sections 1–5 cover data, EDA, the research dataset, and strategy formalization; Section 6 contains the frozen refined POI engine; Section 7 contains the completed True POI context research.
-- `statistical_feature_research.ipynb` is the independent reader flow through completed Section 6 feature engineering.
+- `statistical_feature_research.ipynb` is the independent reader flow through Section 12B and the GARCH audit.
+- `feature_research_1.ipynb` is the executed FES Project 1 record through its locked Section 6 Validation batch.
+- `mlat_feature_research.ipynb` is the executed MLAT v1 record (failed closed; all `RESEARCH_ONLY`).
 - `exp1 appendix.ipynb` is a legacy prototype archive, not the current source of conclusions.
 
 Both primary notebooks are checked in with every code cell executed and no saved error outputs. Full execution requires the ignored data artifacts and substantially more time and memory than the unit tests.
@@ -389,10 +409,15 @@ Run scripts from the repository root:
 | `python scripts/run_section7r_event_study.py` | Reproduce the refined event-study baseline | Historical bridge to current Section 7 |
 | `python scripts/run_section7_poi_context_research.py` | Rebuild True POI context, labels, matched controls, interactions, first passage, and candidate policies | Current authoritative Section 7 |
 | `python scripts/run_section7_event_study.py` | Reproduce the original structural event study | Legacy only |
+| `python scripts/run_strategy_lab.py` / `run_strategy_catalog.py` / `run_strategy_evaluation.py` | Strategy-lab and 196-strategy catalog evaluation | Complete; record in `STRATEGIES.md` |
+| `python scripts/run_backtest_verification.py` | Independent re-verification of the sequential backtests | Verification utility |
+| `python scripts/run_mgc_transfer_validation.py` | FR-09 GC-to-MGC transfer gate | Complete - `G5_PROVISIONAL_FAIL` |
+| `python scripts/run_fes_project1_research.py` | FES Project 1 Sections 5-6 runner (hash-authorized, one-time Section 6) | Complete; rerun intentionally blocked |
+| `python scripts/run_trade_simulator.py` / `build_app.py` / `render_screens.py` | Run, package, and headlessly verify the desktop app | Current |
 
 The current Section 7 runner accepts `--start-date`, `--end-date`, `--skip-stop-target`, and `--force-chunks` for scoped or diagnostic runs. Memory handling is adaptive: the runner measures machine memory at start and runs single-pass when the estimated peak (about 4 GB for the full population) fits, or falls back to chronological whole-day chunked processing otherwise, so the full pipeline completes on 8 GB machines. Chunked output is verified value-identical to single-pass. Machines with 16 GB or more normally run every stage single-pass. Treat these scripts as research pipelines, not lightweight examples.
 
-The `update_*_notebook.py` and `reorganize_exp1_sections.py` scripts intentionally rewrite notebook structure. They are maintenance/migration utilities and should be run only when the corresponding notebook edit is part of an approved change.
+The `update_*_notebook.py` and `build_mlat_*`/`build_strategy_catalog_doc.py` scripts generate notebook sections and tracked documents. They are maintenance utilities and should be run only when the corresponding edit is part of an approved change.
 
 ### Statistical pipeline
 
@@ -472,6 +497,8 @@ data/processed/statistical_research/feature_reference_parameters_gc.parquet
 Tracked summaries under `reports/statistical_research/summaries/` provide a lightweight view of completed statistical milestones without distributing the underlying data.
 
 ## Test coverage
+
+The table below covers the research core. Beyond it, the application layer (`test_app_*`, 26 modules) and the FES research chain (`test_fes_project1_*`, six pytest-only modules) bring the suite to 480 unittest cases plus 83 pytest-only tests.
 
 | Test module | Tests | Main contract |
 |---|---:|---|
@@ -557,6 +584,12 @@ Read these in order when joining the project:
 3. [GC/MGC POI strategy specification](project_docs/gc_mgc_poi_strategy_spec_v0_2_appended_v0_2A.txt) — discretionary-to-systematic strategy source specification.
 4. [Section 4 research-dataset report](<project_docs/Section 4 Follow-up Report - Research Dataset Outputs.md>) — active-contract construction and trusted table details.
 5. [Section 5 baseline summary](reports/statistical_research/summaries/section5_baseline_summary.md) and [Section 6 feature summary](reports/statistical_research/summaries/section6_feature_engineering_summary.md) — concise tracked statistical results.
+6. [Section 8 authorization memo](project_docs/section8_authorization_memo.md) and [Section 12B contract](project_docs/section12b_research_contract.md) — the cost-aware rejection and archival of the S7P02 family.
+7. [Forward test plan](project_docs/forward_test_plan.md) and [GARCH research contract](project_docs/garch_volatility_research_contract.md) — engineering runway and the frozen unevaluated volatility contract.
+8. [Strategy-lab record](STRATEGIES.md) — 196 catalog strategies, 0 advanced, with the deflated-Sharpe accounting.
+9. [MLAT final research report](project_docs/mlat_feature_research/mlat_final_research_report.md) — the fail-closed v1 verdict and v2 corrective.
+10. FES Project 1: the findings report under `reports/statistical_research/fes_project1/v1/` and the executed `notebooks/exploration/feature_research_1.ipynb` — the four advancing features and the `FROZEN_NO_POLICY` state.
+11. [Application guide](src/app/README.md) — the GQ Trade Simulator: features, instrument contract, build and verification.
 
 ## Contributor workflow
 
@@ -565,7 +598,7 @@ For collaborative work:
 1. Pull the latest `main` before starting.
 2. Use a short-lived branch for a coherent research or engineering milestone.
 3. Keep changes scoped; never use `git add -A` in a mixed working tree.
-4. Run the 94-test suite and any relevant full-run validation.
+4. Run the full test suite (480 unittest cases; add pytest for the FES modules) and any relevant full-run validation.
 5. Review notebook outputs, schemas, row counts, null behaviour, and research conclusions.
 6. Update the relevant context report when a milestone changes project state.
 7. Open a pull request with the research question, definitions, artifacts, checks, and limitations.

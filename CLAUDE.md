@@ -1,6 +1,6 @@
 # Working in this repository
 
-Private systematic trading research for CME Gold futures (GC, and MGC as the intended execution instrument). This is a **research** codebase, not an application. Its value is the trustworthiness of its conclusions, so the rules below take priority over speed, tidiness, and cleverness. Read `README.md` for structure and `project_docs/` for the governing reports.
+Private systematic trading research for CME Gold futures (GC, and MGC as the intended execution instrument). This is a **research** codebase first; the desktop simulator under `src/app` is a consumer of the verified research engines, never a reason to bend them. The repository's value is the trustworthiness of its conclusions, so the rules below take priority over speed, tidiness, and cleverness. Read `README.md` for structure and `project_docs/` for the governing reports.
 
 ## The rules that matter most
 
