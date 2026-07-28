@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
+
+try:
+    import pytest
+except ModuleNotFoundError:  # pragma: no cover - unittest discovery without pytest
+    import unittest
+
+    raise unittest.SkipTest("pytest is not installed; run this module with pytest") from None
 
 from src.statistical_research.fes_project1_features import (
     MISSING_CAUSES,
@@ -105,9 +111,7 @@ def _observations(
                 "decision_bar_id": int(bars.loc[position, "source_row_id"]),
                 "decision_timestamp_utc": timestamp,
                 "trade_date_ny": pd.Timestamp(bars.loc[position, "trade_date_ny"]),
-                "entry_session": (
-                    "London" if timestamp_ny.hour < 7 else "New York"
-                ),
+                "entry_session": ("London" if timestamp_ny.hour < 7 else "New York"),
                 "research_partition": partition,
             }
         )
@@ -148,9 +152,10 @@ def test_channel_lag_schema_and_dimensions_are_exact() -> None:
     assert schema["channel_code"].tolist()[:30] == ["R"] * 30
     assert schema["channel_code"].tolist()[30:60] == ["G"] * 30
     assert schema["channel_code"].tolist()[60:] == ["Q"] * 30
-    assert schema.groupby("channel_code", sort=False)["bar_offset_from_t"].apply(
-        list
-    ).tolist() == [list(range(-29, 1))] * 3
+    assert (
+        schema.groupby("channel_code", sort=False)["bar_offset_from_t"].apply(list).tolist()
+        == [list(range(-29, 1))] * 3
+    )
 
 
 def test_raw_profile_matches_hand_computed_channels_and_order() -> None:
@@ -181,8 +186,7 @@ def test_raw_profile_matches_hand_computed_channels_and_order() -> None:
     expected = np.concatenate(
         [
             returns[decision - 29 : decision + 1],
-            true_range[decision - 29 : decision + 1]
-            / atr20[decision - 29 : decision + 1],
+            true_range[decision - 29 : decision + 1] / atr20[decision - 29 : decision + 1],
             zscore[decision - 29 : decision + 1],
         ]
     )
@@ -195,10 +199,7 @@ def test_t_minus_30_predecessor_is_required() -> None:
     bars.loc[decision - 30, "close"] = np.nan
     result = _build(bars, [decision])
     assert not result.profile_index.loc[0, "profile_complete_30"]
-    assert (
-        str(result.profile_index.loc[0, "profile_missing_reason"])
-        == "SOURCE_INPUT_NULL"
-    )
+    assert str(result.profile_index.loc[0, "profile_missing_reason"]) == "SOURCE_INPUT_NULL"
     assert result.raw_profiles.empty
 
 
@@ -212,9 +213,7 @@ def test_p1_trimmed_mean_population_scale_and_zero_channel() -> None:
     )[None, :]
     p1, zero = p1_robust_standardize(raw)
     trimmed = np.arange(3.0, 27.0)
-    expected_r = (np.arange(30.0) - np.mean(trimmed)) / np.std(
-        trimmed, ddof=0
-    )
+    expected_r = (np.arange(30.0) - np.mean(trimmed)) / np.std(trimmed, ddof=0)
     assert p1[0, :30] == pytest.approx(expected_r)
     assert p1[0, 30:60] == pytest.approx(np.zeros(30))
     assert p1[0, 60:] == pytest.approx(expected_r[::-1])
@@ -302,10 +301,7 @@ def test_locked_boundaries_invalidate_full_profile(
         bars.loc[boundary, "roll_window_flag"] = True
     result = _build(bars, [decision])
     assert not result.profile_index.loc[0, "profile_complete_30"]
-    assert (
-        str(result.profile_index.loc[0, "profile_missing_reason"])
-        == expected_cause
-    )
+    assert str(result.profile_index.loc[0, "profile_missing_reason"]) == expected_cause
     assert result.raw_profiles.empty
 
 
@@ -325,26 +321,18 @@ def test_boundary_precedence_and_product_cause_are_exact() -> None:
 
 def test_nonpositive_atr_and_nonfinite_zscore_causes() -> None:
     flat = _build(_bars(flat_price=True), [180])
-    assert (
-        str(flat.profile_index.loc[0, "profile_missing_reason"])
-        == "NONPOSITIVE_ATR"
-    )
+    assert str(flat.profile_index.loc[0, "profile_missing_reason"]) == "NONPOSITIVE_ATR"
     constant_volume = _build(_bars(constant_volume=True), [180])
     assert (
-        str(constant_volume.profile_index.loc[0, "profile_missing_reason"])
-        == "SOURCE_INPUT_NULL"
+        str(constant_volume.profile_index.loc[0, "profile_missing_reason"]) == "SOURCE_INPUT_NULL"
     )
 
 
 def test_no_eligible_profile_crosses_1530_or_ny_date() -> None:
     bars = _bars(181, start="2024-01-02 14:00:00+00:00")
     decision = 179  # 11:59 New York
-    start = pd.Timestamp(bars.loc[decision - 88, "ts_event_utc"]).tz_convert(
-        "America/New_York"
-    )
-    end = pd.Timestamp(bars.loc[decision, "ts_event_utc"]).tz_convert(
-        "America/New_York"
-    )
+    start = pd.Timestamp(bars.loc[decision - 88, "ts_event_utc"]).tz_convert("America/New_York")
+    end = pd.Timestamp(bars.loc[decision, "ts_event_utc"]).tz_convert("America/New_York")
     assert start.strftime("%H:%M") == "10:31"
     assert end.strftime("%H:%M") == "11:59"
     assert start.date() == end.date()
@@ -426,9 +414,7 @@ def test_pls_interface_is_p2_only_target_required_and_deterministic() -> None:
     first = FoldLocalPLSProfileTransformer(2).fit(train, target)
     second = FoldLocalPLSProfileTransformer(2).fit(train, target)
     assert first.profile_transformer_.representation == "P2"
-    assert first.oriented_x_rotations_ == pytest.approx(
-        second.oriented_x_rotations_
-    )
+    assert first.oriented_x_rotations_ == pytest.approx(second.oriented_x_rotations_)
     assert first.transform(train).shape == (100, 2)
     assert np.max(np.atleast_1d(first.pls_.n_iter_)) <= 500
 
@@ -456,9 +442,7 @@ def test_diagnostics_are_outcome_free_and_dimensionally_complete() -> None:
     )
     coverage = build_profile_coverage_audit(index)
     zero = build_p1_zero_scale_audit(raw, chunk_size=37)
-    autocorrelation = build_profile_autocorrelation_diagnostics(
-        raw, maximum_lag=10, chunk_size=40
-    )
+    autocorrelation = build_profile_autocorrelation_diagnostics(raw, maximum_lag=10, chunk_size=40)
     rank = build_profile_rank_condition_diagnostics(raw, chunk_size=50)
     assert len(coverage) == 2 * len(MISSING_CAUSES)
     assert len(zero) == 3
@@ -474,6 +458,5 @@ def test_diagnostics_are_outcome_free_and_dimensionally_complete() -> None:
         ]
     ).lower()
     assert not any(
-        token in joined_columns
-        for token in ("target", "forward", "future", "label", "performance")
+        token in joined_columns for token in ("target", "forward", "future", "label", "performance")
     )

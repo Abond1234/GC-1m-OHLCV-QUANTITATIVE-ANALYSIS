@@ -5,7 +5,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
+
+try:
+    import pytest
+except ModuleNotFoundError:  # pragma: no cover - unittest discovery without pytest
+    import unittest
+
+    raise unittest.SkipTest("pytest is not installed; run this module with pytest") from None
 from sklearn.linear_model import ElasticNet
 
 from src.statistical_research.fes_project1_config import (
@@ -65,18 +71,11 @@ def test_exact_outer_fold_boundaries_and_hash_are_canonical() -> None:
     assert first.assessment_dates[-1] == dates[315]
     assert sum(len(fold.assessment_dates) for fold in folds) == 378
     payload = {
-        "train_dates": [
-            value.strftime("%Y-%m-%d") for value in first.train_dates
-        ],
+        "train_dates": [value.strftime("%Y-%m-%d") for value in first.train_dates],
         "embargo_date": first.embargo_date.strftime("%Y-%m-%d"),
-        "assessment_dates": [
-            value.strftime("%Y-%m-%d")
-            for value in first.assessment_dates
-        ],
+        "assessment_dates": [value.strftime("%Y-%m-%d") for value in first.assessment_dates],
     }
-    expected = hashlib.sha256(
-        canonical_json(payload).encode("utf-8")
-    ).hexdigest()
+    expected = hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
     assert first.fold_sha256 == expected
 
 
@@ -106,12 +105,10 @@ def test_target_exit_purge_is_greater_than_or_equal_to_cutoff() -> None:
         {
             "trade_date_ny": np.repeat(dates, 2),
             "decision_timestamp_utc": [
-                value + pd.Timedelta(hours=12)
-                for value in np.repeat(dates, 2)
+                value + pd.Timedelta(hours=12) for value in np.repeat(dates, 2)
             ],
             "exit_timestamp_utc_60": [
-                value + pd.Timedelta(hours=13)
-                for value in np.repeat(dates, 2)
+                value + pd.Timedelta(hours=13) for value in np.repeat(dates, 2)
             ],
         }
     )
@@ -138,9 +135,7 @@ def test_nested_expansion_threshold_uses_training_only_linear_quantile() -> None
         assessment,
         quantile=0.80,
     )
-    assert threshold == pytest.approx(
-        np.quantile(values[:5], 0.8, method="linear")
-    )
+    assert threshold == pytest.approx(np.quantile(values[:5], 0.8, method="linear"))
     mutated = values.copy()
     mutated[assessment] += 10_000.0
     _, mutated_threshold = nested_expansion_labels(
@@ -179,12 +174,8 @@ def test_boolean_indicators_bypass_scaling_and_constants_zero() -> None:
     transformed = ScalarFoldTransformer("S1").fit_transform(frame)
     columns = list(ALL_SCALAR_INPUTS)
     indicator_values = transformed[:, columns.index(indicator)]
-    assert np.array_equal(
-        indicator_values, frame[indicator].to_numpy(dtype=np.float64)
-    )
-    constant_values = transformed[
-        :, columns.index("relative_volume_20_clipped")
-    ]
+    assert np.array_equal(indicator_values, frame[indicator].to_numpy(dtype=np.float64))
+    constant_values = transformed[:, columns.index("relative_volume_20_clipped")]
     assert np.array_equal(constant_values, np.zeros(len(frame)))
 
 
@@ -210,9 +201,7 @@ def test_s2_exact_spline_contract_retains_linear_effects() -> None:
     transformer = ScalarFoldTransformer("S2").fit(frame)
     transformed = transformer.transform(frame)
     assert transformed.shape[1] > frame.shape[1]
-    assert tuple(transformer.output_columns_[: frame.shape[1]]) == tuple(
-        frame.columns
-    )
+    assert tuple(transformer.output_columns_[: frame.shape[1]]) == tuple(frame.columns)
     assert set(transformer.spline_transformers_) == set(SPLINE_FEATURES)
     for spline in transformer.spline_transformers_.values():
         assert spline.n_knots == 4
@@ -224,9 +213,7 @@ def test_s2_exact_spline_contract_retains_linear_effects() -> None:
 
 
 def test_hierarchy_closure_adds_every_interaction_parent() -> None:
-    closed = hierarchy_closed_support(
-        ["curvature_coherence_30", "tail_pressure_activity_60"]
-    )
+    closed = hierarchy_closed_support(["curvature_coherence_30", "tail_pressure_activity_60"])
     assert "price_path_curvature_30_atr" in closed
     assert "efficiency_ratio_30" in closed
     assert "ret_tail_balance_60" in closed
@@ -276,9 +263,7 @@ def test_fast_daily_spearman_matches_pandas_spearman() -> None:
         expected.append(
             frame.groupby("date")
             .apply(
-                lambda group: group["prediction"].corr(
-                    group["target"], method="spearman"
-                ),
+                lambda group: group["prediction"].corr(group["target"], method="spearman"),
                 include_groups=False,
             )
             .mean()
@@ -320,28 +305,31 @@ def test_profile_pca_and_pls_are_deterministically_oriented() -> None:
     target = 0.5 * raw[:, 0] - 0.2 * raw[:, 60]
     first_pca = Section5PCAProfileTransformer("P3", 8).fit(raw)
     second_pca = Section5PCAProfileTransformer("P3", 8).fit(raw)
-    assert first_pca.oriented_components_ == pytest.approx(
-        second_pca.oriented_components_
-    )
+    assert first_pca.oriented_components_ == pytest.approx(second_pca.oriented_components_)
     pca_pivots = np.argmax(np.abs(first_pca.oriented_components_), axis=1)
-    assert np.all(
-        first_pca.oriented_components_[
-            np.arange(8), pca_pivots
-        ]
-        >= 0.0
-    )
+    assert np.all(first_pca.oriented_components_[np.arange(8), pca_pivots] >= 0.0)
     first_pls = Section5PLSProfileTransformer(5).fit(raw, target)
     second_pls = Section5PLSProfileTransformer(5).fit(raw, target)
-    assert first_pls.oriented_x_weights_ == pytest.approx(
-        second_pls.oriented_x_weights_
-    )
+    assert first_pls.oriented_x_weights_ == pytest.approx(second_pls.oriented_x_weights_)
 
 
 def test_development_loader_asserts_frozen_anchors_and_never_loads_validation() -> None:
+    scalar_artifact = (
+        PROJECT_ROOT
+        / "data"
+        / "processed"
+        / "statistical_research"
+        / "fes_project1"
+        / "v1"
+        / "scalar_features_development_gc.parquet"
+    )
+    if not scalar_artifact.exists():
+        # Generated research artifacts live under the git-ignored data/ tree
+        # and exist only where the pipeline has run; every other checkout
+        # skips rather than fails.
+        pytest.skip("fes_project1 v1 scalar-feature artifact not present in this checkout")
     inputs = load_development_model_inputs(PROJECT_ROOT)
-    assert set(inputs.frame["research_partition"].astype(str)) == {
-        "Development"
-    }
+    assert set(inputs.frame["research_partition"].astype(str)) == {"Development"}
     assert set(D1_FEATURES).issubset(inputs.frame.columns)
     assert set(O1_FEATURES).issubset(inputs.frame.columns)
     locked = inputs.access_audit.loc[
@@ -351,8 +339,6 @@ def test_development_loader_asserts_frozen_anchors_and_never_loads_validation() 
     ]
     assert (locked["rows_loaded"] == 0).all()
     support = inputs.support_coverage.loc[
-        inputs.support_coverage["support_name"].eq(
-            "FINAL_HEAD_TO_HEAD_SUPPORT"
-        )
+        inputs.support_coverage["support_name"].eq("FINAL_HEAD_TO_HEAD_SUPPORT")
     ]
     assert set(support["dates"]) == {638}

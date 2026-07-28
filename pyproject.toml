@@ -12,3 +12,12 @@ known-first-party = ["src"]
 
 [tool.ruff.lint.per-file-ignores]
 "scripts/*" = ["E402"]
+
+[tool.ruff.format]
+# The fes_project1 research source is frozen: its artifacts are hash-verified
+# against the executed source state, so even semantics-preserving reformatting
+# would break byte-level provenance. Linting still applies; formatting does not.
+exclude = [
+    "src/statistical_research/fes_project1_*.py",
+    "scripts/run_fes_project1_research.py",
+]
