@@ -727,6 +727,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "volume": rs.volume,
             "segment": rs.segment,
         }
+        self.chart.set_tick_size(REGISTRY[self._instrument].spec.tick_size)
         self.chart.set_view(ohlc, labels, view_map, minute_close=bars.close[lo : hi + 1])
         # Always build the overlays; the checkboxes only flip visibility. Lines
         # are display-sampled at each bucket's close, shading at its open.
@@ -1591,6 +1592,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._mgc_range = (lo, hi, tf)
             rs = resample_window(mgc, lo, hi, tf)
             labels = bucket_labels(mgc, rs, tf, multi_day=multi_day)
+            self.mgc_chart.set_tick_size(REGISTRY["MGC"].spec.tick_size)
             self.mgc_chart.set_view(
                 {
                     "open": rs.open,
