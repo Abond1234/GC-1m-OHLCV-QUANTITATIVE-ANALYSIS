@@ -29,12 +29,11 @@ from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..analysis.whatif import run_whatifs
-from ..datalayer.bar_store import BarStore
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.edge_context import EdgeContextService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.instruments import REGISTRY, available_instruments, load_instrument_bars
-from ..datalayer.paths import project_root, research_bars_path
+from ..datalayer.paths import project_root
 from ..datalayer.session_store import (
     build_payload,
     default_sessions_dir,
@@ -142,9 +141,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._forensics_token = 0
         self._whatif_token = 0
         self._ny_label = None
-        self._mgc_bars = None  # MGC BarStore, loaded on first toggle
-        self._mgc_loading = False
-        self._mgc_range: tuple[int, int, int] | None = None  # rendered MGC window + tf
+        self._compare_bars: dict = {}  # symbol -> BarStore, cached on first use
+        self._compare_loading = False
+        self._compare_symbol = None  # active comparison instrument, or None (Off)
+        self._compare_mode = "Horizontal"  # Horizontal | Vertical | Normalized
+        self._compare_range = None  # (lo, hi, tf, symbol) rendered in the split pane
         self._instrument = "GC"  # active primary instrument symbol
         self._instrument_data: dict | None = None  # non-GC bundle (None = GC research)
         self._instrument_loading = False
@@ -197,9 +198,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # MGC (micro gold) mirror pane: same day, same clock, the execution
         # instrument's own tape. Hidden until toggled; bars load on demand.
-        self.mgc_chart = ChartWidget()
-        self.mgc_chart._price.setLabel("left", "MGC (micro)")
-        self.mgc_chart.setVisible(False)
+        # Configurable comparison pane for any instrument (H/V split); hidden
+        # until a compare instrument is chosen. Normalized mode overlays instead.
+        self.compare_chart = ChartWidget()
+        self.compare_chart.setVisible(False)
 
         self._build_menu()
         self._build_topbar()
@@ -211,7 +213,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         chart_col = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         chart_col.addWidget(self.chart)
-        chart_col.addWidget(self.mgc_chart)
+        chart_col.addWidget(self.compare_chart)
         chart_col.setSizes([650, 320])
         chart_col.setCollapsible(0, False)
         self._chart_col = chart_col
@@ -327,14 +329,20 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.grid_btn.clicked.connect(self._on_exit_grid)
 
-        # The global toolbar stays lean: instrument, the literal date window, and
-        # the display timeframe. Every other control lives in a left workspace.
-        self.mgc_check = QtWidgets.QCheckBox("MGC mirror")
-        self.mgc_check.setToolTip(
-            "Show the MGC (micro gold) tape for the same day underneath, with the\n"
-            "current GC trade's entry/exit and initial levels mirrored onto it."
+        # Overlay / compare: pick a second instrument and a comparison mode.
+        self.compare_combo = QtWidgets.QComboBox()
+        self.compare_combo.setToolTip(
+            "Compare a second instrument: Horizontal or Vertical split (each pane\n"
+            "keeps its own price scale), or a Normalized overlay on this chart."
         )
-        self.mgc_check.toggled.connect(self._on_mgc_toggled)
+        self.compare_combo.currentIndexChanged.connect(self._on_compare_changed)
+        self.compare_mode_combo = QtWidgets.QComboBox()
+        self.compare_mode_combo.addItems(self._COMPARE_MODES)
+        self.compare_mode_combo.setToolTip("How the comparison instrument is shown.")
+        self.compare_mode_combo.currentTextChanged.connect(self._on_compare_mode_changed)
+
+        # The global toolbar stays lean: instrument, the literal date window, the
+        # display timeframe, and the comparison overlay.
         self._controls = QtWidgets.QHBoxLayout()
         self._controls.setSpacing(6)
         for w in (
@@ -345,6 +353,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.end_edit,
             QtWidgets.QLabel("TF"),
             self.tf_combo,
+            _sep(),
+            QtWidgets.QLabel("Compare"),
+            self.compare_combo,
+            self.compare_mode_combo,
         ):
             self._controls.addWidget(w)
         self._controls.addStretch(1)
@@ -564,11 +576,6 @@ class MainWindow(QtWidgets.QMainWindow):
         transport_act.setText("Replay transport")
         transport_act.setShortcut("Ctrl+R")
         menu.addAction(transport_act)
-        mgc_act = menu.addAction("MGC mirror pane")
-        mgc_act.setCheckable(True)
-        mgc_act.setShortcut("Ctrl+M")
-        mgc_act.toggled.connect(self.mgc_check.setChecked)
-        self.mgc_check.toggled.connect(mgc_act.setChecked)
 
     def _build_transport(self) -> None:
         bar = QtWidgets.QToolBar("Replay")
@@ -747,6 +754,7 @@ class MainWindow(QtWidgets.QMainWindow):
         gc_index = self.instrument_combo.findData("GC")
         self.instrument_combo.setCurrentIndex(max(0, gc_index))
         self.instrument_combo.blockSignals(False)
+        self._populate_compare_combo()
         self.session_panel.sync_instruments(available_instruments(), self._instrument)
         self._set_status(f"Loaded {data['replay'].bars.n_bars:,} GC bars (Dev+Val).")
         self._render_view()
@@ -879,7 +887,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if active is not None and self._in_view(active.entry_position):
                 stop_price, target_price = self._level_prices(active)
                 self.chart.set_draggable_levels(stop_price, target_price, self._on_level_dragged)
-        self._update_mgc_pane()
+        self._refresh_compare()
 
     def _draw_analysis_overlays(self) -> None:
         """Excursion ribbon and any what-if overlays for the current trade."""
@@ -1438,10 +1446,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.replay_btn.setToolTip(
                 "Strategy catalog and replay are GC-only (research validity)."
             )
-        self.mgc_check.setVisible(gc_active)
-        if not gc_active:
-            self.mgc_check.setChecked(False)
-            self.mgc_chart.setVisible(False)
+        # The comparison list excludes the new primary; reset it to Off on a switch.
+        self.compare_chart.setVisible(False)
+        self.chart.clear_compare_line()
+        self._compare_symbol = None
+        self._populate_compare_combo()
         self.session_panel.sync_instruments(available_instruments(), symbol)
         self._set_date_bounds(self._active_data()["dates"])
         self.setWindowTitle(f"GQ Trade Simulator - {instrument.display} - Development + Validation")
@@ -1670,62 +1679,110 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     # -- MGC mirror pane ----------------------------------------------------
-    def _on_mgc_toggled(self, on: bool) -> None:
-        if not on:
-            self.mgc_chart.setVisible(False)
+    _COMPARE_MODES = ("Horizontal", "Vertical", "Normalized")
+
+    def _populate_compare_combo(self) -> None:
+        self.compare_combo.blockSignals(True)
+        self.compare_combo.clear()
+        self.compare_combo.addItem("Off", None)
+        for inst in available_instruments():
+            if inst.symbol != self._instrument:
+                self.compare_combo.addItem(inst.display, inst.symbol)
+        self.compare_combo.setCurrentIndex(0)
+        self.compare_combo.blockSignals(False)
+
+    def _on_compare_changed(self) -> None:
+        symbol = self.compare_combo.currentData()
+        self._compare_symbol = symbol
+        if not symbol:
+            self._apply_compare_mode()
             return
-        if self._mgc_bars is None:
-            if self._mgc_loading:
+        if symbol not in self._compare_bars:
+            if self._compare_loading:
                 return
-            self._mgc_loading = True
-            self._set_status("Loading MGC bars ...")
-            task = Task(BarStore.load, research_bars_path(), product="MGC")
-            task.signals.finished.connect(self._on_mgc_loaded)
-            task.signals.error.connect(self._on_mgc_error)
+            self._compare_loading = True
+            self._set_status(f"Loading {symbol} bars ...")
+            task = Task(load_instrument_bars, symbol)
+            task.signals.finished.connect(lambda store, s=symbol: self._on_compare_loaded(s, store))
+            task.signals.error.connect(self._on_compare_error)
             self._start(task)
             return
-        self.mgc_chart.setVisible(True)
-        self._update_mgc_pane(force_render=True)
+        self._apply_compare_mode()
 
-    def _on_mgc_loaded(self, store) -> None:
-        self._mgc_loading = False
-        self._mgc_bars = store
-        self._set_status(f"MGC: {store.n_bars:,} bars loaded (Dev+Val).")
-        if self.mgc_check.isChecked():
-            self.mgc_chart.setVisible(True)
-            self._update_mgc_pane(force_render=True)
+    def _on_compare_loaded(self, symbol: str, store) -> None:
+        self._compare_loading = False
+        self._compare_bars[symbol] = store
+        self._set_status(f"{symbol}: {store.n_bars:,} bars loaded.")
+        if self._compare_symbol == symbol:
+            self._apply_compare_mode()
 
-    def _on_mgc_error(self, message: str) -> None:
-        self._mgc_loading = False
-        self.mgc_check.setChecked(False)
+    def _on_compare_error(self, message: str) -> None:
+        self._compare_loading = False
+        self.compare_combo.setCurrentIndex(0)  # back to Off
         self._on_error(message)
 
-    def _update_mgc_pane(self, force_render: bool = False) -> None:
-        """Render the MGC day window and ghost the current GC trade onto it."""
+    def _on_compare_mode_changed(self, text: str) -> None:
+        self._compare_mode = text
+        self._apply_compare_mode()
 
+    def _apply_compare_mode(self) -> None:
+        symbol = self._compare_symbol
+        if not symbol or symbol not in self._compare_bars:
+            self.compare_chart.setVisible(False)
+            self.compare_chart._price.setXLink(None)
+            self.chart.clear_compare_line()
+            return
+        if self._compare_mode == "Normalized":
+            self.compare_chart.setVisible(False)
+            self.compare_chart._price.setXLink(None)
+            self._draw_compare_overlay(symbol)
+        else:
+            self.chart.clear_compare_line()
+            self._chart_col.setOrientation(
+                QtCore.Qt.Vertical if self._compare_mode == "Horizontal" else QtCore.Qt.Horizontal
+            )
+            self.compare_chart.setVisible(True)
+            self._compare_range = None  # force a fresh render
+            self._update_compare()
+
+    def _refresh_compare(self) -> None:
+        """Keep the comparison in step with the primary view (per redraw)."""
+
+        if not self._compare_symbol or self._compare_symbol not in self._compare_bars:
+            return
+        if self._compare_mode == "Normalized":
+            self._draw_compare_overlay(self._compare_symbol)
+        else:
+            self._update_compare()
+
+    def _update_compare(self, force_render: bool = False) -> None:
+        """Render the comparison split pane, X-linked to the primary for time sync."""
+
+        symbol = self._compare_symbol
         if (
-            self._instrument != "GC"
-            or self._mgc_bars is None
-            or not self.mgc_chart.isVisible()
+            not symbol
+            or symbol not in self._compare_bars
+            or not self.compare_chart.isVisible()
             or self._data is None
         ):
             return
-        mgc = self._mgc_bars
+        cmp = self._compare_bars[symbol]
         lo, hi = self._window_bounds(
-            mgc, self.start_edit.date().toPython(), self.end_edit.date().toPython()
+            cmp, self.start_edit.date().toPython(), self.end_edit.date().toPython()
         )
         if hi < lo:
-            self.mgc_chart.clear_trades()
-            self._set_status("No MGC bars in this range.")
+            self.compare_chart.clear_trades()
+            self._set_status(f"No {symbol} bars in this range.")
             return
-        multi_day = mgc.trade_date[lo] != mgc.trade_date[hi]
+        multi_day = cmp.trade_date[lo] != cmp.trade_date[hi]
         tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
-        if force_render or self._mgc_range != (lo, hi, tf):
-            self._mgc_range = (lo, hi, tf)
-            rs = resample_window(mgc, lo, hi, tf)
-            labels = bucket_labels(mgc, rs, tf, multi_day=multi_day)
-            self.mgc_chart.set_tick_size(REGISTRY["MGC"].spec.tick_size)
-            self.mgc_chart.set_view(
+        if force_render or self._compare_range != (lo, hi, tf, symbol):
+            self._compare_range = (lo, hi, tf, symbol)
+            rs = resample_window(cmp, lo, hi, tf)
+            labels = bucket_labels(cmp, rs, tf, multi_day=multi_day)
+            self.compare_chart._price.setLabel("left", REGISTRY[symbol].display)
+            self.compare_chart.set_tick_size(REGISTRY[symbol].spec.tick_size)
+            self.compare_chart.set_view(
                 {
                     "open": rs.open,
                     "high": rs.high,
@@ -1736,41 +1793,55 @@ class MainWindow(QtWidgets.QMainWindow):
                 },
                 labels,
                 ViewMap.from_resampled(rs, tf),
-                minute_close=mgc.close[lo : hi + 1],
+                minute_close=cmp.close[lo : hi + 1],
             )
-            self.mgc_chart.shade_sessions(
-                sample_first(_session_code(mgc.minute_ny), rs),
+            self.compare_chart.shade_sessions(
+                sample_first(_session_code(cmp.minute_ny), rs),
                 visible=self.session_check.isChecked(),
             )
-        self.mgc_chart.clear_trades()
+            # Time synchronisation: link the compare X to the primary so panning
+            # or zooming one pane moves the other (aligned for a same-clock tape).
+            self.compare_chart._price.setXLink(self.chart._price)
+        self.compare_chart.clear_trades()
         result, _cfg = self._current()
-        if result is None or not self._in_view(result.entry_position):
+        if self._instrument != "GC" or result is None or not self._in_view(result.entry_position):
             return
-        # Map the GC trade onto the MGC clock by timestamp (minute-of-day is
-        # not monotonic within an NY trade date; timestamps are). Search the
-        # raw ts arrays directly - both stores read the same parquet column,
-        # so the values compare without any tz-dropping conversion.
+        # Map the GC trade onto the comparison clock by timestamp.
         gc = self._bars
-        entry_pos = int(np.searchsorted(mgc.ts, gc.ts[int(result.entry_position)]))
+        entry_pos = int(np.searchsorted(cmp.ts, gc.ts[int(result.entry_position)]))
         exit_pos = int(
-            np.searchsorted(mgc.ts, gc.ts[min(int(result.exit_position), gc.n_bars - 1)])
+            np.searchsorted(cmp.ts, gc.ts[min(int(result.exit_position), gc.n_bars - 1)])
         )
-        entry_pos = max(0, min(entry_pos, mgc.n_bars - 1))
-        exit_pos = max(0, min(exit_pos, mgc.n_bars - 1))
+        entry_pos = max(0, min(entry_pos, cmp.n_bars - 1))
+        exit_pos = max(0, min(exit_pos, cmp.n_bars - 1))
         if not (lo <= entry_pos <= hi):
             return
         exit_pos = max(lo, min(exit_pos, hi))
         stop0 = float(result.stop_track[0]) if len(result.stop_track) else None
         target0 = float(result.target_track[0]) if len(result.target_track) else None
-        self.mgc_chart.mirror_trade(
-            entry_pos,
-            exit_pos,
-            float(result.entry_price),
-            stop0,
-            target0,
-            float(result.exit_price),
+        self.compare_chart.mirror_trade(
+            entry_pos, exit_pos, float(result.entry_price), stop0, target0, float(result.exit_price)
         )
-        self.mgc_chart.center_on(entry_pos)
+
+    def _draw_compare_overlay(self, symbol: str) -> None:
+        """Normalized overlay: the comparison rebased to the primary's first close."""
+
+        cmp = self._compare_bars[symbol]
+        lo, hi = self._window_bounds(
+            cmp, self.start_edit.date().toPython(), self.end_edit.date().toPython()
+        )
+        if hi < lo or len(self._bars.close) == 0:
+            self.chart.clear_compare_line()
+            return
+        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        rs = resample_window(cmp, lo, hi, tf)
+        if len(rs.close) == 0 or float(rs.close[0]) == 0.0:
+            self.chart.clear_compare_line()
+            return
+        base = float(self._bars.close[self._view_start])
+        norm = base * np.asarray(rs.close, dtype=float) / float(rs.close[0])
+        label = f"{symbol} (normalized: rebased to {self._instrument}'s first close)"
+        self.chart.set_compare_line(norm, label)
 
     # -- animated replay ---------------------------------------------------
     def _replay_day(self) -> None:

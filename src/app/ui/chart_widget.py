@@ -236,6 +236,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._labels: np.ndarray = np.array([])
         self._last_readout_i = -1
         self._vwap_items: dict[str, pg.PlotDataItem] = {}  # kind -> overlay line
+        self._compare_item = None  # normalized comparison overlay line
         self._session_regions: list = []  # NY-session shading regions
         # Persistent slots for the one detailed trade and its excursion ribbon,
         # so a 60 Hz stop/target drag updates data in place instead of tearing
@@ -351,6 +352,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._level_proxies.clear()
         self._replay_items.clear()
         self._vwap_items.clear()
+        self._compare_item = None  # removed by _price.clear(); redrawn by the caller
         self._session_regions.clear()
         self._active_trade_items = None
         self._excursion_items = None
@@ -800,6 +802,22 @@ class ChartWidget(QtWidgets.QWidget):
         item.setVisible(visible)
         self._price.addItem(item)
         self._vwap_items[kind] = item
+
+    def set_compare_line(self, values: np.ndarray, label: str) -> None:
+        """Overlay a normalized comparison series; the label states the method."""
+
+        self.clear_compare_line()
+        p = theme.active()
+        x = np.arange(len(values))
+        self._compare_item = pg.PlotDataItem(
+            x, values, pen=pg.mkPen(p.gold, width=1.6, style=QtCore.Qt.DashLine), name=label
+        )
+        self._price.addItem(self._compare_item)
+
+    def clear_compare_line(self) -> None:
+        if self._compare_item is not None:
+            self._price.removeItem(self._compare_item)
+            self._compare_item = None
 
     def set_vwap_visible(self, kind: str, on: bool) -> None:
         item = self._vwap_items.get(kind)
