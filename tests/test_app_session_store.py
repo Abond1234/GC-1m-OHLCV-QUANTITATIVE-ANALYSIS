@@ -20,9 +20,9 @@ from src.app.sim.exit_config import ExitConfig
 def _payload(**overrides):
     base = dict(
         theme_mode="dark",
-        view={"anchor_date": "2024-12-31", "range_text": "1W", "timeframe": "15m"},
+        view={"start_date": "2024-12-24", "end_date": "2024-12-31", "timeframe": "15m"},
         account={"starting_balance": 100000.0, "sizing_mode": "risk_percent"},
-        evaluation_preset="Prop 100k",
+        evaluation={"name": "Prop 100k", "starting_balance": 100000.0, "profit_target_pct": 8.0},
         placed=[
             {
                 "id": 1,

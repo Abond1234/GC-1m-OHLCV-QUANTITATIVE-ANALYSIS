@@ -21,7 +21,8 @@ from ..sim.exit_config import ExitConfig
 
 # v2: the view block carries a literal start_date/end_date window (was an
 # anchor_date + rolling range_days count).
-SCHEMA_VERSION = 2
+# v3: the evaluation is a full prop-firm policy dict (was a preset name).
+SCHEMA_VERSION = 3
 
 
 def default_sessions_dir(project_root: Path) -> Path:
@@ -42,7 +43,7 @@ def build_payload(
     theme_mode: str,
     view: dict,
     account: dict,
-    evaluation_preset: str,
+    evaluation: dict,
     placed: list[dict],
     active_id: int | None,
     next_id: int,
@@ -56,7 +57,7 @@ def build_payload(
         "theme": theme_mode,
         "view": dict(view),
         "account": dict(account),
-        "evaluation_preset": evaluation_preset,
+        "evaluation": dict(evaluation),
         "placed": list(placed),
         "active_id": active_id,
         "next_id": int(next_id),

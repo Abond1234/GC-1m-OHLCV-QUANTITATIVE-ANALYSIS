@@ -24,7 +24,7 @@ import pandas as pd
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..analysis.account import build_equity_curve, session_stats
-from ..analysis.evaluation import evaluate
+from ..analysis.evaluation import evaluate_policy
 from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
@@ -545,7 +545,10 @@ class MainWindow(QtWidgets.QMainWindow):
         w = QtWidgets.QWidget()
         lay = QtWidgets.QVBoxLayout(w)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.session_panel)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.session_panel)  # the panel is dense; let it scroll
+        lay.addWidget(scroll)
         return w
 
     def _build_menu(self) -> None:
@@ -1246,7 +1249,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "fixed_contracts": int(sp.contracts_spin.value()),
                 "instrument_index": sp.instrument_combo.currentIndex(),
             },
-            evaluation_preset=sp.preset_combo.currentText(),
+            evaluation=sp.policy_dict(),
             placed=placed,
             active_id=self._active_id,
             next_id=self._next_id,
@@ -1313,18 +1316,15 @@ class MainWindow(QtWidgets.QMainWindow):
         sp.risk_spin.setValue(float(account.get("risk_percent", 1.0)))
         sp.contracts_spin.setValue(int(account.get("fixed_contracts", 1)))
         sp.instrument_combo.setCurrentIndex(int(account.get("instrument_index", 0)))
-        preset = payload.get("evaluation_preset", "Practice - no rules")
-        if sp.preset_combo.findText(preset) >= 0:
-            sp.preset_combo.setCurrentText(preset)
         for widget in (
             sp.balance_spin,
             sp.sizing_combo,
             sp.risk_spin,
             sp.contracts_spin,
             sp.instrument_combo,
-            sp.preset_combo,
         ):
             widget.blockSignals(False)
+        sp.load_policy_dict(payload.get("evaluation", {}))
 
         # Re-simulate every trade through the verified engine; results are
         # recomputed, never trusted from disk.
@@ -1533,9 +1533,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 r_list[i] = float(trade.result.gross_r)
                 dollars[int(trade.id)] = float(curve.pnl[i])
         stats = session_stats(curve, r_list, settings)
-        rules = self.session_panel.evaluation_rules()
-        status = evaluate(curve, rules, settings.starting_balance) if rules else None
-        self.session_panel.update_session(curve, stats, status)
+        report = evaluate_policy(curve, self.session_panel.policy())
+        self.session_panel.update_session(curve, stats, report)
         self.blotter.set_dollars(dollars)
 
     # -- forensics ---------------------------------------------------------
