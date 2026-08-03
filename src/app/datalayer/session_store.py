@@ -19,7 +19,9 @@ from pathlib import Path
 
 from ..sim.exit_config import ExitConfig
 
-SCHEMA_VERSION = 1
+# v2: the view block carries a literal start_date/end_date window (was an
+# anchor_date + rolling range_days count).
+SCHEMA_VERSION = 2
 
 
 def default_sessions_dir(project_root: Path) -> Path:

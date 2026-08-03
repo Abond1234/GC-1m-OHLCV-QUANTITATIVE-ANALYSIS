@@ -149,8 +149,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._instrument_data: dict | None = None  # non-GC bundle (None = GC research)
         self._instrument_loading = False
         self._pending_session: dict | None = None  # session applied after a switch
-        self._range_days = 1  # trade dates shown, anchored at the selected date
-        self._range_text = "1D"
+        self._date_guard = False  # suppress re-render while setting both date edits
         self._edge_service = EdgeContextService()
         self._edge_token = 0
         self._edge_day: tuple[int, int] | None = None  # anchor day's 1m [lo, hi]
@@ -241,16 +240,18 @@ class MainWindow(QtWidgets.QMainWindow):
             "Strategy replay and Edge context stay GC-only (research validity)."
         )
         self.instrument_combo.currentIndexChanged.connect(self._on_instrument_changed)
-        self.date_combo = QtWidgets.QComboBox()
-        self.date_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.date_combo.currentTextChanged.connect(lambda _t: self._render_view())
-        self.range_combo = QtWidgets.QComboBox()
-        self.range_combo.addItems(["1D", "1W", "1M", "Custom..."])
-        self.range_combo.setToolTip(
-            "How many trade dates to show, ending at the selected date.\n"
-            "1W = 5 trade dates, 1M = 22; Custom asks for a day count."
-        )
-        self.range_combo.currentTextChanged.connect(self._on_range_changed)
+        # Literal date window: Start and End load exactly the requested interval,
+        # with no "ending at the selected date" lookback behaviour.
+        self.start_edit = QtWidgets.QDateEdit()
+        self.end_edit = QtWidgets.QDateEdit()
+        for edit, tip in (
+            (self.start_edit, "First trade date to load (inclusive)."),
+            (self.end_edit, "Last trade date to load (inclusive)."),
+        ):
+            edit.setCalendarPopup(True)
+            edit.setDisplayFormat("yyyy-MM-dd")
+            edit.setToolTip(tip + " The chart loads exactly this interval.")
+            edit.dateChanged.connect(self._on_dates_changed)
         self.tf_combo = QtWidgets.QComboBox()
         self.tf_combo.addItems(list(TIMEFRAMES))
         self.tf_combo.setToolTip(
@@ -327,9 +328,10 @@ class MainWindow(QtWidgets.QMainWindow):
         row1 = QtWidgets.QHBoxLayout()
         for w in (
             self.instrument_combo,
-            QtWidgets.QLabel("Date"),
-            self.date_combo,
-            self.range_combo,
+            QtWidgets.QLabel("Start"),
+            self.start_edit,
+            QtWidgets.QLabel("End"),
+            self.end_edit,
             self.tf_combo,
             self.vwap_check,
             self.vwap_day_check,
@@ -621,9 +623,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._data = data
         self._ny_label = ny_time_label(data["replay"].bars)
         self.blotter.set_time_label(self._ny_label)
-        self.date_combo.blockSignals(True)
-        self.date_combo.addItems([pd.Timestamp(d).strftime("%Y-%m-%d") for d in data["dates"]])
-        self.date_combo.blockSignals(False)
+        self._set_date_bounds(data["dates"])
         for spec in data["replay"].list_strategies():
             self.strategy_combo.addItem(spec.name)
         # The closed combo stays compact; widen the popup to the longest name.
@@ -662,45 +662,63 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return self._instrument_data if self._instrument_data is not None else self._data
 
-    def _on_range_changed(self, text: str) -> None:
-        presets = {"1D": 1, "1W": 5, "1M": 22}
-        if text in presets:
-            self._range_days = presets[text]
-        else:  # Custom...
-            days, ok = QtWidgets.QInputDialog.getInt(
-                self, "Custom range", "Trade dates to show:", self._range_days, 2, 60
-            )
-            if not ok:
-                self.range_combo.blockSignals(True)
-                self.range_combo.setCurrentText(self._range_text)
-                self.range_combo.blockSignals(False)
-                return
-            self._range_days = days
-        self._range_text = text
+    @staticmethod
+    def _qdate(ts) -> QtCore.QDate:
+        t = pd.Timestamp(ts)
+        return QtCore.QDate(t.year, t.month, t.day)
+
+    def _set_date_bounds(self, dates) -> None:
+        """Constrain both date edits to the loaded window and default to the last day."""
+
+        first, last = self._qdate(dates[0]), self._qdate(dates[-1])
+        self._date_guard = True
+        for edit in (self.start_edit, self.end_edit):
+            edit.setDateRange(first, last)
+        self.start_edit.setDate(last)  # default: the most recent single day
+        self.end_edit.setDate(last)
+        self._date_guard = False
+
+    def _window_bounds(self, bars, start_d, end_d) -> tuple[int, int]:
+        """First and last 1m bar index covering the inclusive [start, end] dates."""
+
+        start = np.datetime64(pd.Timestamp(start_d))
+        end = np.datetime64(pd.Timestamp(end_d))
+        lo = int(np.searchsorted(bars.trade_date, start, side="left"))
+        hi = int(np.searchsorted(bars.trade_date, end, side="right")) - 1
+        return lo, hi
+
+    def _on_dates_changed(self, _d=None) -> None:
+        if self._date_guard or self._data is None:
+            return
+        if self.start_edit.date() > self.end_edit.date():
+            # Keep the pair ordered by snapping the edit the user did not touch.
+            self._date_guard = True
+            if self.sender() is self.start_edit:
+                self.end_edit.setDate(self.start_edit.date())
+            else:
+                self.start_edit.setDate(self.end_edit.date())
+            self._date_guard = False
         self._render_view()
 
     def _render_view(self) -> None:
-        """Render the anchored date range at the selected display timeframe."""
+        """Render the literal [Start, End] date window at the display timeframe."""
 
-        if self._data is None or not self.date_combo.count():
+        if self._data is None:
             return
         self._animator.stop()  # leaving the window ends any running animation
         bars = self._bars
-        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        dates = self._active_data()["dates"]
-        anchor_idx = int(np.searchsorted(dates, anchor))
-        start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
-        # Bars are chronological, so the window is two binary searches, not a
-        # full-array comparison over the whole Dev+Val history.
-        lo = int(np.searchsorted(bars.trade_date, start_date, side="left"))
-        hi = int(np.searchsorted(bars.trade_date, anchor, side="right")) - 1
+        lo, hi = self._window_bounds(
+            bars, self.start_edit.date().toPython(), self.end_edit.date().toPython()
+        )
         if hi < lo:
+            self._set_status("No bars in the selected date range.")
             return
         self._view_start, self._view_end = lo, hi
+        multi_day = bars.trade_date[lo] != bars.trade_date[hi]
         tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
         rs = resample_window(bars, lo, hi, tf)
         view_map = ViewMap.from_resampled(rs, tf)
-        labels = bucket_labels(bars, rs, tf, multi_day=self._range_days > 1)
+        labels = bucket_labels(bars, rs, tf, multi_day=multi_day)
         ohlc = {
             "open": rs.open,
             "high": rs.high,
@@ -829,13 +847,19 @@ class MainWindow(QtWidgets.QMainWindow):
         return entry + t.stop_points, entry - t.target_points
 
     def _ensure_date_for(self, position: int) -> bool:
-        """Switch the view to the bar's date; True if that re-rendered the chart."""
+        """Widen the date window to include the bar; True if that re-rendered."""
 
-        date = pd.Timestamp(self._bars.trade_date[position]).strftime("%Y-%m-%d")
-        if self.date_combo.currentText() != date:
-            self.date_combo.setCurrentText(date)  # triggers _render_view
-            return True
-        return False
+        if self._in_view(position):
+            return False
+        qd = self._qdate(self._bars.trade_date[position])
+        self._date_guard = True
+        if qd < self.start_edit.date():
+            self.start_edit.setDate(qd)
+        elif qd > self.end_edit.date():
+            self.end_edit.setDate(qd)
+        self._date_guard = False
+        self._render_view()
+        return True
 
     # -- replay ------------------------------------------------------------
     def _on_replay(self) -> None:
@@ -1070,9 +1094,8 @@ class MainWindow(QtWidgets.QMainWindow):
             theme_mode=theme.active().name,
             view={
                 "instrument": self._instrument,
-                "anchor_date": self.date_combo.currentText(),
-                "range_text": self._range_text,
-                "range_days": self._range_days,
+                "start_date": self.start_edit.date().toString("yyyy-MM-dd"),
+                "end_date": self.end_edit.date().toString("yyyy-MM-dd"),
                 "timeframe": self.tf_combo.currentText(),
             },
             account={
@@ -1195,22 +1218,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self._whatif_runs = []
 
         view = payload.get("view", {})
-        self._range_text = view.get("range_text", "1D")
-        self._range_days = int(view.get("range_days", 1))
-        for combo, value in (
-            (self.range_combo, self._range_text),
-            (self.tf_combo, view.get("timeframe", "1m")),
-        ):
-            combo.blockSignals(True)
-            if combo.findText(value) >= 0:
-                combo.setCurrentText(value)
-            combo.blockSignals(False)
+        self.tf_combo.blockSignals(True)
+        tf = view.get("timeframe", "1m")
+        if self.tf_combo.findText(tf) >= 0:
+            self.tf_combo.setCurrentText(tf)
+        self.tf_combo.blockSignals(False)
         self._set_theme(payload.get("theme", theme.active().name))
-        anchor = view.get("anchor_date", "")
-        if self.date_combo.findText(anchor) >= 0 and self.date_combo.currentText() != anchor:
-            self.date_combo.setCurrentText(anchor)  # triggers _render_view
-        else:
-            self._render_view()
+        # Restore the literal date window (clamped to the instrument's data range).
+        self._date_guard = True
+        for edit, key in ((self.start_edit, "start_date"), (self.end_edit, "end_date")):
+            saved = QtCore.QDate.fromString(view.get(key, ""), "yyyy-MM-dd")
+            if saved.isValid():
+                edit.setDate(saved)
+        self._date_guard = False
+        self._render_view()
         self.chart.import_drawings(payload.get("drawings", []))
         self.blotter.set_trades(list(self._placed.values()))
         if self._active_id is not None:
@@ -1289,12 +1310,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mgc_check.setChecked(False)
             self.mgc_chart.setVisible(False)
         self.session_panel.sync_instruments(available_instruments(), symbol)
-        dates = self._active_data()["dates"]
-        self.date_combo.blockSignals(True)
-        self.date_combo.clear()
-        self.date_combo.addItems([pd.Timestamp(d).strftime("%Y-%m-%d") for d in dates])
-        self.date_combo.setCurrentIndex(self.date_combo.count() - 1)
-        self.date_combo.blockSignals(False)
+        self._set_date_bounds(self._active_data()["dates"])
         self.setWindowTitle(f"GQ Trade Simulator - {instrument.display} - Development + Validation")
         self._render_view()
         self._recompute_session()
@@ -1306,9 +1322,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- edge context ------------------------------------------------------
     def _refresh_edge_context(self) -> None:
-        """Compute the anchor day's validated features on the worker pool."""
+        """Compute the last visible day's validated features on the worker pool."""
 
-        if self._data is None or not self.date_combo.count():
+        if self._data is None:
             return
         if self._instrument != "GC":
             self.edge_panel.clear_context(
@@ -1318,7 +1334,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._edge_day = None
             return
         bars = self._bars
-        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
+        day_str = self.end_edit.date().toString("yyyy-MM-dd")
+        anchor = np.datetime64(pd.Timestamp(day_str))
         day_lo = int(np.searchsorted(bars.trade_date, anchor, side="left"))
         day_hi = int(np.searchsorted(bars.trade_date, anchor, side="right")) - 1
         if day_hi < day_lo:
@@ -1330,7 +1347,7 @@ class MainWindow(QtWidgets.QMainWindow):
         token = self._edge_token
         self.edge_panel.clear_context("Computing the day's context ...")
         minute_slice = bars.minute_ny[day_lo : day_hi + 1].copy()
-        task = Task(self._edge_service.day_context, self.date_combo.currentText(), minute_slice)
+        task = Task(self._edge_service.day_context, day_str, minute_slice)
         task.signals.finished.connect(
             lambda context, tok=token: self._on_edge_context(context, tok)
         )
@@ -1558,25 +1575,22 @@ class MainWindow(QtWidgets.QMainWindow):
             or self._mgc_bars is None
             or not self.mgc_chart.isVisible()
             or self._data is None
-            or not self.date_combo.count()
         ):
             return
         mgc = self._mgc_bars
-        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        dates = self._active_data()["dates"]
-        anchor_idx = int(np.searchsorted(dates, anchor))
-        start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
-        lo = int(np.searchsorted(mgc.trade_date, start_date, side="left"))
-        hi = int(np.searchsorted(mgc.trade_date, anchor, side="right")) - 1
+        lo, hi = self._window_bounds(
+            mgc, self.start_edit.date().toPython(), self.end_edit.date().toPython()
+        )
         if hi < lo:
             self.mgc_chart.clear_trades()
             self._set_status("No MGC bars in this range.")
             return
+        multi_day = mgc.trade_date[lo] != mgc.trade_date[hi]
         tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
         if force_render or self._mgc_range != (lo, hi, tf):
             self._mgc_range = (lo, hi, tf)
             rs = resample_window(mgc, lo, hi, tf)
-            labels = bucket_labels(mgc, rs, tf, multi_day=self._range_days > 1)
+            labels = bucket_labels(mgc, rs, tf, multi_day=multi_day)
             self.mgc_chart.set_view(
                 {
                     "open": rs.open,
