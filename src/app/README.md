@@ -100,9 +100,22 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
 
 ## What it does
 
+- **Workspace shell**: the chart stays central; configuration lives in five
+  collapsible left workspaces reached from a nav rail (Ctrl+1-5) - Strategy
+  (search, replay, free-play, the trade list and analysis), Indicators (VWAP and
+  session overlays, edge context), Drawing (the drawing tools), Risk (the exit
+  rule), and Prop firm (the evaluation account). The global toolbar carries only
+  the instrument, the Start/End dates, the timeframe, and the comparison overlay.
+- **Explicit date window**: Start and End date fields load exactly the requested
+  interval - no rolling lookback. A timeframe selector (1m-1D) resamples the
+  display; every simulation, entry, exit, and replay stays on true 1-minute bars.
 - **Chart**: GC candlesticks with volume, three VWAP overlays (rolling / day /
-  session), New York session shading, a crosshair with an O/H/L/C readout, and a
-  dual price axis. Candles never draw across a continuous-segment break.
+  session), New York session shading, a crosshair with an O/H/L/C-and-change
+  readout, and a single tick-formatted price axis (left-drag to scale, double-
+  click to auto-fit). Candles never draw across a continuous-segment break.
+- **Trade inspector** (right): a single click on a strategy trade shows a compact
+  overview; a double-click opens the full detail (chart focus, forensics verdict,
+  horizon chart, entry context); Escape returns to the full chart.
 - **Replay**: pick a strategy (the 12-rule library or the ~200-strategy catalog),
   plot its trades coloured by outcome, and click any trade to redraw its exact path
   and read its forensics.
@@ -128,32 +141,29 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
     revealed bars as it runs.
   - **Forensics panel**: a plain-language verdict, a per-horizon MFE/MAE mini-chart,
     and labelled entry-context meters.
-- **Drawing tools** (left Draw bar, View menu Ctrl+4): draggable price levels,
-  trendlines (drag across the chart or click two points), shaded supply/demand
-  zones, and vertical time markers - all with TradingView-style drag gestures, a
-  live preview, right-click to cancel, and Undo/Clear. Drawings live in data
-  coordinates (exact under any zoom), persist per day within the session, and
-  stay visible above the replay curtain while the tape plays.
-- **MGC mirror pane** (row-2 checkbox or Ctrl+5): the micro-gold tape for the
-  same day rendered underneath, with the current GC trade's entry/exit and
-  initial stop/target ghosted onto it by timestamp - a visual check of whether
-  the pattern replicated on the execution instrument. MGC bars load on demand
-  through the same Development+Validation cap.
-- **Multi-day ranges and display timeframes**: a range preset (1D/1W/1M/custom)
-  anchored at the selected date, and a timeframe selector (1m to 1D). The
-  aggregation is display-only - every simulation, entry, exit, and replay stays
-  on true 1-minute bars - and every overlay (trades, ribbons, replay curtain,
-  drawings, free-play clicks) maps through a single ViewMap, so everything
-  works identically at any timeframe. TradingView-style price-axis handling:
-  left-drag the price axis to scale, double-click it to auto-fit.
-- **Session tab (money layer)**: a dollar account model (GC $100/pt or MGC
-  $10/pt, risk-percent or fixed-contract sizing) turns the blotter into an
-  equity curve with desk stats, and an optional prop-style evaluation preset
-  arms hard rules (daily loss, max drawdown, profit target, minimum days) with
-  live meters and a pass/fail verdict. Simulated fills on historical Dev+Val
-  data - explicitly not live results.
-- **Edge context tab**: the four features that ADVANCED through the FES
-  Project 1 locked Validation batch, computed per bar for the selected day with
+- **Drawing tools** (Drawing workspace): draggable price levels, trendlines
+  (drag across the chart or click two points), shaded supply/demand zones, and
+  vertical time markers - all with TradingView-style drag gestures, a live
+  preview, right-click or Escape to cancel, and Undo/Clear as compact icons on
+  the chart (Ctrl+Z). Drawings live in data coordinates (exact under any zoom),
+  persist per day within the session, and stay visible above the replay curtain.
+- **Cross-asset comparison** (toolbar Overlay/Compare): pick a second instrument
+  and a mode - Horizontal or Vertical split (each pane keeps its own price scale,
+  the panes X-linked for time sync) or Normalized (the comparison rebased to the
+  primary's first close and overlaid without distorting the primary scale). The
+  current GC trade is ghosted onto a split pane by timestamp.
+- **Prop-firm evaluation** (Prop firm workspace): a dollar account model (GC
+  $100/pt or MGC $10/pt, risk-percent or fixed-contract sizing) turns the blotter
+  into an equity curve with desk stats, and a fully adjustable prop-firm policy -
+  profit target, daily-loss limit, static or trailing drawdown, minimum and
+  maximum evaluation days, a consistency rule, a max-contracts cap, and a payout
+  split - is judged over the session: the pass/fail/in-progress verdict, the first
+  breach with its reason and date, days and trades to pass, payout eligibility
+  with the simulated payout and post-payout balance, per-rule meters, and equity
+  and rule-utilization curves. Simulated fills on historical Dev+Val data -
+  explicitly not live results.
+- **Edge context** (Indicators workspace): the four features that ADVANCED
+  through the FES Project 1 locked Validation batch, computed per bar with
   the research module's own frozen helpers (a golden test pins the app's
   values to ``build_scalar_feature_matrix`` exactly). Session-honest display -
   London-validated and New York-validated features dim outside their windows -
@@ -165,10 +175,10 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
   re-simulated through the verified engine - results are never read from disk.
 - **Light / dark** theme (View menu). Every surface re-themes in place, including
   the heatmap's colour scale and the chart axes/crosshair.
-- **Collapsible panels**: the Exit-rule dock, the analysis sidebar, and the replay
-  transport each toggle from the View menu (Ctrl+1/2/3); the sidebar can also be
-  dragged shut on its splitter. The layout holds together down to ~1092x614
-  logical pixels (a 1366x768 display at 125% DPI).
+- **Collapsible layout**: the nav rail (Ctrl+1-5) opens or collapses each left
+  workspace - re-clicking the open one returns the width to the chart - and the
+  View menu toggles the trade inspector, the replay transport, and the MGC pane.
+  The layout holds together down to ~1092x614 logical pixels (1366x768 at 125% DPI).
 - **Branded launch**: an animated Gold Quant splash (drawn in code from the theme
   palette - no image assets) covers the data load, and the same GQ coin mark is
   the window/taskbar icon and, via `scripts/build_app.py`, the packaged
