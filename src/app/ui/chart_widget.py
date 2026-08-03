@@ -22,15 +22,50 @@ from ..datalayer.timeframe import ViewMap
 from . import theme
 
 
+def _decimals_for(tick_size: float) -> int:
+    """Number of decimals implied by a tick size (0.1 -> 1, 0.25 -> 2, 1 -> 0)."""
+
+    text = f"{float(tick_size):.10f}".rstrip("0")
+    return len(text.split(".")[1]) if "." in text and text.split(".")[1] else 0
+
+
+def candle_min_body(highs, lows) -> float:
+    """Floor for a candle body so a doji renders visibly, not sub-pixel.
+
+    A fraction of the window's typical (positive) high-low range, so dojis scale
+    with the chart's price geometry at any zoom.
+    """
+
+    rng = np.asarray(highs, dtype=float) - np.asarray(lows, dtype=float)
+    positive = rng[rng > 0]
+    typical = float(np.median(positive)) if positive.size else theme.CANDLE_MIN_HEIGHT
+    return max(theme.CANDLE_MIN_HEIGHT, 0.08 * typical)
+
+
 class _PriceAxis(pg.AxisItem):
-    """Price axis with TradingView interactions.
+    """Price axis with TradingView interactions and tick-size precision.
 
     Stock pyqtgraph left-drags an axis into a PAN of the linked ViewBox; here a
     left-drag on the price axis expands or compresses the visible price range,
     anchored near where the drag started, and a double-click re-arms Y
     autorange (auto-fit). Wheel, right-drag, and the context menu keep their
-    inherited behaviour.
+    inherited behaviour. Tick labels format to the instrument's tick size so a
+    price of 1890.4 is never shown as 1890.
     """
+
+    def __init__(self, *args, tick_size: float = 0.1, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._tick_size = tick_size
+        self._decimals = _decimals_for(tick_size)
+
+    def set_tick_size(self, tick_size: float) -> None:
+        self._tick_size = tick_size
+        self._decimals = _decimals_for(tick_size)
+        self.picture = None
+        self.update()
+
+    def tickStrings(self, values, scale, spacing):  # noqa: N802 - pyqtgraph override
+        return [f"{v:,.{self._decimals}f}" for v in values]
 
     def mouseDragEvent(self, event):  # noqa: N802 - pyqtgraph override
         lv = self.linkedView()
@@ -87,10 +122,14 @@ class CandlestickItem(pg.GraphicsObject):
         p = theme.active()
         painter = QtGui.QPainter(self.picture)
         half = theme.CANDLE_HALF_WIDTH
-        up_pen = pg.mkPen(p.up)
-        down_pen = pg.mkPen(p.down)
+        # Cosmetic pens keep wicks and body edges a crisp 1px at every zoom level
+        # instead of scaling into fat, fuzzy, off-centre lines.
+        up_pen = pg.mkPen(p.up, width=1, cosmetic=True)
+        down_pen = pg.mkPen(p.down, width=1, cosmetic=True)
         up_brush = pg.mkBrush(p.up)
         down_brush = pg.mkBrush(p.down)
+        # A doji's body is floored so it renders as a visible bar, not a sliver.
+        min_body = candle_min_body(self._h, self._l)
         for i in range(len(self._x)):
             x = float(self._x[i])
             is_up = self._c[i] >= self._o[i]
@@ -101,7 +140,10 @@ class CandlestickItem(pg.GraphicsObject):
             )
             top = float(max(self._o[i], self._c[i]))
             bot = float(min(self._o[i], self._c[i]))
-            height = top - bot or theme.CANDLE_MIN_HEIGHT
+            height = top - bot
+            if height < min_body:  # centre a minimum body on the open/close level
+                mid = 0.5 * (top + bot)
+                bot, height = mid - 0.5 * min_body, min_body
             painter.drawRect(QtCore.QRectF(x - half, bot, 2 * half, height))
         painter.end()
 
@@ -145,23 +187,24 @@ class ChartWidget(QtWidgets.QWidget):
         p = theme.active()
         pg.setConfigOptions(antialias=True, background=p.bg, foreground=p.text_faint)
         self._time_axis = _TimeAxis(np.array([]), orientation="bottom")
+        self._tick_size = 0.1
+        self._decimals = _decimals_for(self._tick_size)
         self._layout = pg.GraphicsLayoutWidget()
+        # One primary price axis (left, aligned with the volume pane below it);
+        # the duplicate right scale is gone.
         self._price = self._layout.addPlot(
             row=0,
             col=0,
             axisItems={
                 "bottom": self._time_axis,
-                "left": _PriceAxis(orientation="left"),
-                "right": _PriceAxis(orientation="right"),
+                "left": _PriceAxis(orientation="left", tick_size=self._tick_size),
             },
         )
+        self._price_axis = self._price.getAxis("left")
         self._volume = self._layout.addPlot(row=1, col=0)
         self._layout.ci.layout.setRowStretchFactor(0, 4)
         self._layout.ci.layout.setRowStretchFactor(1, 1)
         self._price.showGrid(x=False, y=True, alpha=0.12)
-        self._price.showAxis("right")
-        self._price.getAxis("right").setStyle(showValues=True)
-        self._price.setLabel("right", "price")
         self._legend = self._price.addLegend(offset=(10, 8), labelTextColor=p.text_dim)
         self._volume.setXLink(self._price)
         self._volume.showAxis("bottom", False)
@@ -193,6 +236,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._labels: np.ndarray = np.array([])
         self._last_readout_i = -1
         self._vwap_items: dict[str, pg.PlotDataItem] = {}  # kind -> overlay line
+        self._compare_item = None  # normalized comparison overlay line
         self._session_regions: list = []  # NY-session shading regions
         # Persistent slots for the one detailed trade and its excursion ribbon,
         # so a 60 Hz stop/target drag updates data in place instead of tearing
@@ -264,11 +308,18 @@ class ChartWidget(QtWidgets.QWidget):
         self._restyle_badges()
         self._legend.setLabelTextColor(p.text_dim)
         for plot in (self._price, self._volume):
-            for name in ("left", "right", "bottom"):
+            for name in ("left", "bottom"):
                 axis = plot.getAxis(name)
                 if axis is not None:
                     axis.setPen(pg.mkPen(p.text_faint))
                     axis.setTextPen(pg.mkPen(p.text_dim))
+
+    def set_tick_size(self, tick_size: float) -> None:
+        """Format the axis, crosshair badge, and readout to this instrument's tick."""
+
+        self._tick_size = float(tick_size)
+        self._decimals = _decimals_for(tick_size)
+        self._price_axis.set_tick_size(tick_size)
 
     # -- rendering ---------------------------------------------------------
     def set_view(
@@ -301,6 +352,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._level_proxies.clear()
         self._replay_items.clear()
         self._vwap_items.clear()
+        self._compare_item = None  # removed by _price.clear(); redrawn by the caller
         self._session_regions.clear()
         self._active_trade_items = None
         self._excursion_items = None
@@ -511,7 +563,7 @@ class ChartWidget(QtWidgets.QWidget):
                     movable=True,
                     pen=pg.mkPen(p.vwap_rolling, width=1.2),
                     hoverPen=pg.mkPen(p.vwap_rolling, width=2.2),
-                    label="{value:.1f}",
+                    label=f"{{value:.{self._decimals}f}}",
                     labelOpts={"position": 0.97, "color": p.vwap_rolling, "movable": True},
                 )
             ]
@@ -750,6 +802,22 @@ class ChartWidget(QtWidgets.QWidget):
         item.setVisible(visible)
         self._price.addItem(item)
         self._vwap_items[kind] = item
+
+    def set_compare_line(self, values: np.ndarray, label: str) -> None:
+        """Overlay a normalized comparison series; the label states the method."""
+
+        self.clear_compare_line()
+        p = theme.active()
+        x = np.arange(len(values))
+        self._compare_item = pg.PlotDataItem(
+            x, values, pen=pg.mkPen(p.gold, width=1.6, style=QtCore.Qt.DashLine), name=label
+        )
+        self._price.addItem(self._compare_item)
+
+    def clear_compare_line(self) -> None:
+        if self._compare_item is not None:
+            self._price.removeItem(self._compare_item)
+            self._compare_item = None
 
     def set_vwap_visible(self, kind: str, on: bool) -> None:
         item = self._vwap_items.get(kind)
@@ -1254,24 +1322,27 @@ class ChartWidget(QtWidgets.QWidget):
             self._x_badge.setVisible(True)
         else:
             self._x_badge.setVisible(False)
-        tick_price = round(y / 0.1) * 0.1  # GC/MGC tick size
-        self._y_badge.setText(f" {tick_price:,.1f} ")
+        tick_price = round(y / self._tick_size) * self._tick_size
+        self._y_badge.setText(f" {tick_price:,.{self._decimals}f} ")
         self._y_badge.setPos(x1, min(max(y, y0 + yr * 0.02), y1 - yr * 0.02))
         self._y_badge.setVisible(True)
 
     def _readout(self, i: int) -> str:
         p = theme.active()
+        dec = self._decimals
         o = self._ohlc["open"][i]
         h = self._ohlc["high"][i]
         low = self._ohlc["low"][i]
         c = self._ohlc["close"][i]
-        t = str(self._labels[i]) if i < len(self._labels) else ""
-        up = c >= o
-        colour = p.up if up else p.down
+        prev = self._ohlc["close"][i - 1] if i > 0 else o
+        change = c - prev
+        pct = (change / prev * 100.0) if prev else 0.0
+        candle = p.up if c >= o else p.down
+        move = p.up if change >= 0 else p.down
         return (
-            f"<span style='color:{p.text_dim}'>{t}</span>  "
-            f"<span style='color:{p.text_dim}'>O</span> {o:.1f}  "
-            f"<span style='color:{p.text_dim}'>H</span> {h:.1f}  "
-            f"<span style='color:{p.text_dim}'>L</span> {low:.1f}  "
-            f"<span style='color:{colour}'>C {c:.1f}</span>"
+            f"<span style='color:{p.text_dim}'>O</span> {o:,.{dec}f}  "
+            f"<span style='color:{p.text_dim}'>H</span> {h:,.{dec}f}  "
+            f"<span style='color:{p.text_dim}'>L</span> {low:,.{dec}f}  "
+            f"<span style='color:{candle}'>C {c:,.{dec}f}</span>  "
+            f"<span style='color:{move}'>{change:+,.{dec}f} ({pct:+.2f}%)</span>"
         )

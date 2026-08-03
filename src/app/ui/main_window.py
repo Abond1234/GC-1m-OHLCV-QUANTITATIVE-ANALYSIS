@@ -24,17 +24,16 @@ import pandas as pd
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..analysis.account import build_equity_curve, session_stats
-from ..analysis.evaluation import evaluate
+from ..analysis.evaluation import evaluate_policy
 from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..analysis.whatif import run_whatifs
-from ..datalayer.bar_store import BarStore
 from ..datalayer.catalog_service import StrategyReplayService
 from ..datalayer.edge_context import EdgeContextService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.instruments import REGISTRY, available_instruments, load_instrument_bars
-from ..datalayer.paths import project_root, research_bars_path
+from ..datalayer.paths import project_root
 from ..datalayer.session_store import (
     build_payload,
     default_sessions_dir,
@@ -142,15 +141,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self._forensics_token = 0
         self._whatif_token = 0
         self._ny_label = None
-        self._mgc_bars = None  # MGC BarStore, loaded on first toggle
-        self._mgc_loading = False
-        self._mgc_range: tuple[int, int, int] | None = None  # rendered MGC window + tf
+        self._compare_bars: dict = {}  # symbol -> BarStore, cached on first use
+        self._compare_loading = False
+        self._compare_symbol = None  # active comparison instrument, or None (Off)
+        self._compare_mode = "Horizontal"  # Horizontal | Vertical | Normalized
+        self._compare_range = None  # (lo, hi, tf, symbol) rendered in the split pane
         self._instrument = "GC"  # active primary instrument symbol
         self._instrument_data: dict | None = None  # non-GC bundle (None = GC research)
         self._instrument_loading = False
         self._pending_session: dict | None = None  # session applied after a switch
-        self._range_days = 1  # trade dates shown, anchored at the selected date
-        self._range_text = "1D"
+        self._date_guard = False  # suppress re-render while setting both date edits
         self._edge_service = EdgeContextService()
         self._edge_token = 0
         self._edge_day: tuple[int, int] | None = None  # anchor day's 1m [lo, hi]
@@ -198,30 +198,35 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # MGC (micro gold) mirror pane: same day, same clock, the execution
         # instrument's own tape. Hidden until toggled; bars load on demand.
-        self.mgc_chart = ChartWidget()
-        self.mgc_chart._price.setLabel("left", "MGC (micro)")
-        self.mgc_chart.setVisible(False)
+        # Configurable comparison pane for any instrument (H/V split); hidden
+        # until a compare instrument is chosen. Normalized mode overlays instead.
+        self.compare_chart = ChartWidget()
+        self.compare_chart.setVisible(False)
 
         self._build_menu()
         self._build_topbar()
         self._build_side()
-        self._build_exit_dock()
+        self._build_exit_panel()
+        self._build_draw_actions()
+        self._build_workspaces()
         self._build_transport()
-        self._build_draw_toolbar()
 
         chart_col = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         chart_col.addWidget(self.chart)
-        chart_col.addWidget(self.mgc_chart)
+        chart_col.addWidget(self.compare_chart)
         chart_col.setSizes([650, 320])
         chart_col.setCollapsible(0, False)
         self._chart_col = chart_col
 
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        split.addWidget(chart_col)
-        split.addWidget(self._right)
-        split.setSizes([1080, 460])
-        split.setCollapsible(0, False)  # the chart itself can never collapse
-        split.setCollapsible(1, True)  # the sidebar can be dragged fully shut
+        split.addWidget(self._workspace_panel)  # collapsible left workspace
+        split.addWidget(chart_col)  # the chart stays central
+        split.addWidget(self._right)  # trade inspector
+        split.setSizes([320, 980, 380])
+        split.setStretchFactor(1, 1)
+        split.setCollapsible(0, True)
+        split.setCollapsible(1, False)  # the chart itself never collapses
+        split.setCollapsible(2, True)
         self._split = split
 
         central = QtWidgets.QWidget()
@@ -241,16 +246,18 @@ class MainWindow(QtWidgets.QMainWindow):
             "Strategy replay and Edge context stay GC-only (research validity)."
         )
         self.instrument_combo.currentIndexChanged.connect(self._on_instrument_changed)
-        self.date_combo = QtWidgets.QComboBox()
-        self.date_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.date_combo.currentTextChanged.connect(lambda _t: self._render_view())
-        self.range_combo = QtWidgets.QComboBox()
-        self.range_combo.addItems(["1D", "1W", "1M", "Custom..."])
-        self.range_combo.setToolTip(
-            "How many trade dates to show, ending at the selected date.\n"
-            "1W = 5 trade dates, 1M = 22; Custom asks for a day count."
-        )
-        self.range_combo.currentTextChanged.connect(self._on_range_changed)
+        # Literal date window: Start and End load exactly the requested interval,
+        # with no "ending at the selected date" lookback behaviour.
+        self.start_edit = QtWidgets.QDateEdit()
+        self.end_edit = QtWidgets.QDateEdit()
+        for edit, tip in (
+            (self.start_edit, "First trade date to load (inclusive)."),
+            (self.end_edit, "Last trade date to load (inclusive)."),
+        ):
+            edit.setCalendarPopup(True)
+            edit.setDisplayFormat("yyyy-MM-dd")
+            edit.setToolTip(tip + " The chart loads exactly this interval.")
+            edit.dateChanged.connect(self._on_dates_changed)
         self.tf_combo = QtWidgets.QComboBox()
         self.tf_combo.addItems(list(TIMEFRAMES))
         self.tf_combo.setToolTip(
@@ -322,53 +329,37 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.grid_btn.clicked.connect(self._on_exit_grid)
 
-        # Two rows so nothing clips off the right edge on a narrow display:
-        # row 1 = what is on the chart, row 2 = acting on it.
-        row1 = QtWidgets.QHBoxLayout()
+        # Overlay / compare: pick a second instrument and a comparison mode.
+        self.compare_combo = QtWidgets.QComboBox()
+        self.compare_combo.setToolTip(
+            "Compare a second instrument: Horizontal or Vertical split (each pane\n"
+            "keeps its own price scale), or a Normalized overlay on this chart."
+        )
+        self.compare_combo.currentIndexChanged.connect(self._on_compare_changed)
+        self.compare_mode_combo = QtWidgets.QComboBox()
+        self.compare_mode_combo.addItems(self._COMPARE_MODES)
+        self.compare_mode_combo.setToolTip("How the comparison instrument is shown.")
+        self.compare_mode_combo.currentTextChanged.connect(self._on_compare_mode_changed)
+
+        # The global toolbar stays lean: instrument, the literal date window, the
+        # display timeframe, and the comparison overlay.
+        self._controls = QtWidgets.QHBoxLayout()
+        self._controls.setSpacing(6)
         for w in (
             self.instrument_combo,
-            QtWidgets.QLabel("Date"),
-            self.date_combo,
-            self.range_combo,
+            QtWidgets.QLabel("Start"),
+            self.start_edit,
+            QtWidgets.QLabel("End"),
+            self.end_edit,
+            QtWidgets.QLabel("TF"),
             self.tf_combo,
-            self.vwap_check,
-            self.vwap_day_check,
-            self.vwap_session_check,
-            self.session_check,
             _sep(),
-            QtWidgets.QLabel("Strategy"),
-            self.strategy_combo,
-            self.custom_check,
-            self.replay_btn,
+            QtWidgets.QLabel("Compare"),
+            self.compare_combo,
+            self.compare_mode_combo,
         ):
-            row1.addWidget(w)
-        row1.addStretch(1)
-        self.mgc_check = QtWidgets.QCheckBox("MGC mirror")
-        self.mgc_check.setToolTip(
-            "Show the MGC (micro gold) tape for the same day underneath, with the\n"
-            "current GC trade's entry/exit and initial levels mirrored onto it -\n"
-            "did the pattern replicate on the execution instrument?"
-        )
-        self.mgc_check.toggled.connect(self._on_mgc_toggled)
-
-        row2 = QtWidgets.QHBoxLayout()
-        for w in (
-            self.freeplay_check,
-            self.long_radio,
-            self.short_radio,
-            _sep(),
-            self.excursion_check,
-            self.whatif_btn,
-            self.grid_btn,
-            _sep(),
-            self.mgc_check,
-        ):
-            row2.addWidget(w)
-        row2.addStretch(1)
-        self._controls = QtWidgets.QVBoxLayout()
-        self._controls.setSpacing(4)
-        self._controls.addLayout(row1)
-        self._controls.addLayout(row2)
+            self._controls.addWidget(w)
+        self._controls.addStretch(1)
 
     def _build_side(self) -> None:
         self.trade_table = QtWidgets.QTableWidget(0, len(_TRADE_COLUMNS))
@@ -397,6 +388,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.heatmap = HeatmapWidget()
         self.heatmap.cellChosen.connect(self._on_grid_cell)
 
+        # Trade list + analysis live in the Strategy workspace (left); the right
+        # sidebar is the trade inspector.
         self._tabs = QtWidgets.QTabWidget()
         self._tabs.addTab(self.trade_table, "Replay")
         self._tabs.addTab(self.blotter, "Free-play")
@@ -404,31 +397,159 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tabs.addTab(self.heatmap, "Exit grid")
         self.session_panel = SessionPanel()
         self.session_panel.settingsChanged.connect(self._recompute_session)
-        self._tabs.addTab(self.session_panel, "Session")
         self.edge_panel = EdgeContextPanel()
-        self._tabs.addTab(self.edge_panel, "Edge context")
+
+        # Trade inspector: a compact overview on single click; the full detail
+        # (below) opens on double-click and Escape returns to the full chart.
+        self._inspector_hint = "Click a trade for its overview; double-click for full detail."
+        self.overview = QtWidgets.QLabel(self._inspector_hint)
+        self.overview.setWordWrap(True)
+        self.overview.setTextFormat(QtCore.Qt.RichText)
+        self.overview.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
+        self.overview.setContentsMargins(10, 8, 10, 8)
+        overview_box = QtWidgets.QGroupBox("Trade overview")
+        QtWidgets.QVBoxLayout(overview_box).addWidget(self.overview)
 
         self.forensics = ForensicsPanel()
-
         self._right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self._right.addWidget(self._tabs)
+        self._right.addWidget(overview_box)
         self._right.addWidget(self.forensics)
-        self._right.setSizes([460, 440])
+        self._right.setSizes([150, 520])
+        self.trade_table.doubleClicked.connect(lambda _i: self._activate_selected_row())
 
-    def _build_exit_dock(self) -> None:
+    def _build_exit_panel(self) -> None:
         self.exit_panel = ExitPanel()
         self.exit_panel.configChanged.connect(self._on_config_changed)
+
+    # -- workspaces --------------------------------------------------------
+    _WORKSPACES = ("Strategy", "Indicators", "Drawing", "Risk", "Prop firm")
+
+    def _build_workspaces(self) -> None:
+        """Five collapsible left workspaces behind a vertical nav rail."""
+
+        self._workspace_stack = QtWidgets.QStackedWidget()
+        for maker in (
+            self._make_strategy_ws,
+            self._make_indicators_ws,
+            self._make_drawing_ws,
+            self._make_risk_ws,
+            self._make_propfirm_ws,
+        ):
+            self._workspace_stack.addWidget(maker())
+
+        panel = QtWidgets.QWidget()
+        panel.setMinimumWidth(300)
+        pl = QtWidgets.QVBoxLayout(panel)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.addWidget(self._workspace_stack)
+        self._workspace_panel = panel
+
+        rail = QtWidgets.QToolBar("Workspaces")
+        rail.setMovable(False)
+        rail.setOrientation(QtCore.Qt.Vertical)
+        rail.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
+        self._ws_actions = []
+        for i, label in enumerate(self._WORKSPACES):
+            act = rail.addAction(label)
+            act.setCheckable(True)
+            act.setShortcut(f"Ctrl+{i + 1}")
+            act.triggered.connect(lambda _c=False, idx=i: self._select_workspace(idx))
+            self._ws_actions.append(act)
+        self.addToolBar(QtCore.Qt.LeftToolBarArea, rail)
+        self._nav_rail = rail
+        self._select_workspace(0)  # Strategy open by default
+
+    def _select_workspace(self, index: int) -> None:
+        """Show a workspace; clicking the open one again collapses the panel."""
+
+        collapse = (
+            self._workspace_panel.isVisible() and self._workspace_stack.currentIndex() == index
+        )
+        for i, act in enumerate(self._ws_actions):
+            act.setChecked(i == index and not collapse)
+        if collapse:
+            self._workspace_panel.setVisible(False)
+        else:
+            self._workspace_stack.setCurrentIndex(index)
+            self._workspace_panel.setVisible(True)
+
+    @staticmethod
+    def _ws_widget() -> tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        return w, lay
+
+    def _make_strategy_ws(self) -> QtWidgets.QWidget:
+        w, lay = self._ws_widget()
+        top = QtWidgets.QHBoxLayout()
+        top.addWidget(QtWidgets.QLabel("Strategy"))
+        top.addWidget(self.strategy_combo, 1)
+        top.addWidget(self.replay_btn)
+        lay.addLayout(top)
+        lay.addWidget(self.custom_check)
+        fp = QtWidgets.QHBoxLayout()
+        for x in (self.freeplay_check, self.long_radio, self.short_radio):
+            fp.addWidget(x)
+        fp.addStretch(1)
+        lay.addLayout(fp)
+        acts = QtWidgets.QHBoxLayout()
+        for x in (self.excursion_check, self.whatif_btn, self.grid_btn):
+            acts.addWidget(x)
+        acts.addStretch(1)
+        lay.addLayout(acts)
+        lay.addWidget(self._tabs, 1)
+        return w
+
+    def _make_indicators_ws(self) -> QtWidgets.QWidget:
+        w, lay = self._ws_widget()
+        box = QtWidgets.QGroupBox("Overlays")
+        bl = QtWidgets.QVBoxLayout(box)
+        for x in (
+            self.vwap_check,
+            self.vwap_day_check,
+            self.vwap_session_check,
+            self.session_check,
+        ):
+            bl.addWidget(x)
+        lay.addWidget(box)
+        lay.addWidget(self.edge_panel, 1)
+        return w
+
+    def _make_drawing_ws(self) -> QtWidgets.QWidget:
+        w, lay = self._ws_widget()
+        box = QtWidgets.QGroupBox("Drawing tools")
+        bl = QtWidgets.QVBoxLayout(box)
+        for _label, mode, _tip, _hint in self._DRAW_TOOLS:
+            bl.addWidget(self._draw_buttons[mode])
+        lay.addWidget(box)
+        hint = QtWidgets.QLabel("Undo and Clear are on the chart's top-left. Right-click cancels.")
+        hint.setWordWrap(True)
+        hint.setProperty("role", "caption")
+        lay.addWidget(hint)
+        lay.addStretch(1)
+        return w
+
+    def _make_risk_ws(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.exit_panel)
-        dock = QtWidgets.QDockWidget("Exit rule (unfrozen)", self)
-        dock.setToolTip(
-            "Every exit field here is editable - deliberately not the frozen research contract."
-        )
-        dock.setWidget(scroll)
-        dock.setMinimumWidth(260)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
-        self._exit_dock = dock
+        lay.addWidget(scroll)
+        return w
+
+    def _make_propfirm_ws(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.session_panel)  # the panel is dense; let it scroll
+        lay.addWidget(scroll)
+        return w
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -444,33 +565,20 @@ class MainWindow(QtWidgets.QMainWindow):
             act.triggered.connect(lambda _c=False, m=mode: self._set_theme(m))
 
     def _populate_view_menu(self) -> None:
-        """Panel toggles, added once the docks/toolbars they control exist."""
+        """Toggles for the panels the workspace nav does not own."""
 
         menu = self._view_menu
         menu.addSeparator()
-        exit_act = self._exit_dock.toggleViewAction()
-        exit_act.setText("Exit-rule panel")
-        exit_act.setShortcut("Ctrl+1")
-        menu.addAction(exit_act)
-        side_act = menu.addAction("Analysis sidebar")
-        side_act.setCheckable(True)
-        side_act.setChecked(True)
-        side_act.setShortcut("Ctrl+2")
-        side_act.toggled.connect(self._right.setVisible)
-        self._sidebar_action = side_act
+        inspector = menu.addAction("Trade inspector")
+        inspector.setCheckable(True)
+        inspector.setChecked(True)
+        inspector.setShortcut("Ctrl+I")
+        inspector.toggled.connect(self._right.setVisible)
+        self._inspector_action = inspector
         transport_act = self._transport.toggleViewAction()
         transport_act.setText("Replay transport")
-        transport_act.setShortcut("Ctrl+3")
+        transport_act.setShortcut("Ctrl+R")
         menu.addAction(transport_act)
-        draw_act = self._draw_toolbar.toggleViewAction()
-        draw_act.setText("Draw toolbar")
-        draw_act.setShortcut("Ctrl+4")
-        menu.addAction(draw_act)
-        mgc_act = menu.addAction("MGC mirror pane")
-        mgc_act.setCheckable(True)
-        mgc_act.setShortcut("Ctrl+5")
-        mgc_act.toggled.connect(self.mgc_check.setChecked)
-        self.mgc_check.toggled.connect(mgc_act.setChecked)
 
     def _build_transport(self) -> None:
         bar = QtWidgets.QToolBar("Replay")
@@ -553,54 +661,60 @@ class MainWindow(QtWidgets.QMainWindow):
         ),
     )
 
-    def _build_draw_toolbar(self) -> None:
-        """Vertical drawing strip on the left edge, TradingView-style.
+    def _build_draw_actions(self) -> None:
+        """Drawing-tool buttons for the Drawing Tools workspace.
 
-        Arming a tool highlights its button and puts a plain-language hint in
-        the status bar; every tool is one-shot and hands back to the cursor.
+        Arming a tool checks its button and puts a plain-language hint in the
+        status bar; every tool is one-shot and hands back to the cursor. Undo and
+        Clear are compact icons directly on the chart.
         """
 
-        bar = QtWidgets.QToolBar("Draw")
-        bar.setMovable(False)
-        bar.setOrientation(QtCore.Qt.Vertical)
-        bar.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
-        group = QtGui.QActionGroup(self)
-        group.setExclusive(True)
-        self._draw_actions = {}
-        self._draw_hints = {}
+        self._draw_buttons: dict = {}
+        self._draw_hints: dict = {}
+        self._draw_group = QtWidgets.QButtonGroup(self)
+        self._draw_group.setExclusive(True)
         for label, mode, tip, hint in self._DRAW_TOOLS:
-            act = bar.addAction(label)
-            act.setCheckable(True)
-            act.setToolTip(tip)
-            act.setActionGroup(group)
-            act.triggered.connect(lambda _c=False, m=mode: self._arm_draw_tool(m))
-            self._draw_actions[mode] = act
+            btn = QtWidgets.QPushButton(label)
+            btn.setCheckable(True)
+            btn.setToolTip(tip)
+            btn.clicked.connect(lambda _c=False, m=mode: self._arm_draw_tool(m))
+            self._draw_group.addButton(btn)
+            self._draw_buttons[mode] = btn
             self._draw_hints[mode] = hint
-        self._draw_actions[None].setChecked(True)
-        bar.addSeparator()
-        undo = bar.addAction("Undo")
-        undo.setToolTip("Remove the most recent drawing on this day.")
-        undo.triggered.connect(self.chart.undo_drawing)
-        clear = bar.addAction("Clear")
-        clear.setToolTip("Remove every drawing on this day.")
-        clear.triggered.connect(self.chart.clear_drawings)
-        self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
-        self._draw_toolbar = bar
-        # One-shot tools: fall back to the cursor once a drawing lands.
+        self._draw_buttons[None].setChecked(True)
         self.chart.drawing_placed.connect(self._on_drawing_placed)
+        self._add_chart_draw_icons()
+
+    def _add_chart_draw_icons(self) -> None:
+        """Compact Undo/Clear buttons floating over the chart's top-left."""
+
+        bar = QtWidgets.QWidget(self.chart)
+        lay = QtWidgets.QHBoxLayout(bar)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        for text, tip, slot in (
+            ("Undo", "Remove the last drawing on this day (Ctrl+Z).", self.chart.undo_drawing),
+            ("Clear", "Remove every drawing on this day.", self.chart.clear_drawings),
+        ):
+            btn = QtWidgets.QToolButton()
+            btn.setText(text)
+            btn.setToolTip(tip)
+            btn.clicked.connect(slot)
+            lay.addWidget(btn)
+        bar.move(58, 6)  # clear of the left price axis
+        bar.raise_()
+        self._chart_draw_icons = bar
+        undo_sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Z"), self)
+        undo_sc.activated.connect(self.chart.undo_drawing)
 
     def _arm_draw_tool(self, mode: str | None) -> None:
         self.chart.set_draw_mode(mode)
-        hint = self._draw_hints.get(mode, "")
-        if hint:
-            self._set_status(hint)
-        else:
-            self._set_status("")
+        self._set_status(self._draw_hints.get(mode, ""))
 
     def _on_drawing_placed(self) -> None:
         self.chart.set_draw_mode(None)
-        self._draw_actions[None].setChecked(True)
-        self._set_status("Drawing placed. Drag it to adjust; Undo/Clear are in the Draw bar.")
+        self._draw_buttons[None].setChecked(True)
+        self._set_status("Drawing placed. Drag it to adjust; Undo/Clear are on the chart.")
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
@@ -621,9 +735,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._data = data
         self._ny_label = ny_time_label(data["replay"].bars)
         self.blotter.set_time_label(self._ny_label)
-        self.date_combo.blockSignals(True)
-        self.date_combo.addItems([pd.Timestamp(d).strftime("%Y-%m-%d") for d in data["dates"]])
-        self.date_combo.blockSignals(False)
+        self._set_date_bounds(data["dates"])
         for spec in data["replay"].list_strategies():
             self.strategy_combo.addItem(spec.name)
         # The closed combo stays compact; widen the popup to the longest name.
@@ -645,6 +757,7 @@ class MainWindow(QtWidgets.QMainWindow):
         gc_index = self.instrument_combo.findData("GC")
         self.instrument_combo.setCurrentIndex(max(0, gc_index))
         self.instrument_combo.blockSignals(False)
+        self._populate_compare_combo()
         self.session_panel.sync_instruments(available_instruments(), self._instrument)
         self._set_status(f"Loaded {data['replay'].bars.n_bars:,} GC bars (Dev+Val).")
         self._render_view()
@@ -662,45 +775,63 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return self._instrument_data if self._instrument_data is not None else self._data
 
-    def _on_range_changed(self, text: str) -> None:
-        presets = {"1D": 1, "1W": 5, "1M": 22}
-        if text in presets:
-            self._range_days = presets[text]
-        else:  # Custom...
-            days, ok = QtWidgets.QInputDialog.getInt(
-                self, "Custom range", "Trade dates to show:", self._range_days, 2, 60
-            )
-            if not ok:
-                self.range_combo.blockSignals(True)
-                self.range_combo.setCurrentText(self._range_text)
-                self.range_combo.blockSignals(False)
-                return
-            self._range_days = days
-        self._range_text = text
+    @staticmethod
+    def _qdate(ts) -> QtCore.QDate:
+        t = pd.Timestamp(ts)
+        return QtCore.QDate(t.year, t.month, t.day)
+
+    def _set_date_bounds(self, dates) -> None:
+        """Constrain both date edits to the loaded window and default to the last day."""
+
+        first, last = self._qdate(dates[0]), self._qdate(dates[-1])
+        self._date_guard = True
+        for edit in (self.start_edit, self.end_edit):
+            edit.setDateRange(first, last)
+        self.start_edit.setDate(last)  # default: the most recent single day
+        self.end_edit.setDate(last)
+        self._date_guard = False
+
+    def _window_bounds(self, bars, start_d, end_d) -> tuple[int, int]:
+        """First and last 1m bar index covering the inclusive [start, end] dates."""
+
+        start = np.datetime64(pd.Timestamp(start_d))
+        end = np.datetime64(pd.Timestamp(end_d))
+        lo = int(np.searchsorted(bars.trade_date, start, side="left"))
+        hi = int(np.searchsorted(bars.trade_date, end, side="right")) - 1
+        return lo, hi
+
+    def _on_dates_changed(self, _d=None) -> None:
+        if self._date_guard or self._data is None:
+            return
+        if self.start_edit.date() > self.end_edit.date():
+            # Keep the pair ordered by snapping the edit the user did not touch.
+            self._date_guard = True
+            if self.sender() is self.start_edit:
+                self.end_edit.setDate(self.start_edit.date())
+            else:
+                self.start_edit.setDate(self.end_edit.date())
+            self._date_guard = False
         self._render_view()
 
     def _render_view(self) -> None:
-        """Render the anchored date range at the selected display timeframe."""
+        """Render the literal [Start, End] date window at the display timeframe."""
 
-        if self._data is None or not self.date_combo.count():
+        if self._data is None:
             return
         self._animator.stop()  # leaving the window ends any running animation
         bars = self._bars
-        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        dates = self._active_data()["dates"]
-        anchor_idx = int(np.searchsorted(dates, anchor))
-        start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
-        # Bars are chronological, so the window is two binary searches, not a
-        # full-array comparison over the whole Dev+Val history.
-        lo = int(np.searchsorted(bars.trade_date, start_date, side="left"))
-        hi = int(np.searchsorted(bars.trade_date, anchor, side="right")) - 1
+        lo, hi = self._window_bounds(
+            bars, self.start_edit.date().toPython(), self.end_edit.date().toPython()
+        )
         if hi < lo:
+            self._set_status("No bars in the selected date range.")
             return
         self._view_start, self._view_end = lo, hi
+        multi_day = bars.trade_date[lo] != bars.trade_date[hi]
         tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
         rs = resample_window(bars, lo, hi, tf)
         view_map = ViewMap.from_resampled(rs, tf)
-        labels = bucket_labels(bars, rs, tf, multi_day=self._range_days > 1)
+        labels = bucket_labels(bars, rs, tf, multi_day=multi_day)
         ohlc = {
             "open": rs.open,
             "high": rs.high,
@@ -709,6 +840,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "volume": rs.volume,
             "segment": rs.segment,
         }
+        self.chart.set_tick_size(REGISTRY[self._instrument].spec.tick_size)
         self.chart.set_view(ohlc, labels, view_map, minute_close=bars.close[lo : hi + 1])
         # Always build the overlays; the checkboxes only flip visibility. Lines
         # are display-sampled at each bucket's close, shading at its open.
@@ -758,7 +890,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if active is not None and self._in_view(active.entry_position):
                 stop_price, target_price = self._level_prices(active)
                 self.chart.set_draggable_levels(stop_price, target_price, self._on_level_dragged)
-        self._update_mgc_pane()
+        self._refresh_compare()
 
     def _draw_analysis_overlays(self) -> None:
         """Excursion ribbon and any what-if overlays for the current trade."""
@@ -829,13 +961,19 @@ class MainWindow(QtWidgets.QMainWindow):
         return entry + t.stop_points, entry - t.target_points
 
     def _ensure_date_for(self, position: int) -> bool:
-        """Switch the view to the bar's date; True if that re-rendered the chart."""
+        """Widen the date window to include the bar; True if that re-rendered."""
 
-        date = pd.Timestamp(self._bars.trade_date[position]).strftime("%Y-%m-%d")
-        if self.date_combo.currentText() != date:
-            self.date_combo.setCurrentText(date)  # triggers _render_view
-            return True
-        return False
+        if self._in_view(position):
+            return False
+        qd = self._qdate(self._bars.trade_date[position])
+        self._date_guard = True
+        if qd < self.start_edit.date():
+            self.start_edit.setDate(qd)
+        elif qd > self.end_edit.date():
+            self.end_edit.setDate(qd)
+        self._date_guard = False
+        self._render_view()
+        return True
 
     # -- replay ------------------------------------------------------------
     def _on_replay(self) -> None:
@@ -890,19 +1028,49 @@ class MainWindow(QtWidgets.QMainWindow):
             item.setToolTip(v)  # full text survives any column elision
             self.trade_table.setItem(r, c, item)
 
-    def _on_row_selected(self) -> None:
+    def _selected_row(self):
+        """The trade-log Series for the selected replay row, or None."""
+
         rows = self.trade_table.selectionModel().selectedRows()
         if not rows or self._log is None:
-            return
+            return None
         item = self.trade_table.item(rows[0].row(), 0)
         if item is None:  # selection event racing a table refresh
-            return
-        entry_position = item.data(QtCore.Qt.UserRole)
-        match = self._log[self._log["entry_position"] == entry_position]
-        if not match.empty:
-            self._focus_trade(match.iloc[0])
+            return None
+        match = self._log[self._log["entry_position"] == item.data(QtCore.Qt.UserRole)]
+        return None if match.empty else match.iloc[0]
+
+    def _on_row_selected(self) -> None:
+        """Single click: a compact overview only - the chart is not consumed."""
+
+        trade = self._selected_row()
+        if trade is not None:
+            self.overview.setText(self._overview_html(trade))
+
+    def _activate_selected_row(self) -> None:
+        """Double click: the full inspector (chart focus + forensics detail)."""
+
+        trade = self._selected_row()
+        if trade is not None:
+            self._focus_trade(trade)
+
+    def _overview_html(self, trade) -> str:
+        p = theme.active()
+        side = "Long" if trade["direction"] > 0 else "Short"
+        r = float(trade["gross_r"])
+        colour = p.up if r > 0 else p.down
+        return (
+            f"<b style='color:{colour}'>{side} &middot; {trade['exit_reason']} "
+            f"&middot; {r:+.2f} R</b><br>"
+            f"Entry {self._ny_label(int(trade['entry_position']))} &middot; "
+            f"held {int(trade['holding_minutes'])} min<br>"
+            f"In favour +{float(trade['mfe_r']):.2f} R &middot; "
+            f"against -{float(trade['mae_r']):.2f} R<br>"
+            f"<span style='color:{p.text_faint}'>Double-click for the full inspector.</span>"
+        )
 
     def _focus_trade(self, trade) -> None:
+        self.overview.setText(self._overview_html(trade))
         result = single_flex_exit(
             int(trade["entry_position"]),
             int(trade["direction"]),
@@ -1070,9 +1238,8 @@ class MainWindow(QtWidgets.QMainWindow):
             theme_mode=theme.active().name,
             view={
                 "instrument": self._instrument,
-                "anchor_date": self.date_combo.currentText(),
-                "range_text": self._range_text,
-                "range_days": self._range_days,
+                "start_date": self.start_edit.date().toString("yyyy-MM-dd"),
+                "end_date": self.end_edit.date().toString("yyyy-MM-dd"),
                 "timeframe": self.tf_combo.currentText(),
             },
             account={
@@ -1082,7 +1249,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "fixed_contracts": int(sp.contracts_spin.value()),
                 "instrument_index": sp.instrument_combo.currentIndex(),
             },
-            evaluation_preset=sp.preset_combo.currentText(),
+            evaluation=sp.policy_dict(),
             placed=placed,
             active_id=self._active_id,
             next_id=self._next_id,
@@ -1149,18 +1316,15 @@ class MainWindow(QtWidgets.QMainWindow):
         sp.risk_spin.setValue(float(account.get("risk_percent", 1.0)))
         sp.contracts_spin.setValue(int(account.get("fixed_contracts", 1)))
         sp.instrument_combo.setCurrentIndex(int(account.get("instrument_index", 0)))
-        preset = payload.get("evaluation_preset", "Practice - no rules")
-        if sp.preset_combo.findText(preset) >= 0:
-            sp.preset_combo.setCurrentText(preset)
         for widget in (
             sp.balance_spin,
             sp.sizing_combo,
             sp.risk_spin,
             sp.contracts_spin,
             sp.instrument_combo,
-            sp.preset_combo,
         ):
             widget.blockSignals(False)
+        sp.load_policy_dict(payload.get("evaluation", {}))
 
         # Re-simulate every trade through the verified engine; results are
         # recomputed, never trusted from disk.
@@ -1195,22 +1359,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self._whatif_runs = []
 
         view = payload.get("view", {})
-        self._range_text = view.get("range_text", "1D")
-        self._range_days = int(view.get("range_days", 1))
-        for combo, value in (
-            (self.range_combo, self._range_text),
-            (self.tf_combo, view.get("timeframe", "1m")),
-        ):
-            combo.blockSignals(True)
-            if combo.findText(value) >= 0:
-                combo.setCurrentText(value)
-            combo.blockSignals(False)
+        self.tf_combo.blockSignals(True)
+        tf = view.get("timeframe", "1m")
+        if self.tf_combo.findText(tf) >= 0:
+            self.tf_combo.setCurrentText(tf)
+        self.tf_combo.blockSignals(False)
         self._set_theme(payload.get("theme", theme.active().name))
-        anchor = view.get("anchor_date", "")
-        if self.date_combo.findText(anchor) >= 0 and self.date_combo.currentText() != anchor:
-            self.date_combo.setCurrentText(anchor)  # triggers _render_view
-        else:
-            self._render_view()
+        # Restore the literal date window (clamped to the instrument's data range).
+        self._date_guard = True
+        for edit, key in ((self.start_edit, "start_date"), (self.end_edit, "end_date")):
+            saved = QtCore.QDate.fromString(view.get(key, ""), "yyyy-MM-dd")
+            if saved.isValid():
+                edit.setDate(saved)
+        self._date_guard = False
+        self._render_view()
         self.chart.import_drawings(payload.get("drawings", []))
         self.blotter.set_trades(list(self._placed.values()))
         if self._active_id is not None:
@@ -1284,17 +1446,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.replay_btn.setToolTip(
                 "Strategy catalog and replay are GC-only (research validity)."
             )
-        self.mgc_check.setVisible(gc_active)
-        if not gc_active:
-            self.mgc_check.setChecked(False)
-            self.mgc_chart.setVisible(False)
+        # The comparison list excludes the new primary; reset it to Off on a switch.
+        self.compare_chart.setVisible(False)
+        self.chart.clear_compare_line()
+        self._compare_symbol = None
+        self._populate_compare_combo()
         self.session_panel.sync_instruments(available_instruments(), symbol)
-        dates = self._active_data()["dates"]
-        self.date_combo.blockSignals(True)
-        self.date_combo.clear()
-        self.date_combo.addItems([pd.Timestamp(d).strftime("%Y-%m-%d") for d in dates])
-        self.date_combo.setCurrentIndex(self.date_combo.count() - 1)
-        self.date_combo.blockSignals(False)
+        self._set_date_bounds(self._active_data()["dates"])
         self.setWindowTitle(f"GQ Trade Simulator - {instrument.display} - Development + Validation")
         self._render_view()
         self._recompute_session()
@@ -1306,9 +1464,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # -- edge context ------------------------------------------------------
     def _refresh_edge_context(self) -> None:
-        """Compute the anchor day's validated features on the worker pool."""
+        """Compute the last visible day's validated features on the worker pool."""
 
-        if self._data is None or not self.date_combo.count():
+        if self._data is None:
             return
         if self._instrument != "GC":
             self.edge_panel.clear_context(
@@ -1318,7 +1476,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._edge_day = None
             return
         bars = self._bars
-        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
+        day_str = self.end_edit.date().toString("yyyy-MM-dd")
+        anchor = np.datetime64(pd.Timestamp(day_str))
         day_lo = int(np.searchsorted(bars.trade_date, anchor, side="left"))
         day_hi = int(np.searchsorted(bars.trade_date, anchor, side="right")) - 1
         if day_hi < day_lo:
@@ -1330,7 +1489,7 @@ class MainWindow(QtWidgets.QMainWindow):
         token = self._edge_token
         self.edge_panel.clear_context("Computing the day's context ...")
         minute_slice = bars.minute_ny[day_lo : day_hi + 1].copy()
-        task = Task(self._edge_service.day_context, self.date_combo.currentText(), minute_slice)
+        task = Task(self._edge_service.day_context, day_str, minute_slice)
         task.signals.finished.connect(
             lambda context, tok=token: self._on_edge_context(context, tok)
         )
@@ -1374,9 +1533,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 r_list[i] = float(trade.result.gross_r)
                 dollars[int(trade.id)] = float(curve.pnl[i])
         stats = session_stats(curve, r_list, settings)
-        rules = self.session_panel.evaluation_rules()
-        status = evaluate(curve, rules, settings.starting_balance) if rules else None
-        self.session_panel.update_session(curve, stats, status)
+        report = evaluate_policy(curve, self.session_panel.policy())
+        self.session_panel.update_session(curve, stats, report)
         self.blotter.set_dollars(dollars)
 
     # -- forensics ---------------------------------------------------------
@@ -1520,64 +1678,110 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     # -- MGC mirror pane ----------------------------------------------------
-    def _on_mgc_toggled(self, on: bool) -> None:
-        if not on:
-            self.mgc_chart.setVisible(False)
+    _COMPARE_MODES = ("Horizontal", "Vertical", "Normalized")
+
+    def _populate_compare_combo(self) -> None:
+        self.compare_combo.blockSignals(True)
+        self.compare_combo.clear()
+        self.compare_combo.addItem("Off", None)
+        for inst in available_instruments():
+            if inst.symbol != self._instrument:
+                self.compare_combo.addItem(inst.display, inst.symbol)
+        self.compare_combo.setCurrentIndex(0)
+        self.compare_combo.blockSignals(False)
+
+    def _on_compare_changed(self) -> None:
+        symbol = self.compare_combo.currentData()
+        self._compare_symbol = symbol
+        if not symbol:
+            self._apply_compare_mode()
             return
-        if self._mgc_bars is None:
-            if self._mgc_loading:
+        if symbol not in self._compare_bars:
+            if self._compare_loading:
                 return
-            self._mgc_loading = True
-            self._set_status("Loading MGC bars ...")
-            task = Task(BarStore.load, research_bars_path(), product="MGC")
-            task.signals.finished.connect(self._on_mgc_loaded)
-            task.signals.error.connect(self._on_mgc_error)
+            self._compare_loading = True
+            self._set_status(f"Loading {symbol} bars ...")
+            task = Task(load_instrument_bars, symbol)
+            task.signals.finished.connect(lambda store, s=symbol: self._on_compare_loaded(s, store))
+            task.signals.error.connect(self._on_compare_error)
             self._start(task)
             return
-        self.mgc_chart.setVisible(True)
-        self._update_mgc_pane(force_render=True)
+        self._apply_compare_mode()
 
-    def _on_mgc_loaded(self, store) -> None:
-        self._mgc_loading = False
-        self._mgc_bars = store
-        self._set_status(f"MGC: {store.n_bars:,} bars loaded (Dev+Val).")
-        if self.mgc_check.isChecked():
-            self.mgc_chart.setVisible(True)
-            self._update_mgc_pane(force_render=True)
+    def _on_compare_loaded(self, symbol: str, store) -> None:
+        self._compare_loading = False
+        self._compare_bars[symbol] = store
+        self._set_status(f"{symbol}: {store.n_bars:,} bars loaded.")
+        if self._compare_symbol == symbol:
+            self._apply_compare_mode()
 
-    def _on_mgc_error(self, message: str) -> None:
-        self._mgc_loading = False
-        self.mgc_check.setChecked(False)
+    def _on_compare_error(self, message: str) -> None:
+        self._compare_loading = False
+        self.compare_combo.setCurrentIndex(0)  # back to Off
         self._on_error(message)
 
-    def _update_mgc_pane(self, force_render: bool = False) -> None:
-        """Render the MGC day window and ghost the current GC trade onto it."""
+    def _on_compare_mode_changed(self, text: str) -> None:
+        self._compare_mode = text
+        self._apply_compare_mode()
 
+    def _apply_compare_mode(self) -> None:
+        symbol = self._compare_symbol
+        if not symbol or symbol not in self._compare_bars:
+            self.compare_chart.setVisible(False)
+            self.compare_chart._price.setXLink(None)
+            self.chart.clear_compare_line()
+            return
+        if self._compare_mode == "Normalized":
+            self.compare_chart.setVisible(False)
+            self.compare_chart._price.setXLink(None)
+            self._draw_compare_overlay(symbol)
+        else:
+            self.chart.clear_compare_line()
+            self._chart_col.setOrientation(
+                QtCore.Qt.Vertical if self._compare_mode == "Horizontal" else QtCore.Qt.Horizontal
+            )
+            self.compare_chart.setVisible(True)
+            self._compare_range = None  # force a fresh render
+            self._update_compare()
+
+    def _refresh_compare(self) -> None:
+        """Keep the comparison in step with the primary view (per redraw)."""
+
+        if not self._compare_symbol or self._compare_symbol not in self._compare_bars:
+            return
+        if self._compare_mode == "Normalized":
+            self._draw_compare_overlay(self._compare_symbol)
+        else:
+            self._update_compare()
+
+    def _update_compare(self, force_render: bool = False) -> None:
+        """Render the comparison split pane, X-linked to the primary for time sync."""
+
+        symbol = self._compare_symbol
         if (
-            self._instrument != "GC"
-            or self._mgc_bars is None
-            or not self.mgc_chart.isVisible()
+            not symbol
+            or symbol not in self._compare_bars
+            or not self.compare_chart.isVisible()
             or self._data is None
-            or not self.date_combo.count()
         ):
             return
-        mgc = self._mgc_bars
-        anchor = np.datetime64(pd.Timestamp(self.date_combo.currentText()))
-        dates = self._active_data()["dates"]
-        anchor_idx = int(np.searchsorted(dates, anchor))
-        start_date = np.datetime64(pd.Timestamp(dates[max(0, anchor_idx - (self._range_days - 1))]))
-        lo = int(np.searchsorted(mgc.trade_date, start_date, side="left"))
-        hi = int(np.searchsorted(mgc.trade_date, anchor, side="right")) - 1
+        cmp = self._compare_bars[symbol]
+        lo, hi = self._window_bounds(
+            cmp, self.start_edit.date().toPython(), self.end_edit.date().toPython()
+        )
         if hi < lo:
-            self.mgc_chart.clear_trades()
-            self._set_status("No MGC bars in this range.")
+            self.compare_chart.clear_trades()
+            self._set_status(f"No {symbol} bars in this range.")
             return
+        multi_day = cmp.trade_date[lo] != cmp.trade_date[hi]
         tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
-        if force_render or self._mgc_range != (lo, hi, tf):
-            self._mgc_range = (lo, hi, tf)
-            rs = resample_window(mgc, lo, hi, tf)
-            labels = bucket_labels(mgc, rs, tf, multi_day=self._range_days > 1)
-            self.mgc_chart.set_view(
+        if force_render or self._compare_range != (lo, hi, tf, symbol):
+            self._compare_range = (lo, hi, tf, symbol)
+            rs = resample_window(cmp, lo, hi, tf)
+            labels = bucket_labels(cmp, rs, tf, multi_day=multi_day)
+            self.compare_chart._price.setLabel("left", REGISTRY[symbol].display)
+            self.compare_chart.set_tick_size(REGISTRY[symbol].spec.tick_size)
+            self.compare_chart.set_view(
                 {
                     "open": rs.open,
                     "high": rs.high,
@@ -1588,41 +1792,55 @@ class MainWindow(QtWidgets.QMainWindow):
                 },
                 labels,
                 ViewMap.from_resampled(rs, tf),
-                minute_close=mgc.close[lo : hi + 1],
+                minute_close=cmp.close[lo : hi + 1],
             )
-            self.mgc_chart.shade_sessions(
-                sample_first(_session_code(mgc.minute_ny), rs),
+            self.compare_chart.shade_sessions(
+                sample_first(_session_code(cmp.minute_ny), rs),
                 visible=self.session_check.isChecked(),
             )
-        self.mgc_chart.clear_trades()
+            # Time synchronisation: link the compare X to the primary so panning
+            # or zooming one pane moves the other (aligned for a same-clock tape).
+            self.compare_chart._price.setXLink(self.chart._price)
+        self.compare_chart.clear_trades()
         result, _cfg = self._current()
-        if result is None or not self._in_view(result.entry_position):
+        if self._instrument != "GC" or result is None or not self._in_view(result.entry_position):
             return
-        # Map the GC trade onto the MGC clock by timestamp (minute-of-day is
-        # not monotonic within an NY trade date; timestamps are). Search the
-        # raw ts arrays directly - both stores read the same parquet column,
-        # so the values compare without any tz-dropping conversion.
+        # Map the GC trade onto the comparison clock by timestamp.
         gc = self._bars
-        entry_pos = int(np.searchsorted(mgc.ts, gc.ts[int(result.entry_position)]))
+        entry_pos = int(np.searchsorted(cmp.ts, gc.ts[int(result.entry_position)]))
         exit_pos = int(
-            np.searchsorted(mgc.ts, gc.ts[min(int(result.exit_position), gc.n_bars - 1)])
+            np.searchsorted(cmp.ts, gc.ts[min(int(result.exit_position), gc.n_bars - 1)])
         )
-        entry_pos = max(0, min(entry_pos, mgc.n_bars - 1))
-        exit_pos = max(0, min(exit_pos, mgc.n_bars - 1))
+        entry_pos = max(0, min(entry_pos, cmp.n_bars - 1))
+        exit_pos = max(0, min(exit_pos, cmp.n_bars - 1))
         if not (lo <= entry_pos <= hi):
             return
         exit_pos = max(lo, min(exit_pos, hi))
         stop0 = float(result.stop_track[0]) if len(result.stop_track) else None
         target0 = float(result.target_track[0]) if len(result.target_track) else None
-        self.mgc_chart.mirror_trade(
-            entry_pos,
-            exit_pos,
-            float(result.entry_price),
-            stop0,
-            target0,
-            float(result.exit_price),
+        self.compare_chart.mirror_trade(
+            entry_pos, exit_pos, float(result.entry_price), stop0, target0, float(result.exit_price)
         )
-        self.mgc_chart.center_on(entry_pos)
+
+    def _draw_compare_overlay(self, symbol: str) -> None:
+        """Normalized overlay: the comparison rebased to the primary's first close."""
+
+        cmp = self._compare_bars[symbol]
+        lo, hi = self._window_bounds(
+            cmp, self.start_edit.date().toPython(), self.end_edit.date().toPython()
+        )
+        if hi < lo or len(self._bars.close) == 0:
+            self.chart.clear_compare_line()
+            return
+        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        rs = resample_window(cmp, lo, hi, tf)
+        if len(rs.close) == 0 or float(rs.close[0]) == 0.0:
+            self.chart.clear_compare_line()
+            return
+        base = float(self._bars.close[self._view_start])
+        norm = base * np.asarray(rs.close, dtype=float) / float(rs.close[0])
+        label = f"{symbol} (normalized: rebased to {self._instrument}'s first close)"
+        self.chart.set_compare_line(norm, label)
 
     # -- animated replay ---------------------------------------------------
     def _replay_day(self) -> None:
@@ -1682,6 +1900,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.chart.center_on(result.entry_position)
 
     # -- lifecycle ---------------------------------------------------------
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.key() == QtCore.Qt.Key_Escape:
+            if self.chart._draw_mode is not None:  # cancel an armed drawing tool
+                self._arm_draw_tool(None)
+                self._draw_buttons[None].setChecked(True)
+                return
+            if self._focused_result is not None:  # return to the full chart
+                self._focused_result = None
+                self._focused_obs_id = None
+                self.forensics.clear()
+                self.overview.setText(self._inspector_hint)
+                self._render_view()  # un-zoom; date, strategy, and replay stay
+                return
+        super().keyPressEvent(event)
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
         self._animator.stop()
         self._forensics_token += 1  # orphan any in-flight worker completions

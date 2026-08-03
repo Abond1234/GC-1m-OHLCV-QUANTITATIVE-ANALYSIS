@@ -126,7 +126,7 @@ class ChartTimeframeTests(unittest.TestCase):
         vb = chart._price.vb
         vb.setYRange(50, 60, padding=0)  # kills autorange
         self.assertFalse(vb.state["autoRange"][1])
-        axis = chart._price.getAxis("right")
+        axis = chart._price.getAxis("left")  # single primary price scale
         self.assertTrue(hasattr(axis, "mouseDragEvent"))
 
         class _FakeDouble:

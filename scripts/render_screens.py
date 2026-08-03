@@ -64,6 +64,25 @@ def _first_non_empty_strategy(win: MainWindow):
     return None, None
 
 
+def _qd(ts):
+    from PySide6 import QtCore
+
+    t = pd.Timestamp(ts)
+    return QtCore.QDate(t.year, t.month, t.day)
+
+
+def _set_window(win: MainWindow, start_ts, end_ts) -> None:
+    win._date_guard = True
+    win.start_edit.setDate(_qd(start_ts))
+    win.end_edit.setDate(_qd(end_ts))
+    win._date_guard = False
+    win._render_view()
+
+
+def _set_day(win: MainWindow, ts) -> None:
+    _set_window(win, ts, ts)
+
+
 def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = None) -> list[Path]:
     out_dir = Path(out_dir) if out_dir else PROJECT_ROOT / "reports" / "ui_smoke"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -80,7 +99,7 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     saved: list[Path] = []
 
     # 1. Overview of the last loaded day with VWAP + session shading.
-    win.date_combo.setCurrentIndex(win.date_combo.count() - 1)
+    _set_day(win, win.end_edit.date().toPython())  # already the most recent day
     win.vwap_day_check.setChecked(True)
     win.vwap_session_check.setChecked(True)
     saved.append(_grab(win, out_dir / "01_chart_overview.png", app))
@@ -92,7 +111,7 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
         win._on_replayed(log)
         # Jump to the day of the first trade and draw its markers.
         first = log.iloc[0]
-        win.date_combo.setCurrentText(pd.Timestamp(first["trade_date_ny"]).strftime("%Y-%m-%d"))
+        _set_day(win, pd.Timestamp(first["trade_date_ny"]))
         saved.append(_grab(win, out_dir / "02_replay_markers.png", app))
 
         # 3. Focus one trade: its path + forensics.
@@ -146,11 +165,12 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     saved.append(_grab(win, out_dir / "09_light_theme.png", app))
     win._set_theme("dark")
 
-    # 9b. Multi-day range at an aggregated timeframe: a trading week at 15m.
-    win.range_combo.setCurrentText("1W")
+    # 9b. Multi-day literal window at an aggregated timeframe: a week at 15m.
+    end_day = win.end_edit.date().toPython()
+    _set_window(win, end_day - pd.Timedelta(days=7), end_day)
     win.tf_combo.setCurrentText("15m")
     saved.append(_grab(win, out_dir / "09b_week_15m.png", app))
-    win.range_combo.setCurrentText("1D")
+    _set_day(win, end_day)
     win.tf_combo.setCurrentText("1m")
 
     # 10-12. Narrow-display pass: 1366x768 at 125% DPI is ~1092x614 logical
