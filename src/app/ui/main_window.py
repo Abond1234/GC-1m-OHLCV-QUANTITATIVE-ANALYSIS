@@ -387,9 +387,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.session_panel.settingsChanged.connect(self._recompute_session)
         self.edge_panel = EdgeContextPanel()
 
+        # Trade inspector: a compact overview on single click; the full detail
+        # (below) opens on double-click and Escape returns to the full chart.
+        self._inspector_hint = "Click a trade for its overview; double-click for full detail."
+        self.overview = QtWidgets.QLabel(self._inspector_hint)
+        self.overview.setWordWrap(True)
+        self.overview.setTextFormat(QtCore.Qt.RichText)
+        self.overview.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
+        self.overview.setContentsMargins(10, 8, 10, 8)
+        overview_box = QtWidgets.QGroupBox("Trade overview")
+        QtWidgets.QVBoxLayout(overview_box).addWidget(self.overview)
+
         self.forensics = ForensicsPanel()
         self._right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self._right.addWidget(overview_box)
         self._right.addWidget(self.forensics)
+        self._right.setSizes([150, 520])
+        self.trade_table.doubleClicked.connect(lambda _i: self._activate_selected_row())
 
     def _build_exit_panel(self) -> None:
         self.exit_panel = ExitPanel()
@@ -1003,19 +1017,49 @@ class MainWindow(QtWidgets.QMainWindow):
             item.setToolTip(v)  # full text survives any column elision
             self.trade_table.setItem(r, c, item)
 
-    def _on_row_selected(self) -> None:
+    def _selected_row(self):
+        """The trade-log Series for the selected replay row, or None."""
+
         rows = self.trade_table.selectionModel().selectedRows()
         if not rows or self._log is None:
-            return
+            return None
         item = self.trade_table.item(rows[0].row(), 0)
         if item is None:  # selection event racing a table refresh
-            return
-        entry_position = item.data(QtCore.Qt.UserRole)
-        match = self._log[self._log["entry_position"] == entry_position]
-        if not match.empty:
-            self._focus_trade(match.iloc[0])
+            return None
+        match = self._log[self._log["entry_position"] == item.data(QtCore.Qt.UserRole)]
+        return None if match.empty else match.iloc[0]
+
+    def _on_row_selected(self) -> None:
+        """Single click: a compact overview only - the chart is not consumed."""
+
+        trade = self._selected_row()
+        if trade is not None:
+            self.overview.setText(self._overview_html(trade))
+
+    def _activate_selected_row(self) -> None:
+        """Double click: the full inspector (chart focus + forensics detail)."""
+
+        trade = self._selected_row()
+        if trade is not None:
+            self._focus_trade(trade)
+
+    def _overview_html(self, trade) -> str:
+        p = theme.active()
+        side = "Long" if trade["direction"] > 0 else "Short"
+        r = float(trade["gross_r"])
+        colour = p.up if r > 0 else p.down
+        return (
+            f"<b style='color:{colour}'>{side} &middot; {trade['exit_reason']} "
+            f"&middot; {r:+.2f} R</b><br>"
+            f"Entry {self._ny_label(int(trade['entry_position']))} &middot; "
+            f"held {int(trade['holding_minutes'])} min<br>"
+            f"In favour +{float(trade['mfe_r']):.2f} R &middot; "
+            f"against -{float(trade['mae_r']):.2f} R<br>"
+            f"<span style='color:{p.text_faint}'>Double-click for the full inspector.</span>"
+        )
 
     def _focus_trade(self, trade) -> None:
+        self.overview.setText(self._overview_html(trade))
         result = single_flex_exit(
             int(trade["entry_position"]),
             int(trade["direction"]),
@@ -1786,6 +1830,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.chart.center_on(result.entry_position)
 
     # -- lifecycle ---------------------------------------------------------
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.key() == QtCore.Qt.Key_Escape:
+            if self.chart._draw_mode is not None:  # cancel an armed drawing tool
+                self._arm_draw_tool(None)
+                self._draw_buttons[None].setChecked(True)
+                return
+            if self._focused_result is not None:  # return to the full chart
+                self._focused_result = None
+                self._focused_obs_id = None
+                self.forensics.clear()
+                self.overview.setText(self._inspector_hint)
+                self._render_view()  # un-zoom; date, strategy, and replay stay
+                return
+        super().keyPressEvent(event)
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
         self._animator.stop()
         self._forensics_token += 1  # orphan any in-flight worker completions
