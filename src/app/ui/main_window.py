@@ -204,9 +204,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_menu()
         self._build_topbar()
         self._build_side()
-        self._build_exit_dock()
+        self._build_exit_panel()
+        self._build_draw_actions()
+        self._build_workspaces()
         self._build_transport()
-        self._build_draw_toolbar()
 
         chart_col = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         chart_col.addWidget(self.chart)
@@ -216,11 +217,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._chart_col = chart_col
 
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        split.addWidget(chart_col)
-        split.addWidget(self._right)
-        split.setSizes([1080, 460])
-        split.setCollapsible(0, False)  # the chart itself can never collapse
-        split.setCollapsible(1, True)  # the sidebar can be dragged fully shut
+        split.addWidget(self._workspace_panel)  # collapsible left workspace
+        split.addWidget(chart_col)  # the chart stays central
+        split.addWidget(self._right)  # trade inspector
+        split.setSizes([320, 980, 380])
+        split.setStretchFactor(1, 1)
+        split.setCollapsible(0, True)
+        split.setCollapsible(1, False)  # the chart itself never collapses
+        split.setCollapsible(2, True)
         self._split = split
 
         central = QtWidgets.QWidget()
@@ -323,54 +327,27 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.grid_btn.clicked.connect(self._on_exit_grid)
 
-        # Two rows so nothing clips off the right edge on a narrow display:
-        # row 1 = what is on the chart, row 2 = acting on it.
-        row1 = QtWidgets.QHBoxLayout()
+        # The global toolbar stays lean: instrument, the literal date window, and
+        # the display timeframe. Every other control lives in a left workspace.
+        self.mgc_check = QtWidgets.QCheckBox("MGC mirror")
+        self.mgc_check.setToolTip(
+            "Show the MGC (micro gold) tape for the same day underneath, with the\n"
+            "current GC trade's entry/exit and initial levels mirrored onto it."
+        )
+        self.mgc_check.toggled.connect(self._on_mgc_toggled)
+        self._controls = QtWidgets.QHBoxLayout()
+        self._controls.setSpacing(6)
         for w in (
             self.instrument_combo,
             QtWidgets.QLabel("Start"),
             self.start_edit,
             QtWidgets.QLabel("End"),
             self.end_edit,
+            QtWidgets.QLabel("TF"),
             self.tf_combo,
-            self.vwap_check,
-            self.vwap_day_check,
-            self.vwap_session_check,
-            self.session_check,
-            _sep(),
-            QtWidgets.QLabel("Strategy"),
-            self.strategy_combo,
-            self.custom_check,
-            self.replay_btn,
         ):
-            row1.addWidget(w)
-        row1.addStretch(1)
-        self.mgc_check = QtWidgets.QCheckBox("MGC mirror")
-        self.mgc_check.setToolTip(
-            "Show the MGC (micro gold) tape for the same day underneath, with the\n"
-            "current GC trade's entry/exit and initial levels mirrored onto it -\n"
-            "did the pattern replicate on the execution instrument?"
-        )
-        self.mgc_check.toggled.connect(self._on_mgc_toggled)
-
-        row2 = QtWidgets.QHBoxLayout()
-        for w in (
-            self.freeplay_check,
-            self.long_radio,
-            self.short_radio,
-            _sep(),
-            self.excursion_check,
-            self.whatif_btn,
-            self.grid_btn,
-            _sep(),
-            self.mgc_check,
-        ):
-            row2.addWidget(w)
-        row2.addStretch(1)
-        self._controls = QtWidgets.QVBoxLayout()
-        self._controls.setSpacing(4)
-        self._controls.addLayout(row1)
-        self._controls.addLayout(row2)
+            self._controls.addWidget(w)
+        self._controls.addStretch(1)
 
     def _build_side(self) -> None:
         self.trade_table = QtWidgets.QTableWidget(0, len(_TRADE_COLUMNS))
@@ -399,6 +376,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.heatmap = HeatmapWidget()
         self.heatmap.cellChosen.connect(self._on_grid_cell)
 
+        # Trade list + analysis live in the Strategy workspace (left); the right
+        # sidebar is the trade inspector.
         self._tabs = QtWidgets.QTabWidget()
         self._tabs.addTab(self.trade_table, "Replay")
         self._tabs.addTab(self.blotter, "Free-play")
@@ -406,31 +385,142 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tabs.addTab(self.heatmap, "Exit grid")
         self.session_panel = SessionPanel()
         self.session_panel.settingsChanged.connect(self._recompute_session)
-        self._tabs.addTab(self.session_panel, "Session")
         self.edge_panel = EdgeContextPanel()
-        self._tabs.addTab(self.edge_panel, "Edge context")
 
         self.forensics = ForensicsPanel()
-
         self._right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self._right.addWidget(self._tabs)
         self._right.addWidget(self.forensics)
-        self._right.setSizes([460, 440])
 
-    def _build_exit_dock(self) -> None:
+    def _build_exit_panel(self) -> None:
         self.exit_panel = ExitPanel()
         self.exit_panel.configChanged.connect(self._on_config_changed)
+
+    # -- workspaces --------------------------------------------------------
+    _WORKSPACES = ("Strategy", "Indicators", "Drawing", "Risk", "Prop firm")
+
+    def _build_workspaces(self) -> None:
+        """Five collapsible left workspaces behind a vertical nav rail."""
+
+        self._workspace_stack = QtWidgets.QStackedWidget()
+        for maker in (
+            self._make_strategy_ws,
+            self._make_indicators_ws,
+            self._make_drawing_ws,
+            self._make_risk_ws,
+            self._make_propfirm_ws,
+        ):
+            self._workspace_stack.addWidget(maker())
+
+        panel = QtWidgets.QWidget()
+        panel.setMinimumWidth(300)
+        pl = QtWidgets.QVBoxLayout(panel)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.addWidget(self._workspace_stack)
+        self._workspace_panel = panel
+
+        rail = QtWidgets.QToolBar("Workspaces")
+        rail.setMovable(False)
+        rail.setOrientation(QtCore.Qt.Vertical)
+        rail.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
+        self._ws_actions = []
+        for i, label in enumerate(self._WORKSPACES):
+            act = rail.addAction(label)
+            act.setCheckable(True)
+            act.setShortcut(f"Ctrl+{i + 1}")
+            act.triggered.connect(lambda _c=False, idx=i: self._select_workspace(idx))
+            self._ws_actions.append(act)
+        self.addToolBar(QtCore.Qt.LeftToolBarArea, rail)
+        self._nav_rail = rail
+        self._select_workspace(0)  # Strategy open by default
+
+    def _select_workspace(self, index: int) -> None:
+        """Show a workspace; clicking the open one again collapses the panel."""
+
+        collapse = (
+            self._workspace_panel.isVisible() and self._workspace_stack.currentIndex() == index
+        )
+        for i, act in enumerate(self._ws_actions):
+            act.setChecked(i == index and not collapse)
+        if collapse:
+            self._workspace_panel.setVisible(False)
+        else:
+            self._workspace_stack.setCurrentIndex(index)
+            self._workspace_panel.setVisible(True)
+
+    @staticmethod
+    def _ws_widget() -> tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        return w, lay
+
+    def _make_strategy_ws(self) -> QtWidgets.QWidget:
+        w, lay = self._ws_widget()
+        top = QtWidgets.QHBoxLayout()
+        top.addWidget(QtWidgets.QLabel("Strategy"))
+        top.addWidget(self.strategy_combo, 1)
+        top.addWidget(self.replay_btn)
+        lay.addLayout(top)
+        lay.addWidget(self.custom_check)
+        fp = QtWidgets.QHBoxLayout()
+        for x in (self.freeplay_check, self.long_radio, self.short_radio):
+            fp.addWidget(x)
+        fp.addStretch(1)
+        lay.addLayout(fp)
+        acts = QtWidgets.QHBoxLayout()
+        for x in (self.excursion_check, self.whatif_btn, self.grid_btn):
+            acts.addWidget(x)
+        acts.addStretch(1)
+        lay.addLayout(acts)
+        lay.addWidget(self._tabs, 1)
+        return w
+
+    def _make_indicators_ws(self) -> QtWidgets.QWidget:
+        w, lay = self._ws_widget()
+        box = QtWidgets.QGroupBox("Overlays")
+        bl = QtWidgets.QVBoxLayout(box)
+        for x in (
+            self.vwap_check,
+            self.vwap_day_check,
+            self.vwap_session_check,
+            self.session_check,
+        ):
+            bl.addWidget(x)
+        lay.addWidget(box)
+        lay.addWidget(self.edge_panel, 1)
+        return w
+
+    def _make_drawing_ws(self) -> QtWidgets.QWidget:
+        w, lay = self._ws_widget()
+        box = QtWidgets.QGroupBox("Drawing tools")
+        bl = QtWidgets.QVBoxLayout(box)
+        for _label, mode, _tip, _hint in self._DRAW_TOOLS:
+            bl.addWidget(self._draw_buttons[mode])
+        lay.addWidget(box)
+        hint = QtWidgets.QLabel("Undo and Clear are on the chart's top-left. Right-click cancels.")
+        hint.setWordWrap(True)
+        hint.setProperty("role", "caption")
+        lay.addWidget(hint)
+        lay.addStretch(1)
+        return w
+
+    def _make_risk_ws(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.exit_panel)
-        dock = QtWidgets.QDockWidget("Exit rule (unfrozen)", self)
-        dock.setToolTip(
-            "Every exit field here is editable - deliberately not the frozen research contract."
-        )
-        dock.setWidget(scroll)
-        dock.setMinimumWidth(260)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
-        self._exit_dock = dock
+        lay.addWidget(scroll)
+        return w
+
+    def _make_propfirm_ws(self) -> QtWidgets.QWidget:
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.session_panel)
+        return w
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -446,31 +536,23 @@ class MainWindow(QtWidgets.QMainWindow):
             act.triggered.connect(lambda _c=False, m=mode: self._set_theme(m))
 
     def _populate_view_menu(self) -> None:
-        """Panel toggles, added once the docks/toolbars they control exist."""
+        """Toggles for the panels the workspace nav does not own."""
 
         menu = self._view_menu
         menu.addSeparator()
-        exit_act = self._exit_dock.toggleViewAction()
-        exit_act.setText("Exit-rule panel")
-        exit_act.setShortcut("Ctrl+1")
-        menu.addAction(exit_act)
-        side_act = menu.addAction("Analysis sidebar")
-        side_act.setCheckable(True)
-        side_act.setChecked(True)
-        side_act.setShortcut("Ctrl+2")
-        side_act.toggled.connect(self._right.setVisible)
-        self._sidebar_action = side_act
+        inspector = menu.addAction("Trade inspector")
+        inspector.setCheckable(True)
+        inspector.setChecked(True)
+        inspector.setShortcut("Ctrl+I")
+        inspector.toggled.connect(self._right.setVisible)
+        self._inspector_action = inspector
         transport_act = self._transport.toggleViewAction()
         transport_act.setText("Replay transport")
-        transport_act.setShortcut("Ctrl+3")
+        transport_act.setShortcut("Ctrl+R")
         menu.addAction(transport_act)
-        draw_act = self._draw_toolbar.toggleViewAction()
-        draw_act.setText("Draw toolbar")
-        draw_act.setShortcut("Ctrl+4")
-        menu.addAction(draw_act)
         mgc_act = menu.addAction("MGC mirror pane")
         mgc_act.setCheckable(True)
-        mgc_act.setShortcut("Ctrl+5")
+        mgc_act.setShortcut("Ctrl+M")
         mgc_act.toggled.connect(self.mgc_check.setChecked)
         self.mgc_check.toggled.connect(mgc_act.setChecked)
 
@@ -555,54 +637,60 @@ class MainWindow(QtWidgets.QMainWindow):
         ),
     )
 
-    def _build_draw_toolbar(self) -> None:
-        """Vertical drawing strip on the left edge, TradingView-style.
+    def _build_draw_actions(self) -> None:
+        """Drawing-tool buttons for the Drawing Tools workspace.
 
-        Arming a tool highlights its button and puts a plain-language hint in
-        the status bar; every tool is one-shot and hands back to the cursor.
+        Arming a tool checks its button and puts a plain-language hint in the
+        status bar; every tool is one-shot and hands back to the cursor. Undo and
+        Clear are compact icons directly on the chart.
         """
 
-        bar = QtWidgets.QToolBar("Draw")
-        bar.setMovable(False)
-        bar.setOrientation(QtCore.Qt.Vertical)
-        bar.setToolButtonStyle(QtCore.Qt.ToolButtonTextOnly)
-        group = QtGui.QActionGroup(self)
-        group.setExclusive(True)
-        self._draw_actions = {}
-        self._draw_hints = {}
+        self._draw_buttons: dict = {}
+        self._draw_hints: dict = {}
+        self._draw_group = QtWidgets.QButtonGroup(self)
+        self._draw_group.setExclusive(True)
         for label, mode, tip, hint in self._DRAW_TOOLS:
-            act = bar.addAction(label)
-            act.setCheckable(True)
-            act.setToolTip(tip)
-            act.setActionGroup(group)
-            act.triggered.connect(lambda _c=False, m=mode: self._arm_draw_tool(m))
-            self._draw_actions[mode] = act
+            btn = QtWidgets.QPushButton(label)
+            btn.setCheckable(True)
+            btn.setToolTip(tip)
+            btn.clicked.connect(lambda _c=False, m=mode: self._arm_draw_tool(m))
+            self._draw_group.addButton(btn)
+            self._draw_buttons[mode] = btn
             self._draw_hints[mode] = hint
-        self._draw_actions[None].setChecked(True)
-        bar.addSeparator()
-        undo = bar.addAction("Undo")
-        undo.setToolTip("Remove the most recent drawing on this day.")
-        undo.triggered.connect(self.chart.undo_drawing)
-        clear = bar.addAction("Clear")
-        clear.setToolTip("Remove every drawing on this day.")
-        clear.triggered.connect(self.chart.clear_drawings)
-        self.addToolBar(QtCore.Qt.LeftToolBarArea, bar)
-        self._draw_toolbar = bar
-        # One-shot tools: fall back to the cursor once a drawing lands.
+        self._draw_buttons[None].setChecked(True)
         self.chart.drawing_placed.connect(self._on_drawing_placed)
+        self._add_chart_draw_icons()
+
+    def _add_chart_draw_icons(self) -> None:
+        """Compact Undo/Clear buttons floating over the chart's top-left."""
+
+        bar = QtWidgets.QWidget(self.chart)
+        lay = QtWidgets.QHBoxLayout(bar)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        for text, tip, slot in (
+            ("Undo", "Remove the last drawing on this day (Ctrl+Z).", self.chart.undo_drawing),
+            ("Clear", "Remove every drawing on this day.", self.chart.clear_drawings),
+        ):
+            btn = QtWidgets.QToolButton()
+            btn.setText(text)
+            btn.setToolTip(tip)
+            btn.clicked.connect(slot)
+            lay.addWidget(btn)
+        bar.move(58, 6)  # clear of the left price axis
+        bar.raise_()
+        self._chart_draw_icons = bar
+        undo_sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Z"), self)
+        undo_sc.activated.connect(self.chart.undo_drawing)
 
     def _arm_draw_tool(self, mode: str | None) -> None:
         self.chart.set_draw_mode(mode)
-        hint = self._draw_hints.get(mode, "")
-        if hint:
-            self._set_status(hint)
-        else:
-            self._set_status("")
+        self._set_status(self._draw_hints.get(mode, ""))
 
     def _on_drawing_placed(self) -> None:
         self.chart.set_draw_mode(None)
-        self._draw_actions[None].setChecked(True)
-        self._set_status("Drawing placed. Drag it to adjust; Undo/Clear are in the Draw bar.")
+        self._draw_buttons[None].setChecked(True)
+        self._set_status("Drawing placed. Drag it to adjust; Undo/Clear are on the chart.")
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
