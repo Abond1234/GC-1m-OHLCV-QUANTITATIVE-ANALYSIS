@@ -27,6 +27,7 @@ from ..analysis.account import build_equity_curve, session_stats
 from ..analysis.evaluation import evaluate_policy
 from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
+from ..analysis.indicators import compute as compute_study
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..analysis.whatif import run_whatifs
 from ..datalayer.catalog_service import StrategyReplayService
@@ -46,6 +47,7 @@ from ..datalayer.timeframe import (
     TIMEFRAMES,
     ViewMap,
     bucket_labels,
+    hover_labels,
     resample_window,
     sample_first,
     sample_last,
@@ -61,8 +63,10 @@ from .edge_panel import EdgeContextPanel
 from .exit_panel import ExitPanel
 from .forensics_panel import ForensicsPanel
 from .heatmap_widget import HeatmapWidget
+from .indicators_panel import IndicatorsPanel
 from .replay_animator import ReplayAnimator
 from .session_panel import SessionPanel
+from .strategy_browser import StrategyBrowser
 
 _WHATIF_COLUMNS = ["Exit rule", "Survived?", "R", "Exit", "Held"]
 
@@ -151,6 +155,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._instrument_loading = False
         self._pending_session: dict | None = None  # session applied after a switch
         self._date_guard = False  # suppress re-render while setting both date edits
+        self._rs = None  # the displayed window's Resampled (for study evaluation)
         self._edge_service = EdgeContextService()
         self._edge_token = 0
         self._edge_day: tuple[int, int] | None = None  # anchor day's 1m [lo, hi]
@@ -210,6 +215,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_draw_actions()
         self._build_workspaces()
         self._build_transport()
+        self.indicators_panel.add_study("vwap20")  # the default study, as before
 
         chart_col = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         chart_col.addWidget(self.chart)
@@ -265,38 +271,17 @@ class MainWindow(QtWidgets.QMainWindow):
             "simulation, entry, exit, and replay stays on true 1-minute bars."
         )
         self.tf_combo.currentTextChanged.connect(lambda _t: self._render_view())
-        self.vwap_check = QtWidgets.QCheckBox("VWAP 20")
-        self.vwap_check.setChecked(True)
-        self.vwap_check.setToolTip("Rolling 20-bar volume-weighted average price.")
-        self.vwap_day_check = QtWidgets.QCheckBox("VWAP day")
-        self.vwap_day_check.setToolTip("VWAP anchored to the start of each New York trade date.")
-        self.vwap_session_check = QtWidgets.QCheckBox("VWAP session")
-        self.vwap_session_check.setToolTip("VWAP within each Asia/NY execution session.")
         self.session_check = QtWidgets.QCheckBox("NY session")
         self.session_check.setChecked(True)
         self.session_check.setToolTip("Shade the New York execution window (07:00-12:00 NY).")
-        # Overlay toggles flip item visibility directly; rebuilding the whole
-        # chart for a checkbox is what made these toggles feel heavy.
-        self.vwap_check.toggled.connect(lambda on: self.chart.set_vwap_visible("rolling", on))
-        self.vwap_day_check.toggled.connect(lambda on: self.chart.set_vwap_visible("day", on))
-        self.vwap_session_check.toggled.connect(
-            lambda on: self.chart.set_vwap_visible("session", on)
-        )
+        # The shading toggle flips item visibility directly; rebuilding the
+        # whole chart for a checkbox is what made these toggles feel heavy.
         self.session_check.toggled.connect(self.chart.set_sessions_visible)
 
-        self.strategy_combo = QtWidgets.QComboBox()
-        # Long catalog names: keep the closed combo compact, let the popup widen.
-        self.strategy_combo.setSizeAdjustPolicy(
-            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
-        )
-        self.strategy_combo.setMinimumContentsLength(16)
-        # Searchable: type to filter ~200 catalog names by substring, Enter selects.
-        self.strategy_combo.setEditable(True)
-        self.strategy_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
-        completer = self.strategy_combo.completer()
-        completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
-        completer.setFilterMode(QtCore.Qt.MatchContains)
-        completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        # Strategy browser: search bar, family filter, collapsible groups, and
+        # per-row selected/loading/disabled/error states.
+        self.strategy_browser = StrategyBrowser()
+        self.strategy_browser.strategyActivated.connect(lambda _n: self._on_replay())
         self.custom_check = QtWidgets.QCheckBox("Custom exits")
         self.custom_check.setToolTip(
             "Replay using the Exit-rule panel instead of the frozen contract."
@@ -329,17 +314,17 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.grid_btn.clicked.connect(self._on_exit_grid)
 
-        # Overlay / compare: pick a second instrument and a comparison mode.
-        self.compare_combo = QtWidgets.QComboBox()
-        self.compare_combo.setToolTip(
+        # Overlay: one compact popover replacing the Compare + orientation
+        # fields - Off, comparison instrument, and the three display modes.
+        self.overlay_btn = QtWidgets.QToolButton()
+        self.overlay_btn.setText("Overlay: Off")
+        self.overlay_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self.overlay_btn.setToolTip(
             "Compare a second instrument: Horizontal or Vertical split (each pane\n"
             "keeps its own price scale), or a Normalized overlay on this chart."
         )
-        self.compare_combo.currentIndexChanged.connect(self._on_compare_changed)
-        self.compare_mode_combo = QtWidgets.QComboBox()
-        self.compare_mode_combo.addItems(self._COMPARE_MODES)
-        self.compare_mode_combo.setToolTip("How the comparison instrument is shown.")
-        self.compare_mode_combo.currentTextChanged.connect(self._on_compare_mode_changed)
+        self._overlay_menu = QtWidgets.QMenu(self)
+        self.overlay_btn.setMenu(self._overlay_menu)
 
         # The global toolbar stays lean: instrument, the literal date window, the
         # display timeframe, and the comparison overlay.
@@ -354,9 +339,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QLabel("TF"),
             self.tf_combo,
             _sep(),
-            QtWidgets.QLabel("Compare"),
-            self.compare_combo,
-            self.compare_mode_combo,
+            self.overlay_btn,
         ):
             self._controls.addWidget(w)
         self._controls.addStretch(1)
@@ -483,12 +466,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _make_strategy_ws(self) -> QtWidgets.QWidget:
         w, lay = self._ws_widget()
-        top = QtWidgets.QHBoxLayout()
-        top.addWidget(QtWidgets.QLabel("Strategy"))
-        top.addWidget(self.strategy_combo, 1)
-        top.addWidget(self.replay_btn)
-        lay.addLayout(top)
-        lay.addWidget(self.custom_check)
+        lay.addWidget(self.strategy_browser, 1)
+        run = QtWidgets.QHBoxLayout()
+        run.addWidget(self.custom_check)
+        run.addStretch(1)
+        run.addWidget(self.replay_btn)
+        lay.addLayout(run)
         fp = QtWidgets.QHBoxLayout()
         for x in (self.freeplay_check, self.long_radio, self.short_radio):
             fp.addWidget(x)
@@ -504,31 +487,52 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _make_indicators_ws(self) -> QtWidgets.QWidget:
         w, lay = self._ws_widget()
-        box = QtWidgets.QGroupBox("Overlays")
-        bl = QtWidgets.QVBoxLayout(box)
-        for x in (
-            self.vwap_check,
-            self.vwap_day_check,
-            self.vwap_session_check,
-            self.session_check,
-        ):
-            bl.addWidget(x)
-        lay.addWidget(box)
-        lay.addWidget(self.edge_panel, 1)
+        self.indicators_panel = IndicatorsPanel()
+        self.indicators_panel.changed.connect(self._on_indicators_changed)
+        self.indicators_panel.volumeToggled.connect(self.chart.set_volume_visible)
+        lay.addWidget(self.indicators_panel, 3)
+        lay.addWidget(self.session_check)
+        lay.addWidget(self.edge_panel, 2)
         return w
 
     def _make_drawing_ws(self) -> QtWidgets.QWidget:
-        w, lay = self._ws_widget()
-        box = QtWidgets.QGroupBox("Drawing tools")
-        bl = QtWidgets.QVBoxLayout(box)
-        for _label, mode, _tip, _hint in self._DRAW_TOOLS:
-            bl.addWidget(self._draw_buttons[mode])
-        lay.addWidget(box)
-        hint = QtWidgets.QLabel("Undo and Clear are on the chart's top-left. Right-click cancels.")
+        w = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(w)
+        outer.setContentsMargins(0, 0, 0, 0)
+        holder = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(holder)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        lay.addWidget(self._draw_buttons[None])
+        groups: dict[str, QtWidgets.QGridLayout] = {}
+        counts: dict[str, int] = {}
+        for group, _label, mode, _tip, _hint in self._DRAW_TOOLS:
+            if mode is None:
+                continue
+            grid = groups.get(group)
+            if grid is None:
+                box = QtWidgets.QGroupBox(group)
+                grid = QtWidgets.QGridLayout(box)
+                grid.setHorizontalSpacing(6)
+                grid.setVerticalSpacing(6)
+                groups[group] = grid
+                counts[group] = 0
+                lay.addWidget(box)
+            i = counts[group]
+            grid.addWidget(self._draw_buttons[mode], i // 2, i % 2)
+            counts[group] = i + 1
+        hint = QtWidgets.QLabel(
+            "Undo, Redo and Clear are in the chart header. Right-click or Esc cancels."
+        )
         hint.setWordWrap(True)
         hint.setProperty("role", "caption")
         lay.addWidget(hint)
         lay.addStretch(1)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setWidget(holder)
+        outer.addWidget(scroll)
         return w
 
     def _make_risk_ws(self) -> QtWidgets.QWidget:
@@ -631,33 +635,153 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addToolBar(QtCore.Qt.BottomToolBarArea, bar)
         self._transport = bar
 
+    # (group, label, mode, tooltip, armed hint) - labels use the exact
+    # supplied TradingView tool names from the corrections brief.
+    _DRAG_HINT = "Drag across the chart, or click two points. Esc or right-click cancels."
+    _CLICK_HINT = "Click the chart to place it. Esc or right-click cancels."
+    _THREE_HINT = "Click three anchor points on the chart. Esc or right-click cancels."
     _DRAW_TOOLS = (
-        ("Cursor", None, "Normal interaction: crosshair, free-play clicks, drags.", ""),
+        ("", "Cursor", None, "Normal interaction: crosshair, free-play clicks, drags.", ""),
+        ("Lines", "Trendline", "trend", "A segment between two draggable endpoints.", _DRAG_HINT),
         (
-            "Level",
+            "Lines",
+            "Ray",
+            "ray",
+            "A line from its anchor through the second point, onward.",
+            _DRAG_HINT,
+        ),
+        (
+            "Lines",
+            "Info line",
+            "info",
+            "A trendline carrying its own measurement readout\n"
+            "(price change, ticks, percent, bars, elapsed time).",
+            _DRAG_HINT,
+        ),
+        ("Lines", "Extended line", "extline", "A line extended in both directions.", _DRAG_HINT),
+        (
+            "Lines",
+            "Trend angle",
+            "angle",
+            "A trendline labelled with its angle and slope in points per bar.",
+            _DRAG_HINT,
+        ),
+        (
+            "Lines",
+            "Horizontal line",
             "hline",
-            "A horizontal price level (support/resistance). Drag it later to move it.",
-            "Level armed: click a price on the chart. Right-click cancels.",
+            "A horizontal price level across the whole chart.",
+            _CLICK_HINT,
         ),
         (
-            "Trend",
-            "trend",
-            "A trendline. Drag across the chart (or click two points); drag the\n"
-            "endpoint handles later to adjust.",
-            "Trendline armed: drag across the chart, or click two points. Right-click cancels.",
+            "Lines",
+            "Horizontal ray",
+            "hray",
+            "A price level from its origin to the right only.",
+            _CLICK_HINT,
+        ),
+        ("Lines", "Vertical line", "vline", "A vertical time marker.", _CLICK_HINT),
+        (
+            "Lines",
+            "Crossline",
+            "cross",
+            "A full-height and full-width cross through one point.",
+            _CLICK_HINT,
         ),
         (
+            "Position",
+            "Long position",
+            "longpos",
+            "Entry, target and stop with shaded reward/risk zones and a live\n"
+            "R:R readout. Drag entry to target; the stop then drags freely.",
+            _DRAG_HINT,
+        ),
+        (
+            "Position",
+            "Short position",
+            "shortpos",
+            "The short-side position tool: reward below, risk above.",
+            _DRAG_HINT,
+        ),
+        (
+            "Zones",
             "Zone",
             "rect",
-            "A shaded box for supply/demand or consolidation zones. Drag a box;\n"
-            "drag its corner handles later to resize.",
-            "Zone armed: drag a box on the chart. Right-click cancels.",
+            "A shaded box for supply/demand or consolidation zones.",
+            _DRAG_HINT,
         ),
         (
-            "Time",
-            "vline",
-            "A vertical time marker. Drag it later to move it.",
-            "Time marker armed: click a bar on the chart. Right-click cancels.",
+            "Fibonacci",
+            "Fib retracement",
+            "fibret",
+            "Levels between a swing's two ends.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Trend-based fib extension",
+            "fibext",
+            "The first swing's move projected from the pullback point.",
+            _THREE_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib channel",
+            "fibchan",
+            "Parallel channel lines at fib offsets of the third point.",
+            _THREE_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib time zone",
+            "fibtime",
+            "Vertical lines at Fibonacci-number multiples of the anchor interval.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib speed resistance fan",
+            "fibfan",
+            "Fan rays through fib fractions of the anchor swing.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Trend-based fib time",
+            "fibttime",
+            "Vertical lines at fib ratios of the first swing, from the third point.",
+            _THREE_HINT,
+        ),
+        ("Fibonacci", "Fib circles", "fibcircles", "Concentric fib-ratio circles.", _DRAG_HINT),
+        ("Fibonacci", "Fib spiral", "fibspiral", "A golden spiral from the anchor.", _DRAG_HINT),
+        (
+            "Fibonacci",
+            "Fib speed resistance arcs",
+            "fibarcs",
+            "Arcs at fib fractions of the anchor swing.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib wedge",
+            "fibwedge",
+            "Two rays from an apex with fib arcs between them.",
+            _THREE_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Pitchfan",
+            "pitchfan",
+            "Fan rays from an apex through fib divisions of the base.",
+            _THREE_HINT,
+        ),
+        (
+            "Tools",
+            "Measure",
+            "measure",
+            "Measure between two points: price change, ticks, percent, bars and\n"
+            "elapsed time. Shift+Left-drag measures any time without arming this.",
+            "Measure armed: drag from anchor to destination. Esc or right-click cancels.",
         ),
     )
 
@@ -673,39 +797,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self._draw_hints: dict = {}
         self._draw_group = QtWidgets.QButtonGroup(self)
         self._draw_group.setExclusive(True)
-        for label, mode, tip, hint in self._DRAW_TOOLS:
+        for _group, label, mode, tip, hint in self._DRAW_TOOLS:
             btn = QtWidgets.QPushButton(label)
             btn.setCheckable(True)
             btn.setToolTip(tip)
             btn.clicked.connect(lambda _c=False, m=mode: self._arm_draw_tool(m))
             self._draw_group.addButton(btn)
             self._draw_buttons[mode] = btn
-            self._draw_hints[mode] = hint
+            self._draw_hints[mode] = f"{label} armed: {hint}" if hint else ""
         self._draw_buttons[None].setChecked(True)
         self.chart.drawing_placed.connect(self._on_drawing_placed)
-        self._add_chart_draw_icons()
-
-    def _add_chart_draw_icons(self) -> None:
-        """Compact Undo/Clear buttons floating over the chart's top-left."""
-
-        bar = QtWidgets.QWidget(self.chart)
-        lay = QtWidgets.QHBoxLayout(bar)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(4)
-        for text, tip, slot in (
-            ("Undo", "Remove the last drawing on this day (Ctrl+Z).", self.chart.undo_drawing),
-            ("Clear", "Remove every drawing on this day.", self.chart.clear_drawings),
-        ):
-            btn = QtWidgets.QToolButton()
-            btn.setText(text)
-            btn.setToolTip(tip)
-            btn.clicked.connect(slot)
-            lay.addWidget(btn)
-        bar.move(58, 6)  # clear of the left price axis
-        bar.raise_()
-        self._chart_draw_icons = bar
+        # Undo/Redo/Clear live compactly in the chart header (never covering the
+        # OHLC readout); the shortcuts mirror them.
         undo_sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Z"), self)
         undo_sc.activated.connect(self.chart.undo_drawing)
+        redo_sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Y"), self)
+        redo_sc.activated.connect(self.chart.redo_drawing)
 
     def _arm_draw_tool(self, mode: str | None) -> None:
         self.chart.set_draw_mode(mode)
@@ -714,7 +821,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_drawing_placed(self) -> None:
         self.chart.set_draw_mode(None)
         self._draw_buttons[None].setChecked(True)
-        self._set_status("Drawing placed. Drag it to adjust; Undo/Clear are on the chart.")
+        self._set_status(
+            "Drawing placed. Drag it to adjust; Undo/Redo/Clear are in the chart header."
+        )
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
@@ -736,20 +845,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ny_label = ny_time_label(data["replay"].bars)
         self.blotter.set_time_label(self._ny_label)
         self._set_date_bounds(data["dates"])
-        for spec in data["replay"].list_strategies():
-            self.strategy_combo.addItem(spec.name)
-        # The closed combo stays compact; widen the popup to the longest name.
-        metrics = self.strategy_combo.fontMetrics()
-        widest = max(
-            (
-                metrics.horizontalAdvance(self.strategy_combo.itemText(i))
-                for i in range(self.strategy_combo.count())
-            ),
-            default=0,
-        )
-        self.strategy_combo.view().setMinimumWidth(widest + 48)
-        self.strategy_combo.completer().popup().setMinimumWidth(widest + 48)
-        self.strategy_combo.setCurrentIndex(0)  # editable combo starts blank otherwise
+        self.strategy_browser.populate(data["replay"].list_strategies())
         self.instrument_combo.blockSignals(True)
         self.instrument_combo.clear()
         for instrument in available_instruments():
@@ -841,24 +937,15 @@ class MainWindow(QtWidgets.QMainWindow):
             "segment": rs.segment,
         }
         self.chart.set_tick_size(REGISTRY[self._instrument].spec.tick_size)
-        self.chart.set_view(ohlc, labels, view_map, minute_close=bars.close[lo : hi + 1])
-        # Always build the overlays; the checkboxes only flip visibility. Lines
-        # are display-sampled at each bucket's close, shading at its open.
-        self.chart.add_vwap(
-            sample_last(self._active_data()["vwap20"], rs),
-            "rolling",
-            visible=self.vwap_check.isChecked(),
+        self.chart.set_view(
+            ohlc,
+            labels,
+            view_map,
+            minute_close=bars.close[lo : hi + 1],
+            hover_labels=hover_labels(bars, rs, tf),
         )
-        self.chart.add_vwap(
-            sample_last(self._active_data()["vwap_day"], rs),
-            "day",
-            visible=self.vwap_day_check.isChecked(),
-        )
-        self.chart.add_vwap(
-            sample_last(self._active_data()["vwap_session"], rs),
-            "session",
-            visible=self.vwap_session_check.isChecked(),
-        )
+        self._rs = rs  # active studies re-evaluate against this window
+        self._render_indicators()
         self.chart.shade_sessions(
             sample_first(self._active_data()["session_code"], rs),
             visible=self.session_check.isChecked(),
@@ -868,6 +955,61 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _in_view(self, position: int) -> bool:
         return self._view_start <= position <= self._view_end
+
+    # -- indicator studies ---------------------------------------------------
+    def _render_indicators(self) -> None:
+        """Evaluate the active studies on the displayed window and draw them.
+
+        Only active studies are computed (the brief's lifecycle contract). The
+        VWAP variants are display-sampled from the precomputed research series;
+        everything else is computed from the displayed OHLCV buckets - display
+        aids only, never inputs to fills.
+        """
+
+        if self._rs is None:
+            return
+        rs = self._rs
+        ohlc = {
+            "open": rs.open,
+            "high": rs.high,
+            "low": rs.low,
+            "close": rs.close,
+            "volume": rs.volume,
+        }
+        data = self._active_data()
+        for inst in self.indicators_panel.active_instances():
+            definition = inst.definition
+            if definition.source is not None:
+                series = {"value": sample_last(data[definition.source], rs)}
+            else:
+                series = compute_study(inst.key, inst.params, ohlc)
+            self.chart.set_indicator(
+                inst.id,
+                definition.pane,
+                series,
+                inst.color,
+                visible=inst.visible,
+                band=definition.band,
+                guides=definition.guides,
+            )
+        self._refresh_chips()
+
+    def _refresh_chips(self) -> None:
+        self.chart.set_header_chips(
+            self.indicators_panel.chip_rows(),
+            self.indicators_panel.toggle_instance,
+            self.indicators_panel.remove_instance,
+        )
+
+    def _on_indicators_changed(self) -> None:
+        """Active set / params / visibility changed: re-render just the studies."""
+
+        if self._rs is None:
+            return
+        live = {inst.id for inst in self.indicators_panel.active_instances()}
+        for inst_id in [i for i in self.chart._indicator_items if i not in live]:
+            self.chart.remove_indicator(inst_id)
+        self._render_indicators()
 
     def _redraw_overlays(self, reset_levels: bool = True) -> None:
         """Redraw replay markers, a focused replay path, and all placed trades."""
@@ -979,9 +1121,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_replay(self) -> None:
         if self._data is None or self._instrument != "GC":
             return
-        name = self.strategy_combo.currentText()
+        name = self.strategy_browser.current_name()
         specs = {s.name: s for s in self._data["replay"].list_strategies()}
         if name not in specs:
+            self._set_status("Select a strategy in the Strategy workspace first.")
             return
         custom = self.custom_check.isChecked()
         # The config is captured here but only installed when its log arrives,
@@ -990,12 +1133,19 @@ class MainWindow(QtWidgets.QMainWindow):
         cfg_used = self.exit_panel.to_config() if custom else frozen_config()
         cfg = cfg_used if custom else None
         self._set_status(f"Replaying {name} ...")
+        self.strategy_browser.clear_error(name)
+        self.strategy_browser.set_loading(name)
         task = Task(self._data["replay"].replay, specs[name], cfg)
         task.signals.finished.connect(lambda log, c=cfg_used: self._on_replayed(log, c))
-        task.signals.error.connect(self._on_error)
+        task.signals.error.connect(lambda message, n=name: self._on_replay_error(n, message))
         self._start(task)
 
+    def _on_replay_error(self, name: str, message: str) -> None:
+        self.strategy_browser.set_error(name, message)
+        self._on_error(message)
+
     def _on_replayed(self, log: pd.DataFrame, cfg=None) -> None:
+        self.strategy_browser.set_loading(None)
         if cfg is not None:
             self._replay_cfg = cfg
         self._log = log
@@ -1254,6 +1404,7 @@ class MainWindow(QtWidgets.QMainWindow):
             active_id=self._active_id,
             next_id=self._next_id,
             drawings=self.chart.export_drawings(),
+            indicators=self.indicators_panel.to_dicts(),
         )
 
     def _save_session(self) -> None:
@@ -1374,6 +1525,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._date_guard = False
         self._render_view()
         self.chart.import_drawings(payload.get("drawings", []))
+        if "indicators" in payload:
+            self.indicators_panel.load_dicts(payload["indicators"])
         self.blotter.set_trades(list(self._placed.values()))
         if self._active_id is not None:
             self.blotter.select_trade(self._active_id)
@@ -1440,8 +1593,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.blotter.set_time_label(self._ny_label)
         instrument = REGISTRY[symbol]
         gc_active = symbol == "GC"
-        for widget in (self.strategy_combo, self.replay_btn, self.custom_check):
+        for widget in (self.replay_btn, self.custom_check):
             widget.setEnabled(gc_active)
+        self.strategy_browser.set_enabled_with_reason(
+            gc_active, "Strategy catalog and replay are GC-only (research validity)."
+        )
         if not gc_active:
             self.replay_btn.setToolTip(
                 "Strategy catalog and replay are GC-only (research validity)."
@@ -1677,22 +1833,57 @@ class MainWindow(QtWidgets.QMainWindow):
             f"(exploratory)."
         )
 
-    # -- MGC mirror pane ----------------------------------------------------
+    # -- comparison overlay (popover) ---------------------------------------
     _COMPARE_MODES = ("Horizontal", "Vertical", "Normalized")
+    _MODE_LABELS = {
+        "Horizontal": "Horizontal split",
+        "Vertical": "Vertical split",
+        "Normalized": "Normalized overlay",
+    }
 
     def _populate_compare_combo(self) -> None:
-        self.compare_combo.blockSignals(True)
-        self.compare_combo.clear()
-        self.compare_combo.addItem("Off", None)
-        for inst in available_instruments():
-            if inst.symbol != self._instrument:
-                self.compare_combo.addItem(inst.display, inst.symbol)
-        self.compare_combo.setCurrentIndex(0)
-        self.compare_combo.blockSignals(False)
+        """Rebuild the overlay popover for the current primary instrument."""
 
-    def _on_compare_changed(self) -> None:
-        symbol = self.compare_combo.currentData()
+        menu = self._overlay_menu
+        menu.clear()
+        off = menu.addAction("Off")
+        off.setCheckable(True)
+        off.setChecked(self._compare_symbol is None)
+        off.triggered.connect(lambda _c=False: self._set_compare_symbol(None))
+        symbol_group = QtGui.QActionGroup(menu)
+        symbol_group.setExclusive(True)
+        symbol_group.addAction(off)
+        menu.addSeparator()
+        for inst in available_instruments():
+            if inst.symbol == self._instrument:
+                continue
+            act = menu.addAction(inst.display)
+            act.setCheckable(True)
+            act.setChecked(inst.symbol == self._compare_symbol)
+            act.triggered.connect(lambda _c=False, s=inst.symbol: self._set_compare_symbol(s))
+            symbol_group.addAction(act)
+        menu.addSeparator()
+        mode_group = QtGui.QActionGroup(menu)
+        mode_group.setExclusive(True)
+        for mode in self._COMPARE_MODES:
+            act = menu.addAction(self._MODE_LABELS[mode])
+            act.setCheckable(True)
+            act.setChecked(mode == self._compare_mode)
+            act.triggered.connect(lambda _c=False, m=mode: self._set_compare_mode(m))
+            mode_group.addAction(act)
+        self._sync_overlay_button()
+
+    def _sync_overlay_button(self) -> None:
+        if self._compare_symbol is None:
+            self.overlay_btn.setText("Overlay: Off")
+        else:
+            self.overlay_btn.setText(
+                f"Overlay: {self._compare_symbol} - {self._MODE_LABELS[self._compare_mode]}"
+            )
+
+    def _set_compare_symbol(self, symbol: str | None) -> None:
         self._compare_symbol = symbol
+        self._populate_compare_combo()  # re-check the menu against the new state
         if not symbol:
             self._apply_compare_mode()
             return
@@ -1717,11 +1908,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_compare_error(self, message: str) -> None:
         self._compare_loading = False
-        self.compare_combo.setCurrentIndex(0)  # back to Off
+        self._set_compare_symbol(None)  # back to Off
         self._on_error(message)
 
-    def _on_compare_mode_changed(self, text: str) -> None:
-        self._compare_mode = text
+    def _set_compare_mode(self, mode: str) -> None:
+        self._compare_mode = mode
+        self._sync_overlay_button()
         self._apply_compare_mode()
 
     def _apply_compare_mode(self) -> None:
@@ -1779,7 +1971,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._compare_range = (lo, hi, tf, symbol)
             rs = resample_window(cmp, lo, hi, tf)
             labels = bucket_labels(cmp, rs, tf, multi_day=multi_day)
-            self.compare_chart._price.setLabel("left", REGISTRY[symbol].display)
+            self.compare_chart._price.setLabel("right", REGISTRY[symbol].display)
             self.compare_chart.set_tick_size(REGISTRY[symbol].spec.tick_size)
             self.compare_chart.set_view(
                 {
@@ -1793,6 +1985,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 labels,
                 ViewMap.from_resampled(rs, tf),
                 minute_close=cmp.close[lo : hi + 1],
+                hover_labels=hover_labels(cmp, rs, tf),
             )
             self.compare_chart.shade_sessions(
                 sample_first(_session_code(cmp.minute_ny), rs),
@@ -1902,6 +2095,9 @@ class MainWindow(QtWidgets.QMainWindow):
     # -- lifecycle ---------------------------------------------------------
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
         if event.key() == QtCore.Qt.Key_Escape:
+            if self.chart.measuring():  # cancel an in-progress measurement first
+                self.chart.cancel_measurement()
+                return
             if self.chart._draw_mode is not None:  # cancel an armed drawing tool
                 self._arm_draw_tool(None)
                 self._draw_buttons[None].setChecked(True)

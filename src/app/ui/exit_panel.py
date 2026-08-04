@@ -39,6 +39,34 @@ _TIP = {
 }
 
 
+class _ClampDoubleSpin(QtWidgets.QDoubleSpinBox):
+    """A spinbox whose out-of-range typed values clamp instead of reverting.
+
+    Stock Qt keeps out-of-range text "Intermediate" and silently restores the
+    previous value on commit - exactly the "control ignores input" failure the
+    UI review flags. Clamping honours the user's intent and the field's rules.
+    """
+
+    def fixup(self, text: str) -> str:  # noqa: N802 - Qt override
+        try:
+            value = float(text.replace(",", "."))
+        except ValueError:
+            return text
+        clamped = min(max(value, self.minimum()), self.maximum())
+        return f"{clamped:.{self.decimals()}f}"
+
+
+class _ClampIntSpin(QtWidgets.QSpinBox):
+    """Integer variant of :class:`_ClampDoubleSpin`."""
+
+    def fixup(self, text: str) -> str:  # noqa: N802 - Qt override
+        try:
+            value = int(float(text.replace(",", ".")))
+        except ValueError:
+            return text
+        return str(min(max(value, self.minimum()), self.maximum()))
+
+
 class ExitPanel(QtWidgets.QWidget):
     """All ExitConfig fields as grouped controls; emits a debounced configChanged."""
 
@@ -50,6 +78,7 @@ class ExitPanel(QtWidgets.QWidget):
         self._debounce.setSingleShot(True)
         self._debounce.setInterval(140)
         self._debounce.timeout.connect(lambda: self.configChanged.emit(self.to_config()))
+        self._warn_labels: dict[str, QtWidgets.QLabel] = {}
         self._build()
 
     # -- construction ------------------------------------------------------
@@ -78,7 +107,7 @@ class ExitPanel(QtWidgets.QWidget):
         layout.addLayout(presets)
 
         # Stop.
-        stop_box, stop_form = self._group("Stop (your risk = 1 R)")
+        stop_box, stop_form = self._group("Stop (your risk = 1 R)", "stop")
         self.stop_mode = self._combo(_STOP_MODES, _TIP["stop_mode"])
         self.stop_value = self._spin(0.1, 200.0, 1.5, 0.1, _TIP["stop_value"])
         stop_form.addRow("mode", self.stop_mode)
@@ -86,7 +115,7 @@ class ExitPanel(QtWidgets.QWidget):
         layout.addWidget(stop_box)
 
         # Target.
-        tgt_box, tgt_form = self._group("Target (your reward)")
+        tgt_box, tgt_form = self._group("Target (your reward)", "target")
         self.target_mode = self._combo(_TARGET_MODES, _TIP["target_mode"])
         self.target_value = self._spin(0.1, 200.0, 2.0, 0.1, _TIP["target_value"])
         tgt_form.addRow("mode", self.target_mode)
@@ -94,7 +123,7 @@ class ExitPanel(QtWidgets.QWidget):
         layout.addWidget(tgt_box)
 
         # Trailing.
-        trail_box, trail_form = self._group("Trailing stop")
+        trail_box, trail_form = self._group("Trailing stop", "trail")
         self.trail_check = QtWidgets.QCheckBox("enabled")
         self.trail_check.setToolTip(_TIP["trailing"])
         self.trail_mode = self._combo(_STOP_MODES, _TIP["trailing"])
@@ -103,9 +132,10 @@ class ExitPanel(QtWidgets.QWidget):
         trail_form.addRow("mode", self.trail_mode)
         trail_form.addRow("value", self.trail_value)
         layout.addWidget(trail_box)
+        self._trail_form = trail_form
 
         # Breakeven.
-        be_box, be_form = self._group("Breakeven move")
+        be_box, be_form = self._group("Breakeven move", "be")
         self.be_check = QtWidgets.QCheckBox("enabled")
         self.be_check.setToolTip(_TIP["breakeven"])
         self.be_trigger = self._spin(0.1, 10.0, 1.0, 0.1, _TIP["be_trigger"])
@@ -114,14 +144,16 @@ class ExitPanel(QtWidgets.QWidget):
         be_form.addRow("trigger R", self.be_trigger)
         be_form.addRow("offset ticks", self.be_offset)
         layout.addWidget(be_box)
+        self._be_form = be_form
 
         # Time / session.
-        time_box, time_form = self._group("Time and session")
-        self.hold_spin = QtWidgets.QSpinBox()
+        time_box, time_form = self._group("Time and session", "time")
+        self.hold_spin = _ClampIntSpin()
         self.hold_spin.setRange(1, 1440)
         self.hold_spin.setValue(120)
         self.hold_spin.setToolTip(_TIP["hold"])
         self.hold_spin.setAccelerated(True)
+        self._attach_range_feedback(self.hold_spin)
         self.forced_check = QtWidgets.QCheckBox("force flat 15:30 NY")
         self.forced_check.setChecked(True)
         self.forced_check.setToolTip(_TIP["forced"])
@@ -136,13 +168,27 @@ class ExitPanel(QtWidgets.QWidget):
 
         self._wire_signals()
 
-    def _group(self, title: str) -> tuple[QtWidgets.QGroupBox, QtWidgets.QFormLayout]:
+    def _group(self, title: str, key: str) -> tuple[QtWidgets.QGroupBox, QtWidgets.QFormLayout]:
         box = QtWidgets.QGroupBox(title)
         form = QtWidgets.QFormLayout(box)
         form.setLabelAlignment(QtCore.Qt.AlignRight)
         form.setContentsMargins(10, 6, 10, 8)
         form.setSpacing(6)
+        # Every group carries an inline warning slot, so invalid or
+        # self-defeating input produces feedback next to the field, never a
+        # silently-ignored keystroke.
+        warn = QtWidgets.QLabel("")
+        warn.setProperty("role", "warn")
+        warn.setWordWrap(True)
+        warn.setVisible(False)
+        form.addRow(warn)
+        self._warn_labels[key] = warn
         return box, form
+
+    def _set_warning(self, key: str, message: str) -> None:
+        label = self._warn_labels[key]
+        label.setText(message)
+        label.setVisible(bool(message))
 
     def _combo(self, items, tip: str) -> QtWidgets.QComboBox:
         combo = QtWidgets.QComboBox()
@@ -151,14 +197,49 @@ class ExitPanel(QtWidgets.QWidget):
         return combo
 
     def _spin(self, lo, hi, val, step, tip, decimals: int = 2) -> QtWidgets.QDoubleSpinBox:
-        spin = QtWidgets.QDoubleSpinBox()
+        spin = _ClampDoubleSpin()
         spin.setRange(lo, hi)
         spin.setSingleStep(step)
         spin.setDecimals(decimals)
         spin.setValue(val)
         spin.setToolTip(tip)
         spin.setAccelerated(True)  # press-and-hold steppers ramp up
+        self._attach_range_feedback(spin)
         return spin
+
+    def _attach_range_feedback(self, spin: QtWidgets.QDoubleSpinBox) -> None:
+        """Typed values outside the range flag the field instead of vanishing.
+
+        Qt clamps out-of-range text silently on commit; here the field turns
+        invalid-red the moment the typed number leaves ``[min, max]``, with the
+        allowed range shown inline, and clears once the value is legal again.
+        """
+
+        def _on_text(text: str, _spin=spin) -> None:
+            try:
+                value = float(text.replace(",", "."))
+            except ValueError:
+                return  # incomplete input ("", "-", "1."): let the user type
+            bad = value < _spin.minimum() or value > _spin.maximum()
+            self._mark_invalid(_spin, bad)
+
+        spin.lineEdit().textEdited.connect(_on_text)
+        spin.editingFinished.connect(lambda _spin=spin: self._mark_invalid(_spin, False))
+
+    def _mark_invalid(self, spin: QtWidgets.QDoubleSpinBox, bad: bool) -> None:
+        if bool(spin.property("invalid")) == bad:
+            return
+        spin.setProperty("invalid", bad)
+        spin.style().unpolish(spin)
+        spin.style().polish(spin)
+        if bad:
+            spin.setProperty("base_tip", spin.toolTip())
+            spin.setToolTip(
+                f"Allowed range: {spin.minimum():g} to {spin.maximum():g}. "
+                "The value will clamp when you leave the field."
+            )
+        elif spin.property("base_tip"):
+            spin.setToolTip(spin.property("base_tip"))
 
     def _wire_signals(self) -> None:
         for spin in (
@@ -185,15 +266,49 @@ class ExitPanel(QtWidgets.QWidget):
         self._sync_enabled()
 
     def _queue(self, *_a) -> None:
+        self._refresh_advisories()
         self._debounce.start()
 
     def _sync_enabled(self, *_a) -> None:
         on_trail = self.trail_check.isChecked()
-        self.trail_mode.setEnabled(on_trail)
-        self.trail_value.setEnabled(on_trail)
+        for widget in (self.trail_mode, self.trail_value):
+            widget.setEnabled(on_trail)
+            label = self._trail_form.labelForField(widget)
+            if label is not None:  # dim the row label too: clearly off, not broken
+                label.setEnabled(on_trail)
         on_be = self.be_check.isChecked()
-        self.be_trigger.setEnabled(on_be)
-        self.be_offset.setEnabled(on_be)
+        for widget in (self.be_trigger, self.be_offset):
+            widget.setEnabled(on_be)
+            label = self._be_form.labelForField(widget)
+            if label is not None:
+                label.setEnabled(on_be)
+        self._refresh_advisories()
+
+    def _refresh_advisories(self) -> None:
+        """Cross-field sanity feedback: legal but self-defeating settings."""
+
+        trail_warn = ""
+        if (
+            self.trail_check.isChecked()
+            and self.trail_mode.currentText() == self.stop_mode.currentText()
+            and self.trail_value.value() > self.stop_value.value()
+        ):
+            trail_warn = (
+                "Trailing distance is wider than the initial stop - it cannot "
+                "tighten anything until price has run far in your favour."
+            )
+        self._set_warning("trail", trail_warn)
+        be_warn = ""
+        if (
+            self.be_check.isChecked()
+            and self.target_mode.currentText() == "r"
+            and self.be_trigger.value() >= self.target_value.value()
+        ):
+            be_warn = (
+                "Breakeven triggers at or beyond the target - the trade will "
+                "exit at the target before the stop ever moves."
+            )
+        self._set_warning("be", be_warn)
 
     # -- config <-> widgets ------------------------------------------------
     def to_config(self) -> ExitConfig:

@@ -103,6 +103,22 @@ def bucket_labels(bars, rs: Resampled, tf_minutes: int, multi_day: bool) -> np.n
     return np.array([f"{d} {t}" for d, t in zip(days, times, strict=True)], dtype=object)
 
 
+def hover_labels(bars, rs: Resampled, tf_minutes: int) -> np.ndarray:
+    """Exact per-bucket date/time labels for the crosshair pill.
+
+    Always the full "YYYY-MM-DD HH:MM" (bucket start), or "YYYY-MM-DD" at 1D -
+    the axis labels stay compact, the pill states the exact moment.
+    """
+
+    starts = rs.bucket_starts
+    days = [pd.Timestamp(d).strftime("%Y-%m-%d") for d in bars.trade_date[starts]]
+    if tf_minutes >= 1440:
+        return np.array(days, dtype=object)
+    minutes = bars.minute_ny[starts]
+    times = [f"{int(m) // 60:02d}:{int(m) % 60:02d}" for m in minutes]
+    return np.array([f"{d} {t}" for d, t in zip(days, times, strict=True)], dtype=object)
+
+
 def sample_last(series: np.ndarray, rs: Resampled) -> np.ndarray:
     """Display-sample a global-length line series at each bucket's last minute (VWAP)."""
 

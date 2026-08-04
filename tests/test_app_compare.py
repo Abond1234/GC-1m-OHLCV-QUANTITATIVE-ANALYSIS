@@ -83,6 +83,25 @@ class CompareTests(unittest.TestCase):
         self.assertFalse(self.win.compare_chart.isVisible())
         self.assertIsNone(self.win.chart._compare_item)
 
+    def test_overlay_popover_lists_off_instruments_and_modes(self):
+        self.win._populate_compare_combo()
+        labels = [a.text() for a in self.win._overlay_menu.actions() if a.text()]
+        for expected in ("Off", "Horizontal split", "Vertical split", "Normalized overlay"):
+            self.assertIn(expected, labels)
+        self.assertTrue(any("MGC" in t or "Micro" in t for t in labels))
+        self.assertFalse(any("GC -" in t and "Micro" not in t for t in labels))  # primary excluded
+        self.assertIn("MGC", self.win.overlay_btn.text())
+
+    def test_toggling_overlay_never_shifts_primary_chart_state(self):
+        x_before = self.win.chart._price.vb.viewRange()[0]
+        self._apply("Horizontal")
+        self._apply("Normalized")
+        self.win._compare_symbol = None
+        self.win._apply_compare_mode()
+        x_after = self.win.chart._price.vb.viewRange()[0]
+        self.assertAlmostEqual(x_after[0], x_before[0], places=9)
+        self.assertAlmostEqual(x_after[1], x_before[1], places=9)
+
 
 if __name__ == "__main__":
     unittest.main()
