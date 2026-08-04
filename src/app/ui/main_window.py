@@ -314,17 +314,17 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.grid_btn.clicked.connect(self._on_exit_grid)
 
-        # Overlay / compare: pick a second instrument and a comparison mode.
-        self.compare_combo = QtWidgets.QComboBox()
-        self.compare_combo.setToolTip(
+        # Overlay: one compact popover replacing the Compare + orientation
+        # fields - Off, comparison instrument, and the three display modes.
+        self.overlay_btn = QtWidgets.QToolButton()
+        self.overlay_btn.setText("Overlay: Off")
+        self.overlay_btn.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self.overlay_btn.setToolTip(
             "Compare a second instrument: Horizontal or Vertical split (each pane\n"
             "keeps its own price scale), or a Normalized overlay on this chart."
         )
-        self.compare_combo.currentIndexChanged.connect(self._on_compare_changed)
-        self.compare_mode_combo = QtWidgets.QComboBox()
-        self.compare_mode_combo.addItems(self._COMPARE_MODES)
-        self.compare_mode_combo.setToolTip("How the comparison instrument is shown.")
-        self.compare_mode_combo.currentTextChanged.connect(self._on_compare_mode_changed)
+        self._overlay_menu = QtWidgets.QMenu(self)
+        self.overlay_btn.setMenu(self._overlay_menu)
 
         # The global toolbar stays lean: instrument, the literal date window, the
         # display timeframe, and the comparison overlay.
@@ -339,9 +339,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QLabel("TF"),
             self.tf_combo,
             _sep(),
-            QtWidgets.QLabel("Compare"),
-            self.compare_combo,
-            self.compare_mode_combo,
+            self.overlay_btn,
         ):
             self._controls.addWidget(w)
         self._controls.addStretch(1)
@@ -1698,22 +1696,57 @@ class MainWindow(QtWidgets.QMainWindow):
             f"(exploratory)."
         )
 
-    # -- MGC mirror pane ----------------------------------------------------
+    # -- comparison overlay (popover) ---------------------------------------
     _COMPARE_MODES = ("Horizontal", "Vertical", "Normalized")
+    _MODE_LABELS = {
+        "Horizontal": "Horizontal split",
+        "Vertical": "Vertical split",
+        "Normalized": "Normalized overlay",
+    }
 
     def _populate_compare_combo(self) -> None:
-        self.compare_combo.blockSignals(True)
-        self.compare_combo.clear()
-        self.compare_combo.addItem("Off", None)
-        for inst in available_instruments():
-            if inst.symbol != self._instrument:
-                self.compare_combo.addItem(inst.display, inst.symbol)
-        self.compare_combo.setCurrentIndex(0)
-        self.compare_combo.blockSignals(False)
+        """Rebuild the overlay popover for the current primary instrument."""
 
-    def _on_compare_changed(self) -> None:
-        symbol = self.compare_combo.currentData()
+        menu = self._overlay_menu
+        menu.clear()
+        off = menu.addAction("Off")
+        off.setCheckable(True)
+        off.setChecked(self._compare_symbol is None)
+        off.triggered.connect(lambda _c=False: self._set_compare_symbol(None))
+        symbol_group = QtGui.QActionGroup(menu)
+        symbol_group.setExclusive(True)
+        symbol_group.addAction(off)
+        menu.addSeparator()
+        for inst in available_instruments():
+            if inst.symbol == self._instrument:
+                continue
+            act = menu.addAction(inst.display)
+            act.setCheckable(True)
+            act.setChecked(inst.symbol == self._compare_symbol)
+            act.triggered.connect(lambda _c=False, s=inst.symbol: self._set_compare_symbol(s))
+            symbol_group.addAction(act)
+        menu.addSeparator()
+        mode_group = QtGui.QActionGroup(menu)
+        mode_group.setExclusive(True)
+        for mode in self._COMPARE_MODES:
+            act = menu.addAction(self._MODE_LABELS[mode])
+            act.setCheckable(True)
+            act.setChecked(mode == self._compare_mode)
+            act.triggered.connect(lambda _c=False, m=mode: self._set_compare_mode(m))
+            mode_group.addAction(act)
+        self._sync_overlay_button()
+
+    def _sync_overlay_button(self) -> None:
+        if self._compare_symbol is None:
+            self.overlay_btn.setText("Overlay: Off")
+        else:
+            self.overlay_btn.setText(
+                f"Overlay: {self._compare_symbol} - {self._MODE_LABELS[self._compare_mode]}"
+            )
+
+    def _set_compare_symbol(self, symbol: str | None) -> None:
         self._compare_symbol = symbol
+        self._populate_compare_combo()  # re-check the menu against the new state
         if not symbol:
             self._apply_compare_mode()
             return
@@ -1738,11 +1771,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_compare_error(self, message: str) -> None:
         self._compare_loading = False
-        self.compare_combo.setCurrentIndex(0)  # back to Off
+        self._set_compare_symbol(None)  # back to Off
         self._on_error(message)
 
-    def _on_compare_mode_changed(self, text: str) -> None:
-        self._compare_mode = text
+    def _set_compare_mode(self, mode: str) -> None:
+        self._compare_mode = mode
+        self._sync_overlay_button()
         self._apply_compare_mode()
 
     def _apply_compare_mode(self) -> None:
