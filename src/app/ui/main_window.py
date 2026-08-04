@@ -639,6 +639,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # supplied TradingView tool names from the corrections brief.
     _DRAG_HINT = "Drag across the chart, or click two points. Esc or right-click cancels."
     _CLICK_HINT = "Click the chart to place it. Esc or right-click cancels."
+    _THREE_HINT = "Click three anchor points on the chart. Esc or right-click cancels."
     _DRAW_TOOLS = (
         ("", "Cursor", None, "Normal interaction: crosshair, free-play clicks, drags.", ""),
         ("Lines", "Trendline", "trend", "A segment between two draggable endpoints.", _DRAG_HINT),
@@ -708,6 +709,71 @@ class MainWindow(QtWidgets.QMainWindow):
             "rect",
             "A shaded box for supply/demand or consolidation zones.",
             _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib retracement",
+            "fibret",
+            "Levels between a swing's two ends.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Trend-based fib extension",
+            "fibext",
+            "The first swing's move projected from the pullback point.",
+            _THREE_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib channel",
+            "fibchan",
+            "Parallel channel lines at fib offsets of the third point.",
+            _THREE_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib time zone",
+            "fibtime",
+            "Vertical lines at Fibonacci-number multiples of the anchor interval.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib speed resistance fan",
+            "fibfan",
+            "Fan rays through fib fractions of the anchor swing.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Trend-based fib time",
+            "fibttime",
+            "Vertical lines at fib ratios of the first swing, from the third point.",
+            _THREE_HINT,
+        ),
+        ("Fibonacci", "Fib circles", "fibcircles", "Concentric fib-ratio circles.", _DRAG_HINT),
+        ("Fibonacci", "Fib spiral", "fibspiral", "A golden spiral from the anchor.", _DRAG_HINT),
+        (
+            "Fibonacci",
+            "Fib speed resistance arcs",
+            "fibarcs",
+            "Arcs at fib fractions of the anchor swing.",
+            _DRAG_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Fib wedge",
+            "fibwedge",
+            "Two rays from an apex with fib arcs between them.",
+            _THREE_HINT,
+        ),
+        (
+            "Fibonacci",
+            "Pitchfan",
+            "pitchfan",
+            "Fan rays from an apex through fib divisions of the base.",
+            _THREE_HINT,
         ),
         (
             "Tools",

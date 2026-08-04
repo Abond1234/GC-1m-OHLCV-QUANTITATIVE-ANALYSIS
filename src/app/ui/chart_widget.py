@@ -18,6 +18,8 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..analysis.fib import FIB_POINTS
+from ..analysis.fib import geometry as fib_geometry
 from ..datalayer.timeframe import ViewMap
 from . import theme
 
@@ -300,6 +302,8 @@ class ChartWidget(QtWidgets.QWidget):
         self._redo_specs: list[dict] = []  # undone drawings (global specs), newest last
         self._trend_anchor: tuple[float, float] | None = None
         self._trend_anchor_dot = None
+        self._multi_anchors: list[tuple[float, float]] = []  # 3-point tool clicks
+        self._multi_dots: list = []
         self._trend_preview = None  # rubber-band line while placing a trendline
         self._draw_press_view: tuple[float, float] | None = None
         self._draw_press_pixel = None
@@ -421,6 +425,8 @@ class ChartWidget(QtWidgets.QWidget):
         self._drawing_items.clear()
         self._trend_anchor = None
         self._trend_anchor_dot = None
+        self._multi_anchors.clear()
+        self._multi_dots.clear()  # their graphics died with the plot clear
         self._trend_preview = None
         self._draw_press_view = None
         self._draw_press_pixel = None
@@ -719,7 +725,20 @@ class ChartWidget(QtWidgets.QWidget):
             return
         n = len(self._ohlc["close"])
         x = max(0.0, min(float(x), float(n - 1)))
-        if kind in self._TWO_POINT:
+        if kind in self._FIB3:
+            # Three-point tools place by three clicks; dots mark the anchors.
+            self._multi_anchors.append((x, float(y)))
+            p = theme.active()
+            dot = pg.ScatterPlotItem(
+                x=[x], y=[float(y)], symbol="+", size=12, pen=pg.mkPen(p.gold, width=1.5)
+            )
+            self._price.addItem(dot, ignoreBounds=True)
+            self._multi_dots.append(dot)
+            if len(self._multi_anchors) < 3:
+                return
+            spec = {"kind": kind, "points": list(self._multi_anchors)}
+            self._clear_trend_anchor()
+        elif kind in self._TWO_POINT:
             if self._trend_anchor is None:
                 self._trend_anchor = (x, float(y))
                 p = theme.active()
@@ -748,7 +767,10 @@ class ChartWidget(QtWidgets.QWidget):
     # and labelling; the position kinds are the long/short R:R tools.
     _LINE_FAMILY = ("trend", "ray", "extline", "info", "angle")
     _POSITION_KINDS = ("longpos", "shortpos")
-    _TWO_POINT = (*_LINE_FAMILY, *_POSITION_KINDS, "rect", "measure")
+    _FIB_KINDS = tuple(FIB_POINTS)
+    _FIB2 = tuple(k for k, n in FIB_POINTS.items() if n == 2)
+    _FIB3 = tuple(k for k, n in FIB_POINTS.items() if n == 3)
+    _TWO_POINT = (*_LINE_FAMILY, *_POSITION_KINDS, "rect", "measure", *_FIB2)
     _EXTEND = 100_000.0  # parametric reach for rays/extended lines (clipped by Qt)
 
     def _handle(self, pos, color=None) -> pg.TargetItem:
@@ -865,6 +887,9 @@ class ChartWidget(QtWidgets.QWidget):
             items = [line, *([label] if label is not None else []), *handles]
         elif kind in self._POSITION_KINDS:
             items = self._build_position_items(kind, spec)
+        elif kind in self._FIB_KINDS:
+            pts = spec.get("points") or [spec["p1"], spec["p2"]]
+            items = self._build_fib_items(kind, [tuple(pt) for pt in pts])
         elif kind == "hray":
             # A horizontal ray: from its origin to the right, TradingView-style.
             line = pg.PlotDataItem(pen=pg.mkPen(p.vwap_rolling, width=1.2))
@@ -1020,6 +1045,43 @@ class ChartWidget(QtWidgets.QWidget):
         _sync()
         return [reward_rect, risk_rect, entry_line, label, h_entry, h_target, h_stop]
 
+    _FIB_DASHED = ("fibret", "fibext", "fibchan", "fibtime", "fibttime")
+
+    def _build_fib_items(self, kind: str, pts: list) -> list:
+        """A Fibonacci tool: anchor handles + geometry polylines + level labels.
+
+        The polyline count is fixed per tool, so a handle drag recomputes the
+        geometry and updates data in place. The sync closure binds everything
+        it needs (never ``self``) - see _line_label_text for why.
+        """
+
+        p = theme.active()
+        style = QtCore.Qt.DashLine if kind in self._FIB_DASHED else QtCore.Qt.SolidLine
+        pen = pg.mkPen(p.gold, width=1.1, style=style)
+        lines = fib_geometry(kind, pts, extend=self._EXTEND)
+        curves = [pg.PlotDataItem(pen=pen, connect="all") for _ in lines]
+        labels = [
+            pg.TextItem(f" {fl.label} ", color=p.gold, anchor=(0.0, 0.5)) if fl.label else None
+            for fl in lines
+        ]
+        handles = [self._handle(pt) for pt in pts]
+
+        def _sync(
+            *_a, _kind=kind, _handles=handles, _curves=curves, _labels=labels, _ext=self._EXTEND
+        ):
+            pts_now = [(h.pos().x(), h.pos().y()) for h in _handles]
+            geo = fib_geometry(_kind, pts_now, extend=_ext)
+            for curve, lab, fl in zip(_curves, _labels, geo, strict=True):
+                curve.setData(np.asarray(fl.xs), np.asarray(fl.ys))
+                if lab is not None:
+                    lab.setText(f" {fl.label} ")
+                    lab.setPos(fl.xs[0], fl.ys[0])
+
+        for handle in handles:
+            handle.sigPositionChanged.connect(_sync)
+        _sync()
+        return [*curves, *[lab for lab in labels if lab is not None], *handles]
+
     def undo_drawing(self) -> None:
         """Remove the most recent drawing on this view (or a pending anchor).
 
@@ -1027,7 +1089,7 @@ class ChartWidget(QtWidgets.QWidget):
         can restore it exactly, whatever zoom or timeframe is showing by then.
         """
 
-        if self._trend_anchor is not None:
+        if self._trend_anchor is not None or self._multi_anchors:
             self._clear_trend_anchor()
             self._remove_drag_preview()
             return
@@ -1068,6 +1130,10 @@ class ChartWidget(QtWidgets.QWidget):
         if self._trend_anchor_dot is not None:
             self._price.removeItem(self._trend_anchor_dot)
             self._trend_anchor_dot = None
+        self._multi_anchors.clear()
+        for dot in self._multi_dots:
+            self._price.removeItem(dot)
+        self._multi_dots.clear()
 
     def _serialize_drawings(self) -> list[dict]:
         """Live drawings as JSON-safe specs in GLOBAL coordinates.
@@ -1106,6 +1172,15 @@ class ChartWidget(QtWidgets.QWidget):
                 "gx": vm.local_f_to_global(origin.pos().x()),
                 "y": float(origin.pos().y()),
             }
+        if kind in self._FIB_KINDS:
+            n = FIB_POINTS[kind]
+            handles = items[-n:]
+            return {
+                "kind": kind,
+                "points": [
+                    (vm.local_f_to_global(h.pos().x()), float(h.pos().y())) for h in handles
+                ],
+            }
         if kind in self._POSITION_KINDS:
             h_entry, h_target, h_stop = items[-3], items[-2], items[-1]
             return {
@@ -1135,6 +1210,11 @@ class ChartWidget(QtWidgets.QWidget):
             if "y" in spec:
                 local["y"] = spec["y"]
             return local
+        if "points" in spec:
+            return {
+                "kind": kind,
+                "points": [(vm.global_to_local_f(gx), y) for gx, y in spec["points"]],
+            }
         local = {
             "kind": kind,
             "p1": (vm.global_to_local_f(spec["p1"][0]), spec["p1"][1]),
@@ -1165,6 +1245,8 @@ class ChartWidget(QtWidgets.QWidget):
             return spec["gx"] <= hi
         if kind in ("ray", "extline"):  # reach far beyond their anchors
             return True
+        if "points" in spec:
+            return any(lo <= gx <= hi for gx, _y in spec["points"])
         return any(lo <= spec[key][0] <= hi for key in ("p1", "p2"))
 
     def _restore_drawings(self) -> None:
