@@ -206,13 +206,25 @@ class ChartWidget(QtWidgets.QWidget):
         self._volume = self._layout.addPlot(row=1, col=0)
         self._volume.showAxis("right", True)
         self._volume.showAxis("left", False)
-        self._layout.ci.layout.setRowStretchFactor(0, 4)
+        # Oscillator pane for bounded/derived studies (RSI, ATR, OBV, ...);
+        # zero-height until an active study needs it.
+        self._osc = self._layout.addPlot(row=2, col=0)
+        self._osc.showAxis("right", True)
+        self._osc.showAxis("left", False)
+        self._osc.showAxis("bottom", False)
+        self._osc.showGrid(x=False, y=True, alpha=0.12)
+        self._osc.setXLink(self._price)
+        self._layout.ci.layout.setRowStretchFactor(0, 5)
         self._layout.ci.layout.setRowStretchFactor(1, 1)
+        self._layout.ci.layout.setRowStretchFactor(2, 0)
+        self._layout.ci.layout.setRowMaximumHeight(2, 0)
+        self._osc.setVisible(False)
         self._price.showGrid(x=False, y=True, alpha=0.12)
         self._legend = self._price.addLegend(offset=(10, 8), labelTextColor=p.text_dim)
         self._volume.setXLink(self._price)
         self._volume.showAxis("bottom", False)
         self._volume.setLabel("right", "vol")
+        self._volume_visible = True
 
         # Chart header: the O/H/L/C readout (a plain QLabel - updating a plot
         # title forces a graphics-layout pass per mouse move, a label repaint
@@ -267,6 +279,9 @@ class ChartWidget(QtWidgets.QWidget):
         self._last_price: float | None = None  # newest revealed close (scale pill)
         self._last_readout_i = -1
         self._vwap_items: dict[str, pg.PlotDataItem] = {}  # kind -> overlay line
+        self._indicator_items: dict[int, tuple[str, list]] = {}  # id -> (pane, items)
+        self._indicator_visible: dict[int, bool] = {}  # declared visibility per id
+        self._chip_widgets: dict[int, QtWidgets.QWidget] = {}  # id -> header chip
         self._compare_item = None  # normalized comparison overlay line
         self._session_regions: list = []  # NY-session shading regions
         # Persistent slots for the one detailed trade and its excursion ribbon,
@@ -299,12 +314,14 @@ class ChartWidget(QtWidgets.QWidget):
             line.setZValue(20)
             self._price.addItem(line, ignoreBounds=True)
         # Axis badges: exact time (bottom edge) and tick-formatted price (right
-        # edge) that follow the crosshair, TradingView-style. The last-price
-        # pill sits permanently on the price scale at the newest visible close.
+        # edge) that follow the crosshair, TradingView-style. The last price is
+        # a dotted line with a pill on the price scale, rebuilt per view; its
+        # label repositions itself on view changes (never via a raw
+        # sigRangeChanged lambda, which would fire into destroyed graphics
+        # during widget teardown and corrupt the heap).
         self._x_badge = self._make_badge(anchor=(0.5, 1.0))
         self._y_badge = self._make_badge(anchor=(1.0, 0.5))
-        self._last_badge = self._make_badge(anchor=(1.0, 0.5))
-        self._price.vb.sigRangeChanged.connect(lambda *_a: self._update_last_badge())
+        self._last_line = None  # built per set_view
 
         self._price.scene().sigMouseClicked.connect(self._on_click)
         self._mouse_proxy = pg.SignalProxy(
@@ -342,7 +359,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._hline.setPen(cross)
         self._restyle_badges()
         self._legend.setLabelTextColor(p.text_dim)
-        for plot in (self._price, self._volume):
+        for plot in (self._price, self._volume, self._osc):
             for name in ("right", "bottom"):
                 axis = plot.getAxis(name)
                 if axis is not None:
@@ -355,6 +372,8 @@ class ChartWidget(QtWidgets.QWidget):
         self._tick_size = float(tick_size)
         self._decimals = _decimals_for(tick_size)
         self._price_axis.set_tick_size(tick_size)
+        if self._last_line is not None:
+            self._last_line.label.setFormat(f"{{value:,.{self._decimals}f}}")
 
     # -- rendering ---------------------------------------------------------
     def set_view(
@@ -384,12 +403,15 @@ class ChartWidget(QtWidgets.QWidget):
         self._stash_live_drawings()  # keep annotations for when this window returns
         self._price.clear()
         self._volume.clear()
+        self._osc.clear()
         self._trade_items.clear()
         self._whatif_items.clear()
         self._level_lines.clear()  # removed by _price.clear(); drop stale references
         self._level_proxies.clear()
         self._replay_items.clear()
         self._vwap_items.clear()
+        self._indicator_items.clear()  # graphics died with the plot clears
+        self._indicator_visible.clear()
         self._compare_item = None  # removed by _price.clear(); redrawn by the caller
         self._session_regions.clear()
         self._active_trade_items = None
@@ -404,7 +426,7 @@ class ChartWidget(QtWidgets.QWidget):
         for line in (self._vline, self._hline):
             line.setVisible(False)
             self._price.addItem(line, ignoreBounds=True)
-        for badge in (self._x_badge, self._y_badge, self._last_badge):
+        for badge in (self._x_badge, self._y_badge):
             badge.setVisible(False)
             self._price.addItem(badge, ignoreBounds=True)
         self._view_map = view_map
@@ -432,8 +454,22 @@ class ChartWidget(QtWidgets.QWidget):
         self._volume.addItem(pg.BarGraphItem(x=x, height=vol, width=0.7, brush=p.text_faint))
         self._price.setLimits(xMin=-1, xMax=n)
         self._price.enableAutoRange()
-        self._last_price = float(ohlc["close"][-1]) if n else None
-        self._update_last_badge()
+        self._last_line = pg.InfiniteLine(
+            angle=0,
+            movable=False,
+            pen=pg.mkPen(p.gold, width=1, style=QtCore.Qt.DotLine),
+            label=f"{{value:,.{self._decimals}f}}",
+            labelOpts={
+                "position": 0.99,
+                "anchors": [(1.0, 0.5), (1.0, 0.5)],
+                "color": p.bg,
+                "fill": pg.mkBrush(p.gold),
+                "movable": False,
+            },
+        )
+        self._last_line.setZValue(9)  # above the reveal curtain, under the crosshair
+        self._price.addItem(self._last_line, ignoreBounds=True)
+        self._set_last_price(float(ohlc["close"][-1]) if n else None)
 
         # Reveal curtains: opaque covers that hide every bar after the replay
         # clock, so an animated trade unfolds candle by candle with the future
@@ -441,7 +477,7 @@ class ChartWidget(QtWidgets.QWidget):
         # replay starts; z sits above data/overlays, below the crosshair, the
         # draggable levels, and the replay marker.
         self._curtains = []
-        for plot in (self._price, self._volume):
+        for plot in (self._price, self._volume, self._osc):
             curtain = pg.LinearRegionItem(
                 values=(n + 1, n + 2),
                 movable=False,
@@ -892,6 +928,158 @@ class ChartWidget(QtWidgets.QWidget):
         if item is not None:
             item.setVisible(on)
 
+    # -- indicator studies ---------------------------------------------------
+    _PANES = ("price", "osc", "volume")
+
+    def _pane(self, pane: str):
+        return {"price": self._price, "osc": self._osc, "volume": self._volume}[pane]
+
+    def set_indicator(
+        self,
+        inst_id: int,
+        pane: str,
+        series: dict[str, np.ndarray],
+        color: str,
+        *,
+        visible: bool = True,
+        band: tuple[str, str] | None = None,
+        guides: tuple[float, ...] = (),
+    ) -> None:
+        """Draw (or redraw) one study instance's output lines on its pane.
+
+        ``band`` names two outputs shaded as a translucent fill (Bollinger);
+        ``guides`` are fixed reference levels drawn dashed (RSI 30/70). Only
+        active studies are ever passed here, so nothing inactive is computed
+        or rendered.
+        """
+
+        self.remove_indicator(inst_id)
+        plot = self._pane(pane)
+        items: list = []
+        x = None
+        for name, values in series.items():
+            values = np.asarray(values, dtype=float)
+            if x is None or len(x) != len(values):
+                x = np.arange(len(values))
+            style = QtCore.Qt.DashLine if band is not None and name in band else QtCore.Qt.SolidLine
+            item = pg.PlotDataItem(
+                x, values, pen=pg.mkPen(color, width=1.3, style=style), connect="finite"
+            )
+            plot.addItem(item, ignoreBounds=pane == "price")
+            items.append(item)
+            series[name] = values
+        if band is not None and band[0] in series and band[1] in series:
+            fill_color = QtGui.QColor(color)
+            fill_color.setAlpha(22)
+            upper = pg.PlotDataItem(x, series[band[0]], pen=None, connect="finite")
+            lower = pg.PlotDataItem(x, series[band[1]], pen=None, connect="finite")
+            fill = pg.FillBetweenItem(upper, lower, brush=pg.mkBrush(fill_color))
+            fill.setZValue(-7)
+            for extra in (upper, lower, fill):
+                plot.addItem(extra, ignoreBounds=True)
+                items.append(extra)
+        p = theme.active()
+        for level in guides:
+            guide = pg.InfiniteLine(
+                pos=float(level),
+                angle=0,
+                movable=False,
+                pen=pg.mkPen(p.text_faint, width=1, style=QtCore.Qt.DashLine),
+            )
+            plot.addItem(guide, ignoreBounds=True)
+            items.append(guide)
+        for item in items:
+            item.setVisible(visible)
+        self._indicator_items[inst_id] = (pane, items)
+        self._indicator_visible[inst_id] = bool(visible)
+        self._sync_osc_pane()
+
+    def set_indicator_visible(self, inst_id: int, on: bool) -> None:
+        pane_items = self._indicator_items.get(inst_id)
+        if pane_items is None:
+            return
+        for item in pane_items[1]:
+            item.setVisible(on)
+        self._indicator_visible[inst_id] = bool(on)
+        self._sync_osc_pane()
+
+    def remove_indicator(self, inst_id: int) -> None:
+        pane_items = self._indicator_items.pop(inst_id, None)
+        self._indicator_visible.pop(inst_id, None)
+        if pane_items is None:
+            return
+        plot = self._pane(pane_items[0])
+        for item in pane_items[1]:
+            plot.removeItem(item)
+        self._sync_osc_pane()
+
+    def _sync_osc_pane(self) -> None:
+        """The oscillator pane exists only while a visible study needs it.
+
+        Declared visibility is tracked separately because a child item of a
+        hidden pane reports ``isVisible() == False`` even when it was just
+        shown - reading it back would keep the pane hidden forever.
+        """
+
+        active = any(
+            pane == "osc" and self._indicator_visible.get(inst_id, False)
+            for inst_id, (pane, _items) in self._indicator_items.items()
+        )
+        self._osc.setVisible(active)
+        self._layout.ci.layout.setRowStretchFactor(2, 1 if active else 0)
+        self._layout.ci.layout.setRowMaximumHeight(2, 16777215 if active else 0)
+
+    def set_volume_visible(self, on: bool) -> None:
+        """Explicit show/hide for the volume pane (chart state is untouched)."""
+
+        self._volume_visible = bool(on)
+        self._volume.setVisible(self._volume_visible)
+        self._layout.ci.layout.setRowStretchFactor(1, 1 if on else 0)
+        self._layout.ci.layout.setRowMaximumHeight(1, 16777215 if on else 0)
+
+    def volume_visible(self) -> bool:
+        return self._volume_visible
+
+    # -- header legend chips -------------------------------------------------
+    def set_header_chips(self, chips: list[dict], on_toggle, on_remove) -> None:
+        """Rebuild the active-study strip in the chart header.
+
+        ``chips`` rows are {"id", "label", "color", "visible"}. Only active
+        studies appear; each chip carries visible hide and remove controls, so
+        nothing inactive is ever listed permanently.
+        """
+
+        for widget in self._chip_widgets.values():
+            self._legend_bar.removeWidget(widget)
+            widget.deleteLater()
+        self._chip_widgets.clear()
+        p = theme.active()
+        for chip in chips:
+            box = QtWidgets.QFrame()
+            box.setObjectName("legendChip")
+            lay = QtWidgets.QHBoxLayout(box)
+            lay.setContentsMargins(6, 0, 2, 0)
+            lay.setSpacing(2)
+            name = QtWidgets.QLabel(chip["label"])
+            colour = chip["color"] if chip["visible"] else p.text_faint
+            name.setStyleSheet(f"color:{colour}; font-size:11px")
+            lay.addWidget(name)
+            hide_btn = QtWidgets.QToolButton()
+            hide_btn.setText("-" if chip["visible"] else "+")
+            hide_btn.setToolTip("Hide this study" if chip["visible"] else "Show this study")
+            remove_btn = QtWidgets.QToolButton()
+            remove_btn.setText("x")
+            remove_btn.setToolTip("Remove this study from the chart.")
+            for btn in (hide_btn, remove_btn):
+                btn.setAutoRaise(True)
+                btn.setFocusPolicy(QtCore.Qt.NoFocus)
+                btn.setFixedSize(16, 16)
+                lay.addWidget(btn)
+            hide_btn.clicked.connect(lambda _c=False, i=chip["id"]: on_toggle(i))
+            remove_btn.clicked.connect(lambda _c=False, i=chip["id"]: on_remove(i))
+            self._legend_bar.addWidget(box)
+            self._chip_widgets[chip["id"]] = box
+
     def shade_sessions(self, session_code: np.ndarray, *, visible: bool = True) -> None:
         """Light vertical shading for the New York execution window (code == 2)."""
 
@@ -1285,8 +1473,7 @@ class ChartWidget(QtWidgets.QWidget):
             width = x1 - x0
             self._price.setXRange(local - width * 0.7, local + width * 0.3, padding=0)
         self._replay_marker.setData([local], [price])
-        self._last_price = price  # the scale pill rides the replay tape
-        self._update_last_badge()
+        self._set_last_price(price)  # the scale pill rides the replay tape
         label = f"+{int(t) - start}m"
         if result is not None:
             idx = max(0, min(int(t) - start, len(result.stop_track) - 1))
@@ -1308,8 +1495,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._replay_items = []
         self.set_reveal(None)  # lift the curtain; the whole day returns
         if self._ohlc is not None and len(self._ohlc["close"]):
-            self._last_price = float(self._ohlc["close"][-1])
-            self._update_last_badge()
+            self._set_last_price(float(self._ohlc["close"][-1]))
 
     def center_on(self, global_index: int, pad: int | None = None) -> None:
         """Centre the view on a global 1m bar; ``pad`` is in displayed bars."""
@@ -1401,17 +1587,17 @@ class ChartWidget(QtWidgets.QWidget):
         self._y_badge.setPos(x1, min(max(y, y0 + yr * 0.02), y1 - yr * 0.02))
         self._y_badge.setVisible(True)
 
-    def _update_last_badge(self) -> None:
-        """Pin the newest revealed close to the price scale (TradingView-style)."""
+    def _set_last_price(self, price: float | None) -> None:
+        """Move the last-price line/pill to the newest revealed close."""
 
-        if self._last_price is None:
-            self._last_badge.setVisible(False)
+        self._last_price = price
+        if self._last_line is None:
             return
-        (x0, x1), (y0, y1) = self._price.vb.viewRange()
-        yr = (y1 - y0) or 1.0
-        self._last_badge.setText(f" {self._last_price:,.{self._decimals}f} ")
-        self._last_badge.setPos(x1, min(max(self._last_price, y0 + yr * 0.02), y1 - yr * 0.02))
-        self._last_badge.setVisible(True)
+        if price is None:
+            self._last_line.setVisible(False)
+            return
+        self._last_line.setVisible(True)
+        self._last_line.setPos(float(price))
 
     def _readout(self, i: int) -> str:
         p = theme.active()

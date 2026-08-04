@@ -50,7 +50,7 @@ class WorkspaceShellTests(unittest.TestCase):
         w = self.win
         self.assertTrue(_in_workspace(w, w.strategy_combo, 0))  # Strategy
         self.assertTrue(_in_workspace(w, w._tabs, 0))
-        self.assertTrue(_in_workspace(w, w.vwap_check, 1))  # Indicators
+        self.assertTrue(_in_workspace(w, w.indicators_panel, 1))  # Indicators
         self.assertTrue(_in_workspace(w, w.edge_panel, 1))
         self.assertTrue(_in_workspace(w, w._draw_buttons["hline"], 2))  # Drawing
         self.assertTrue(_in_workspace(w, w.exit_panel, 3))  # Risk
@@ -74,7 +74,7 @@ class WorkspaceShellTests(unittest.TestCase):
         self.assertIn(w.instrument_combo, top)
         self.assertIn(w.tf_combo, top)
         self.assertNotIn(w.strategy_combo, top)
-        self.assertNotIn(w.vwap_check, top)
+        self.assertNotIn(w.session_check, top)
 
 
 if __name__ == "__main__":

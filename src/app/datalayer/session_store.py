@@ -22,7 +22,9 @@ from ..sim.exit_config import ExitConfig
 # v2: the view block carries a literal start_date/end_date window (was an
 # anchor_date + rolling range_days count).
 # v3: the evaluation is a full prop-firm policy dict (was a preset name).
-SCHEMA_VERSION = 3
+# v4: adds the active indicator-study list (older files load with none active).
+SCHEMA_VERSION = 4
+_READABLE_VERSIONS = (3, SCHEMA_VERSION)
 
 
 def default_sessions_dir(project_root: Path) -> Path:
@@ -48,6 +50,7 @@ def build_payload(
     active_id: int | None,
     next_id: int,
     drawings: list[dict],
+    indicators: list[dict] | None = None,
 ) -> dict:
     """Assemble the schema; ``placed`` entries carry cfg dicts, never results."""
 
@@ -62,6 +65,7 @@ def build_payload(
         "active_id": active_id,
         "next_id": int(next_id),
         "drawings": list(drawings),
+        "indicators": list(indicators or []),
     }
 
 
@@ -75,9 +79,10 @@ def write_session(path, payload: dict) -> Path:
 def read_session(path) -> dict:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     version = payload.get("schema_version")
-    if version != SCHEMA_VERSION:
+    if version not in _READABLE_VERSIONS:
         raise ValueError(
-            f"unsupported session schema_version {version!r}; this build reads {SCHEMA_VERSION}"
+            f"unsupported session schema_version {version!r}; this build reads "
+            f"{' and '.join(str(v) for v in _READABLE_VERSIONS)}"
         )
     for key in ("view", "account", "placed", "drawings"):
         if key not in payload:

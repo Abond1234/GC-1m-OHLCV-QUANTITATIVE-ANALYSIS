@@ -98,13 +98,13 @@ class ChartHeaderTests(unittest.TestCase):
 
     def test_last_price_marker_tracks_view_and_replay(self):
         c = self._chart()
-        self.assertTrue(c._last_badge.isVisible())
-        self.assertIn("1,893.0", c._last_badge.toPlainText())
-        # The pill follows the replay tape and returns to the window close after.
+        self.assertIsNotNone(c._last_line)
+        self.assertAlmostEqual(float(c._last_line.value()), 1893.0)
+        # The marker follows the replay tape and returns to the window close after.
         c.start_replay(None, start_global=5)
         c.replay_frame(None, 10, start_global=5)
-        self.assertIn("1,89", c._last_badge.toPlainText())
         self.assertAlmostEqual(c._last_price, float(c._minute_close[10]))
+        self.assertAlmostEqual(float(c._last_line.value()), float(c._minute_close[10]))
         c.stop_replay()
         self.assertAlmostEqual(c._last_price, 1893.0)
 

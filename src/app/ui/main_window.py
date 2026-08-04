@@ -27,6 +27,7 @@ from ..analysis.account import build_equity_curve, session_stats
 from ..analysis.evaluation import evaluate_policy
 from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
+from ..analysis.indicators import compute as compute_study
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..analysis.whatif import run_whatifs
 from ..datalayer.catalog_service import StrategyReplayService
@@ -62,6 +63,7 @@ from .edge_panel import EdgeContextPanel
 from .exit_panel import ExitPanel
 from .forensics_panel import ForensicsPanel
 from .heatmap_widget import HeatmapWidget
+from .indicators_panel import IndicatorsPanel
 from .replay_animator import ReplayAnimator
 from .session_panel import SessionPanel
 
@@ -152,6 +154,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._instrument_loading = False
         self._pending_session: dict | None = None  # session applied after a switch
         self._date_guard = False  # suppress re-render while setting both date edits
+        self._rs = None  # the displayed window's Resampled (for study evaluation)
         self._edge_service = EdgeContextService()
         self._edge_token = 0
         self._edge_day: tuple[int, int] | None = None  # anchor day's 1m [lo, hi]
@@ -211,6 +214,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_draw_actions()
         self._build_workspaces()
         self._build_transport()
+        self.indicators_panel.add_study("vwap20")  # the default study, as before
 
         chart_col = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         chart_col.addWidget(self.chart)
@@ -266,23 +270,11 @@ class MainWindow(QtWidgets.QMainWindow):
             "simulation, entry, exit, and replay stays on true 1-minute bars."
         )
         self.tf_combo.currentTextChanged.connect(lambda _t: self._render_view())
-        self.vwap_check = QtWidgets.QCheckBox("VWAP 20")
-        self.vwap_check.setChecked(True)
-        self.vwap_check.setToolTip("Rolling 20-bar volume-weighted average price.")
-        self.vwap_day_check = QtWidgets.QCheckBox("VWAP day")
-        self.vwap_day_check.setToolTip("VWAP anchored to the start of each New York trade date.")
-        self.vwap_session_check = QtWidgets.QCheckBox("VWAP session")
-        self.vwap_session_check.setToolTip("VWAP within each Asia/NY execution session.")
         self.session_check = QtWidgets.QCheckBox("NY session")
         self.session_check.setChecked(True)
         self.session_check.setToolTip("Shade the New York execution window (07:00-12:00 NY).")
-        # Overlay toggles flip item visibility directly; rebuilding the whole
-        # chart for a checkbox is what made these toggles feel heavy.
-        self.vwap_check.toggled.connect(lambda on: self.chart.set_vwap_visible("rolling", on))
-        self.vwap_day_check.toggled.connect(lambda on: self.chart.set_vwap_visible("day", on))
-        self.vwap_session_check.toggled.connect(
-            lambda on: self.chart.set_vwap_visible("session", on)
-        )
+        # The shading toggle flips item visibility directly; rebuilding the
+        # whole chart for a checkbox is what made these toggles feel heavy.
         self.session_check.toggled.connect(self.chart.set_sessions_visible)
 
         self.strategy_combo = QtWidgets.QComboBox()
@@ -505,17 +497,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _make_indicators_ws(self) -> QtWidgets.QWidget:
         w, lay = self._ws_widget()
-        box = QtWidgets.QGroupBox("Overlays")
-        bl = QtWidgets.QVBoxLayout(box)
-        for x in (
-            self.vwap_check,
-            self.vwap_day_check,
-            self.vwap_session_check,
-            self.session_check,
-        ):
-            bl.addWidget(x)
-        lay.addWidget(box)
-        lay.addWidget(self.edge_panel, 1)
+        self.indicators_panel = IndicatorsPanel()
+        self.indicators_panel.changed.connect(self._on_indicators_changed)
+        self.indicators_panel.volumeToggled.connect(self.chart.set_volume_visible)
+        lay.addWidget(self.indicators_panel, 3)
+        lay.addWidget(self.session_check)
+        lay.addWidget(self.edge_panel, 2)
         return w
 
     def _make_drawing_ws(self) -> QtWidgets.QWidget:
@@ -836,23 +823,8 @@ class MainWindow(QtWidgets.QMainWindow):
             minute_close=bars.close[lo : hi + 1],
             hover_labels=hover_labels(bars, rs, tf),
         )
-        # Always build the overlays; the checkboxes only flip visibility. Lines
-        # are display-sampled at each bucket's close, shading at its open.
-        self.chart.add_vwap(
-            sample_last(self._active_data()["vwap20"], rs),
-            "rolling",
-            visible=self.vwap_check.isChecked(),
-        )
-        self.chart.add_vwap(
-            sample_last(self._active_data()["vwap_day"], rs),
-            "day",
-            visible=self.vwap_day_check.isChecked(),
-        )
-        self.chart.add_vwap(
-            sample_last(self._active_data()["vwap_session"], rs),
-            "session",
-            visible=self.vwap_session_check.isChecked(),
-        )
+        self._rs = rs  # active studies re-evaluate against this window
+        self._render_indicators()
         self.chart.shade_sessions(
             sample_first(self._active_data()["session_code"], rs),
             visible=self.session_check.isChecked(),
@@ -862,6 +834,61 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _in_view(self, position: int) -> bool:
         return self._view_start <= position <= self._view_end
+
+    # -- indicator studies ---------------------------------------------------
+    def _render_indicators(self) -> None:
+        """Evaluate the active studies on the displayed window and draw them.
+
+        Only active studies are computed (the brief's lifecycle contract). The
+        VWAP variants are display-sampled from the precomputed research series;
+        everything else is computed from the displayed OHLCV buckets - display
+        aids only, never inputs to fills.
+        """
+
+        if self._rs is None:
+            return
+        rs = self._rs
+        ohlc = {
+            "open": rs.open,
+            "high": rs.high,
+            "low": rs.low,
+            "close": rs.close,
+            "volume": rs.volume,
+        }
+        data = self._active_data()
+        for inst in self.indicators_panel.active_instances():
+            definition = inst.definition
+            if definition.source is not None:
+                series = {"value": sample_last(data[definition.source], rs)}
+            else:
+                series = compute_study(inst.key, inst.params, ohlc)
+            self.chart.set_indicator(
+                inst.id,
+                definition.pane,
+                series,
+                inst.color,
+                visible=inst.visible,
+                band=definition.band,
+                guides=definition.guides,
+            )
+        self._refresh_chips()
+
+    def _refresh_chips(self) -> None:
+        self.chart.set_header_chips(
+            self.indicators_panel.chip_rows(),
+            self.indicators_panel.toggle_instance,
+            self.indicators_panel.remove_instance,
+        )
+
+    def _on_indicators_changed(self) -> None:
+        """Active set / params / visibility changed: re-render just the studies."""
+
+        if self._rs is None:
+            return
+        live = {inst.id for inst in self.indicators_panel.active_instances()}
+        for inst_id in [i for i in self.chart._indicator_items if i not in live]:
+            self.chart.remove_indicator(inst_id)
+        self._render_indicators()
 
     def _redraw_overlays(self, reset_levels: bool = True) -> None:
         """Redraw replay markers, a focused replay path, and all placed trades."""
@@ -1248,6 +1275,7 @@ class MainWindow(QtWidgets.QMainWindow):
             active_id=self._active_id,
             next_id=self._next_id,
             drawings=self.chart.export_drawings(),
+            indicators=self.indicators_panel.to_dicts(),
         )
 
     def _save_session(self) -> None:
@@ -1368,6 +1396,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._date_guard = False
         self._render_view()
         self.chart.import_drawings(payload.get("drawings", []))
+        if "indicators" in payload:
+            self.indicators_panel.load_dicts(payload["indicators"])
         self.blotter.set_trades(list(self._placed.values()))
         if self._active_id is not None:
             self.blotter.select_trade(self._active_id)

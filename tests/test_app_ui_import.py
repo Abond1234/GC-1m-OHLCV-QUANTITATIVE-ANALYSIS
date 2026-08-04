@@ -90,11 +90,12 @@ class ChartWidgetSmokeTests(unittest.TestCase):
             np.array([f"{i:02d}:00" for i in range(n)]),
             ViewMap.identity(0, n - 1),
         )
-        self.assertEqual(len(chart._curtains), 2)  # price and volume
+        self.assertEqual(len(chart._curtains), 3)  # price, volume, oscillator
         self.assertFalse(chart._curtains[0].isVisible())
         chart.set_reveal(7)
-        for curtain in chart._curtains:
-            self.assertTrue(curtain.isVisible())
+        for i, curtain in enumerate(chart._curtains):
+            if i < 2:  # the oscillator pane is itself hidden until a study needs it
+                self.assertTrue(curtain.isVisible())
             lo, hi = curtain.getRegion()
             self.assertAlmostEqual(lo, 7.5)
             self.assertGreaterEqual(hi, n)

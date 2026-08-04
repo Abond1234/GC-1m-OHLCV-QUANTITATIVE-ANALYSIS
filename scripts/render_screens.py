@@ -100,8 +100,8 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
 
     # 1. Overview of the last loaded day with VWAP + session shading.
     _set_day(win, win.end_edit.date().toPython())  # already the most recent day
-    win.vwap_day_check.setChecked(True)
-    win.vwap_session_check.setChecked(True)
+    win.indicators_panel.add_study("vwap_day")
+    win.indicators_panel.add_study("vwap_session")
     saved.append(_grab(win, out_dir / "01_chart_overview.png", app))
 
     # 2. Replay a strategy so outcome-coloured markers appear.
