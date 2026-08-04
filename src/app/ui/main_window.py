@@ -46,6 +46,7 @@ from ..datalayer.timeframe import (
     TIMEFRAMES,
     ViewMap,
     bucket_labels,
+    hover_labels,
     resample_window,
     sample_first,
     sample_last,
@@ -524,7 +525,9 @@ class MainWindow(QtWidgets.QMainWindow):
         for _label, mode, _tip, _hint in self._DRAW_TOOLS:
             bl.addWidget(self._draw_buttons[mode])
         lay.addWidget(box)
-        hint = QtWidgets.QLabel("Undo and Clear are on the chart's top-left. Right-click cancels.")
+        hint = QtWidgets.QLabel(
+            "Undo, Redo and Clear are in the chart header. Right-click or Esc cancels."
+        )
         hint.setWordWrap(True)
         hint.setProperty("role", "caption")
         lay.addWidget(hint)
@@ -683,29 +686,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._draw_hints[mode] = hint
         self._draw_buttons[None].setChecked(True)
         self.chart.drawing_placed.connect(self._on_drawing_placed)
-        self._add_chart_draw_icons()
-
-    def _add_chart_draw_icons(self) -> None:
-        """Compact Undo/Clear buttons floating over the chart's top-left."""
-
-        bar = QtWidgets.QWidget(self.chart)
-        lay = QtWidgets.QHBoxLayout(bar)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(4)
-        for text, tip, slot in (
-            ("Undo", "Remove the last drawing on this day (Ctrl+Z).", self.chart.undo_drawing),
-            ("Clear", "Remove every drawing on this day.", self.chart.clear_drawings),
-        ):
-            btn = QtWidgets.QToolButton()
-            btn.setText(text)
-            btn.setToolTip(tip)
-            btn.clicked.connect(slot)
-            lay.addWidget(btn)
-        bar.move(58, 6)  # clear of the left price axis
-        bar.raise_()
-        self._chart_draw_icons = bar
+        # Undo/Redo/Clear live compactly in the chart header (never covering the
+        # OHLC readout); the shortcuts mirror them.
         undo_sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Z"), self)
         undo_sc.activated.connect(self.chart.undo_drawing)
+        redo_sc = QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Y"), self)
+        redo_sc.activated.connect(self.chart.redo_drawing)
 
     def _arm_draw_tool(self, mode: str | None) -> None:
         self.chart.set_draw_mode(mode)
@@ -714,7 +700,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_drawing_placed(self) -> None:
         self.chart.set_draw_mode(None)
         self._draw_buttons[None].setChecked(True)
-        self._set_status("Drawing placed. Drag it to adjust; Undo/Clear are on the chart.")
+        self._set_status(
+            "Drawing placed. Drag it to adjust; Undo/Redo/Clear are in the chart header."
+        )
 
     def _start(self, task) -> None:
         """Start a worker, retaining a reference so PySide6 does not GC it early."""
@@ -841,7 +829,13 @@ class MainWindow(QtWidgets.QMainWindow):
             "segment": rs.segment,
         }
         self.chart.set_tick_size(REGISTRY[self._instrument].spec.tick_size)
-        self.chart.set_view(ohlc, labels, view_map, minute_close=bars.close[lo : hi + 1])
+        self.chart.set_view(
+            ohlc,
+            labels,
+            view_map,
+            minute_close=bars.close[lo : hi + 1],
+            hover_labels=hover_labels(bars, rs, tf),
+        )
         # Always build the overlays; the checkboxes only flip visibility. Lines
         # are display-sampled at each bucket's close, shading at its open.
         self.chart.add_vwap(
@@ -1779,7 +1773,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._compare_range = (lo, hi, tf, symbol)
             rs = resample_window(cmp, lo, hi, tf)
             labels = bucket_labels(cmp, rs, tf, multi_day=multi_day)
-            self.compare_chart._price.setLabel("left", REGISTRY[symbol].display)
+            self.compare_chart._price.setLabel("right", REGISTRY[symbol].display)
             self.compare_chart.set_tick_size(REGISTRY[symbol].spec.tick_size)
             self.compare_chart.set_view(
                 {
@@ -1793,6 +1787,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 labels,
                 ViewMap.from_resampled(rs, tf),
                 minute_close=cmp.close[lo : hi + 1],
+                hover_labels=hover_labels(cmp, rs, tf),
             )
             self.compare_chart.shade_sessions(
                 sample_first(_session_code(cmp.minute_ny), rs),

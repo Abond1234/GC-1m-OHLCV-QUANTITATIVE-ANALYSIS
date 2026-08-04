@@ -58,10 +58,12 @@ class ChartPrecisionTests(unittest.TestCase):
         c.set_tick_size(0.25)
         self.assertEqual(c._price_axis.tickStrings([1890.25], 1, 1), ["1,890.25"])
 
-    def test_single_price_scale(self):
+    def test_single_price_scale_on_the_right(self):
         c = self._chart()
-        self.assertTrue(c._price.getAxis("left").isVisible())
-        self.assertFalse(c._price.getAxis("right").isVisible())
+        self.assertTrue(c._price.getAxis("right").isVisible())
+        self.assertFalse(c._price.getAxis("left").isVisible())
+        self.assertTrue(c._volume.getAxis("right").isVisible())
+        self.assertFalse(c._volume.getAxis("left").isVisible())
 
     def test_readout_drops_the_time_and_adds_change(self):
         c = self._chart()
