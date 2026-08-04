@@ -102,17 +102,35 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
 
 - **Workspace shell**: the chart stays central; configuration lives in five
   collapsible left workspaces reached from a nav rail (Ctrl+1-5) - Strategy
-  (search, replay, free-play, the trade list and analysis), Indicators (VWAP and
-  session overlays, edge context), Drawing (the drawing tools), Risk (the exit
-  rule), and Prop firm (the evaluation account). The global toolbar carries only
-  the instrument, the Start/End dates, the timeframe, and the comparison overlay.
+  (a searchable browser with family groups, details for the selected strategy
+  only, and selected/loading/disabled/error row states), Indicators (the study
+  engine below, session shading, edge context), Drawing (the full tool set),
+  Risk (the exit rule), and Prop firm (the evaluation account). The global
+  toolbar carries only the instrument, the Start/End dates, the timeframe, and
+  the overlay popover (Off / instrument / Horizontal split / Vertical split /
+  Normalized overlay).
 - **Explicit date window**: Start and End date fields load exactly the requested
   interval - no rolling lookback. A timeframe selector (1m-1D) resamples the
   display; every simulation, entry, exit, and replay stays on true 1-minute bars.
-- **Chart**: GC candlesticks with volume, three VWAP overlays (rolling / day /
-  session), New York session shading, a crosshair with an O/H/L/C-and-change
-  readout, and a single tick-formatted price axis (left-drag to scale, double-
-  click to auto-fit). Candles never draw across a continuous-segment break.
+- **Chart**: GC candlesticks with volume (an explicit show/hide toggle), New
+  York session shading, and one tick-formatted price scale on the right
+  (left-drag to scale, double-click to auto-fit) carrying a last-price pill
+  that rides the replay tape. The chart header holds the O/H/L/C-and-change
+  readout, one chip per active study with hide/remove controls, and compact
+  Undo/Redo/Clear icons - none of which can overlap. The crosshair pins an
+  exact date/time pill beneath the vertical line and a tick-snapped price pill
+  on the scale. Candles never draw across a continuous-segment break.
+- **Indicator studies**: a searchable Available list activates SMA, EMA,
+  Bollinger Bands, ATR, RSI, rolling volatility, OBV, volume MA and the three
+  VWAP variants; each active study has parameter, colour, hide and remove
+  actions, and only active studies are computed. Bounded studies open an
+  oscillator pane that exists only while needed and honours the replay
+  curtain. Studies are display aids at the displayed timeframe - never inputs
+  to fills - and persist in session files.
+- **Measurement**: Shift+Left-drag (or the Measure tool) reads signed price
+  change, ticks from the instrument's tick size, percent, bars and elapsed
+  time; Esc cancels, release commits, Undo removes. Values are identical at
+  any zoom.
 - **Trade inspector** (right): a single click on a strategy trade shows a compact
   overview; a double-click opens the full detail (chart focus, forensics verdict,
   horizon chart, entry context); Escape returns to the full chart.
@@ -141,12 +159,19 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
     revealed bars as it runs.
   - **Forensics panel**: a plain-language verdict, a per-horizon MFE/MAE mini-chart,
     and labelled entry-context meters.
-- **Drawing tools** (Drawing workspace): draggable price levels, trendlines
-  (drag across the chart or click two points), shaded supply/demand zones, and
-  vertical time markers - all with TradingView-style drag gestures, a live
-  preview, right-click or Escape to cancel, and Undo/Clear as compact icons on
-  the chart (Ctrl+Z). Drawings live in data coordinates (exact under any zoom),
-  persist per day within the session, and stay visible above the replay curtain.
+- **Drawing tools** (Drawing workspace, grouped): Lines - Trendline, Ray, Info
+  line (with a live measurement readout), Extended line, Trend angle,
+  Horizontal line, Horizontal ray, Vertical line, Crossline; Position - Long
+  position and Short position (entry/target/stop handles, shaded reward/risk
+  zones, a live R:R label); Zones; and the Fibonacci set - Fib retracement,
+  Trend-based fib extension, Fib channel, Fib time zone, Fib speed resistance
+  fan, Trend-based fib time, Fib circles, Fib spiral, Fib speed resistance
+  arcs, Fib wedge, and Pitchfan. Two-point tools place by drag or two clicks,
+  three-point tools by three clicks with anchor dots; every tool has draggable
+  anchors, right-click or Escape cancel, and Undo/Redo/Clear (Ctrl+Z/Ctrl+Y)
+  from the chart header. Drawings live in data coordinates (exact under any
+  zoom), survive timeframe switches, persist in sessions, and stay visible
+  above the replay curtain.
 - **Cross-asset comparison** (toolbar Overlay/Compare): pick a second instrument
   and a mode - Horizontal or Vertical split (each pane keeps its own price scale,
   the panes X-linked for time sync) or Normalized (the comparison rebased to the
@@ -177,8 +202,9 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
   the heatmap's colour scale and the chart axes/crosshair.
 - **Collapsible layout**: the nav rail (Ctrl+1-5) opens or collapses each left
   workspace - re-clicking the open one returns the width to the chart - and the
-  View menu toggles the trade inspector, the replay transport, and the MGC pane.
-  The layout holds together down to ~1092x614 logical pixels (1366x768 at 125% DPI).
+  View menu toggles the trade inspector and the replay transport. Collapsing
+  never loses chart, strategy, risk, or replay state. The layout holds together
+  down to ~1092x614 logical pixels (1366x768 at 125% DPI).
 - **Branded launch**: an animated Gold Quant splash (drawn in code from the theme
   palette - no image assets) covers the data load, and the same GQ coin mark is
   the window/taskbar icon and, via `scripts/build_app.py`, the packaged
@@ -191,8 +217,9 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
   reproduces `strategy_lab.simulate_positions` to 1e-12
   (`tests/test_app_flex_exit_tieback.py`).
 - `src/app/analysis/` - Qt-free compute shared by the visuals: placed-trade sizing
-  and recompute, excursion geometry, what-if runs, exit-grid sweeps, and the
-  plain-language explanation engine. All unit-tested.
+  and recompute, excursion geometry, what-if runs, exit-grid sweeps, the
+  plain-language explanation engine, the indicator-study engine, measurement
+  arithmetic, and Fibonacci tool geometry. All unit-tested.
 - `src/app/datalayer/` - BarStore (narrow GC load, Dev/Val cap, viewport slicing,
   optional `date_floor` fast path), VWAP reconstruction, and the replay and
   forensics services. No Qt dependency.

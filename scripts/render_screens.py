@@ -160,6 +160,36 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     saved.append(_grab(win, out_dir / "08b_day_replay.png", app))
     win._animator.stop()
 
+    # 8c. Studies: EMA + Bollinger on price, an RSI pane, volume hidden.
+    win.indicators_panel.add_study("ema")
+    win.indicators_panel.add_study("bollinger")
+    win.indicators_panel.add_study("rsi")
+    win.indicators_panel.volume_check.setChecked(False)
+    win._select_workspace(1)  # the Indicators workspace on the left
+    saved.append(_grab(win, out_dir / "08c_studies.png", app))
+    win.indicators_panel.volume_check.setChecked(True)
+    for inst in list(win.indicators_panel.instances):
+        if inst.key != "vwap20":
+            win.indicators_panel.remove_instance(inst.id)
+
+    # 8d. Drawing tools: fib retracement, long position, and a measurement.
+    win._select_workspace(2)  # the Drawing workspace on the left
+    lo = win._view_start
+    close = win._bars.close
+
+    def _price_at(local_x: int) -> float:
+        return float(close[lo + local_x])
+
+    win.chart.place_drawing("fibret", 120.0, _price_at(120))
+    win.chart.place_drawing("fibret", 420.0, _price_at(420))
+    win.chart.place_drawing("longpos", 520.0, _price_at(520))
+    win.chart.place_drawing("longpos", 700.0, _price_at(520) + 3.0)
+    win.chart.place_drawing("measure", 40.0, _price_at(40))
+    win.chart.place_drawing("measure", 110.0, _price_at(110))
+    saved.append(_grab(win, out_dir / "08d_drawing_tools.png", app))
+    win.chart.clear_drawings()
+    win._select_workspace(0)
+
     # 9. Light theme.
     win._set_theme("light")
     saved.append(_grab(win, out_dir / "09_light_theme.png", app))

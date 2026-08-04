@@ -1460,6 +1460,8 @@ class ChartWidget(QtWidgets.QWidget):
 
         for widget in self._chip_widgets.values():
             self._legend_bar.removeWidget(widget)
+            widget.hide()
+            widget.setParent(None)  # a deferred delete must never paint over the chart
             widget.deleteLater()
         self._chip_widgets.clear()
         p = theme.active()

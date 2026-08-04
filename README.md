@@ -30,7 +30,7 @@ This repository is a research environment, not a live trading system. It does no
 | Combined trusted table | 3,487,656 bars: 1,759,671 GC and 1,727,985 MGC |
 | Business timezone | `America/New_York`; UTC timestamps remain immutable join keys |
 | Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
-| Automated tests | 480 unittest cases across 63 test modules, plus 83 pytest-only FES research tests |
+| Automated tests | 587 unittest cases across 77 test modules, plus 83 pytest-only FES research tests |
 | Desktop application | GQ Trade Simulator (`src/app`): charting, bar replay, evaluation accounts, validated edge context, sessions, multi-asset switching |
 | Repository state | Phase 2 research complete; FES Project 1 Validation batch locked; no strategy approved; S7P02 family archived |
 
@@ -61,7 +61,7 @@ project-1/
 |   |-- statistical_research/           Branch B pipeline and the frozen fes_project1_* research modules
 |   |-- execution/                      Prop-firm rules engine, shadow-mode harness, MGC transfer gate
 |   `-- app/                            GQ Trade Simulator (datalayer, analysis, sim, ui, workers)
-`-- tests/                              480 unittest cases; test_fes_project1_* additionally run under pytest
+`-- tests/                              587 unittest cases; test_fes_project1_* additionally run under pytest
 ~~~
 
 ## Project status
@@ -146,6 +146,7 @@ The v1 result is **0 of 12 features authorized — all `RESEARCH_ONLY`**, failin
 | FES Section 7 (MGC transfer) | Not permitted by the Section 6 verdict; Historical Final unread |
 | GQ Trade Simulator (`src/app`) | Complete and merged: TradingView-style charting, hidden-future bar replay, drawing tools, dollar accounts with prop-style evaluation rules, Edge-context panel (golden-tested against the frozen FES arithmetic), session persistence |
 | Multi-asset instrument layer | Complete and merged: GC/MGC switching live; NQ/ES/BTCUSD registered behind a strict external-data contract; GC-only research surfaces disable off-GC with the reason on screen |
+| Simulator UI corrections (August 2026 partner brief) | Complete: workspace shell refined (searchable strategy browser, indicator-study engine with searchable Available/Active lists, repaired Risk inputs with visible validation), right-side tick-precise price scale with crosshair/last-price pills, chart-header Undo/Redo/Clear, volume toggle, overlay popover, Shift-drag measurement, and the full TradingView line/position/Fibonacci drawing set |
 
 The line's Sharpe-governance and external-figure additions to the statistical notebook are carried at module level (`performance_diagnostics.py`, `research_figures.py`) but not yet wired into the notebook: their cells anchor on the pre-rewrite GARCH section and need reconciliation with the current GARCH implementation first.
 
@@ -376,7 +377,7 @@ python -m unittest discover -s tests -v
 Current verified result:
 
 ~~~text
-Ran 480 tests
+Ran 587 tests
 OK
 ~~~
 
@@ -498,7 +499,7 @@ Tracked summaries under `reports/statistical_research/summaries/` provide a ligh
 
 ## Test coverage
 
-The table below covers the research core. Beyond it, the application layer (`test_app_*`, 26 modules) and the FES research chain (`test_fes_project1_*`, six pytest-only modules) bring the suite to 480 unittest cases plus 83 pytest-only tests.
+The table below covers the research core. Beyond it, the application layer (`test_app_*`, 35 modules) and the FES research chain (`test_fes_project1_*`, six pytest-only modules) bring the suite to 480 unittest cases plus 83 pytest-only tests.
 
 | Test module | Tests | Main contract |
 |---|---:|---|
@@ -598,7 +599,7 @@ For collaborative work:
 1. Pull the latest `main` before starting.
 2. Use a short-lived branch for a coherent research or engineering milestone.
 3. Keep changes scoped; never use `git add -A` in a mixed working tree.
-4. Run the full test suite (480 unittest cases; add pytest for the FES modules) and any relevant full-run validation.
+4. Run the full test suite (587 unittest cases; add pytest for the FES modules) and any relevant full-run validation.
 5. Review notebook outputs, schemas, row counts, null behaviour, and research conclusions.
 6. Update the relevant context report when a milestone changes project state.
 7. Open a pull request with the research question, definitions, artifacts, checks, and limitations.
