@@ -641,6 +641,13 @@ class MainWindow(QtWidgets.QMainWindow):
             "A vertical time marker. Drag it later to move it.",
             "Time marker armed: click a bar on the chart. Right-click cancels.",
         ),
+        (
+            "Measure",
+            "measure",
+            "Measure between two points: price change, ticks, percent, bars and\n"
+            "elapsed time. Shift+Left-drag measures any time without arming this.",
+            "Measure armed: drag from anchor to destination. Esc or right-click cancels.",
+        ),
     )
 
     def _build_draw_actions(self) -> None:
@@ -1917,6 +1924,9 @@ class MainWindow(QtWidgets.QMainWindow):
     # -- lifecycle ---------------------------------------------------------
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
         if event.key() == QtCore.Qt.Key_Escape:
+            if self.chart.measuring():  # cancel an in-progress measurement first
+                self.chart.cancel_measurement()
+                return
             if self.chart._draw_mode is not None:  # cancel an armed drawing tool
                 self._arm_draw_tool(None)
                 self._draw_buttons[None].setChecked(True)

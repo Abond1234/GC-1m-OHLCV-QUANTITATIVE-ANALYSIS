@@ -293,6 +293,8 @@ class ChartWidget(QtWidgets.QWidget):
         # User drawings (levels/trendlines/time markers). Live items for the
         # current day plus a per-day store so annotations survive date switches.
         self._draw_mode: str | None = None
+        self._measure_anchor: tuple[float, float] | None = None  # Shift+drag origin
+        self._measure_preview: list | None = None  # live readout items while dragging
         self._drawing_items: list[tuple[str, object]] = []  # (kind, items), creation order
         self._drawing_store: list[dict] = []  # global-coordinate specs not currently live
         self._redo_specs: list[dict] = []  # undone drawings (global specs), newest last
@@ -422,6 +424,8 @@ class ChartWidget(QtWidgets.QWidget):
         self._trend_preview = None
         self._draw_press_view = None
         self._draw_press_pixel = None
+        self._measure_anchor = None
+        self._measure_preview = None  # its graphics died with the plot clear
         self._last_readout_i = -1
         for line in (self._vline, self._hline):
             line.setVisible(False)
@@ -511,7 +515,11 @@ class ChartWidget(QtWidgets.QWidget):
         two-click flow. Right-click cancels the tool.
         """
 
-        if obj is not self._layout.viewport() or self._draw_mode is None:
+        if obj is not self._layout.viewport():
+            return super().eventFilter(obj, event)
+        if self._handle_measure_gesture(event):
+            return True
+        if self._draw_mode is None:
             return super().eventFilter(obj, event)
         etype = event.type()
         if etype == QtCore.QEvent.MouseButtonPress:
@@ -528,7 +536,7 @@ class ChartWidget(QtWidgets.QWidget):
                 return True
         elif etype == QtCore.QEvent.MouseMove:
             current = self._map_pixel_to_view(event.position())
-            if current is not None and self._draw_mode in ("trend", "rect"):
+            if current is not None and self._draw_mode in self._TWO_POINT:
                 if self._draw_press_view is not None:
                     self._update_drag_preview(self._draw_mode, self._draw_press_view, current)
                     return True
@@ -544,11 +552,7 @@ class ChartWidget(QtWidgets.QWidget):
             if end is None:
                 self._remove_drag_preview()
                 return True
-            if (
-                self._draw_mode in ("trend", "rect")
-                and start is not None
-                and start_pixel is not None
-            ):
+            if self._draw_mode in self._TWO_POINT and start is not None and start_pixel is not None:
                 moved = (event.position() - start_pixel).manhattanLength()
                 if moved > 6:  # a real drag: place the two-point shape start -> end
                     self._remove_drag_preview()
@@ -563,6 +567,105 @@ class ChartWidget(QtWidgets.QWidget):
             return True  # no pan/zoom menu while a tool is armed
         return super().eventFilter(obj, event)
 
+    # -- Shift+Left measurement mode -----------------------------------------
+    def _handle_measure_gesture(self, event) -> bool:
+        """Own the mouse for Shift+Left drag measuring; True when consumed.
+
+        Press anchors, drag shows the live readout, release commits the
+        measurement as a drawing (so Undo removes it and it survives view
+        switches), Esc or right-click cancels. All in data coordinates, so the
+        reported values are identical at any zoom.
+        """
+
+        etype = event.type()
+        if etype == QtCore.QEvent.MouseButtonPress:
+            if (
+                event.button() == QtCore.Qt.LeftButton
+                and event.modifiers() & QtCore.Qt.ShiftModifier
+                and self._ohlc is not None
+            ):
+                anchor = self._map_pixel_to_view(event.position())
+                if anchor is not None:
+                    self._measure_anchor = anchor
+                    return True
+            if self._measure_anchor is not None and event.button() == QtCore.Qt.RightButton:
+                self.cancel_measurement()
+                return True
+            return False
+        if self._measure_anchor is None:
+            return False
+        if etype == QtCore.QEvent.MouseMove:
+            current = self._map_pixel_to_view(event.position())
+            if current is not None:
+                self._update_measure_preview(self._measure_anchor, current)
+            return True
+        if etype == QtCore.QEvent.MouseButtonRelease and event.button() == QtCore.Qt.LeftButton:
+            anchor = self._measure_anchor
+            end = self._map_pixel_to_view(event.position())
+            self.cancel_measurement()
+            if end is not None and abs(end[0] - anchor[0]) + abs(end[1] - anchor[1]) > 0:
+                self._create_drawing({"kind": "measure", "p1": anchor, "p2": end})
+                self._redo_specs.clear()
+            return True
+        return False
+
+    def cancel_measurement(self) -> None:
+        """Drop any in-progress measurement drag (Esc / right-click)."""
+
+        self._measure_anchor = None
+        if self._measure_preview is not None:
+            for item in self._measure_preview:
+                self._price.removeItem(item)
+            self._measure_preview = None
+
+    def measuring(self) -> bool:
+        return self._measure_anchor is not None
+
+    def _update_measure_preview(self, p1, p2) -> None:
+        if self._measure_preview is not None:
+            for item in self._measure_preview:
+                self._price.removeItem(item)
+        self._measure_preview = self._build_measure_items(p1, p2)
+        for item in self._measure_preview:
+            item.setZValue(14)
+            self._price.addItem(item, ignoreBounds=True)
+
+    def _build_measure_items(self, p1, p2) -> list:
+        """Zone + diagonal + readout for a measurement (data coordinates)."""
+
+        from ..analysis.measure import format_measurement, measure
+
+        p = theme.active()
+        up = p2[1] >= p1[1]
+        colour = QtGui.QColor(p.target if up else p.stop)
+        rect = QtWidgets.QGraphicsRectItem(
+            QtCore.QRectF(QtCore.QPointF(p1[0], p1[1]), QtCore.QPointF(p2[0], p2[1])).normalized()
+        )
+        pen = pg.mkPen(colour, width=1.2)
+        pen.setCosmetic(True)
+        rect.setPen(pen)
+        fill = QtGui.QColor(colour)
+        fill.setAlpha(26)
+        rect.setBrush(fill)
+        line = pg.PlotDataItem(
+            [p1[0], p2[0]],
+            [p1[1], p2[1]],
+            pen=pg.mkPen(colour, width=1.4, style=QtCore.Qt.DashLine),
+        )
+        vm = self._view_map
+        minutes = abs(vm.local_f_to_global(p2[0]) - vm.local_f_to_global(p1[0]))
+        bars = round(abs(p2[0] - p1[0]))
+        m = measure(p1[1], p2[1], self._tick_size, bars, minutes)
+        text = pg.TextItem(
+            format_measurement(m, self._decimals),
+            color=p.bg,
+            anchor=(0.5, 1.1 if up else -0.1),
+            fill=pg.mkBrush(colour),
+            border=pg.mkPen(None),
+        )
+        text.setPos(0.5 * (p1[0] + p2[0]), max(p1[1], p2[1]) if up else min(p1[1], p2[1]))
+        return [rect, line, text]
+
     def _map_pixel_to_view(self, pos) -> tuple[float, float] | None:
         """Viewport pixel -> (bar index, price), or None outside the price box."""
 
@@ -573,6 +676,9 @@ class ChartWidget(QtWidgets.QWidget):
         return float(view_pos.x()), float(view_pos.y())
 
     def _update_drag_preview(self, kind: str, p1, p2) -> None:
+        if kind == "measure":  # the measure preview IS the live readout
+            self._update_measure_preview(p1, p2)
+            return
         p = theme.active()
         if self._trend_preview is None:
             if kind == "rect":
@@ -601,6 +707,10 @@ class ChartWidget(QtWidgets.QWidget):
         if self._trend_preview is not None:
             self._price.removeItem(self._trend_preview)
             self._trend_preview = None
+        if self._measure_preview is not None:
+            for item in self._measure_preview:
+                self._price.removeItem(item)
+            self._measure_preview = None
 
     def place_drawing(self, kind: str, x: float, y: float) -> None:
         """Create a drawing at view coordinates (bar index, price)."""
@@ -609,7 +719,7 @@ class ChartWidget(QtWidgets.QWidget):
             return
         n = len(self._ohlc["close"])
         x = max(0.0, min(float(x), float(n - 1)))
-        if kind in ("trend", "rect"):
+        if kind in self._TWO_POINT:
             if self._trend_anchor is None:
                 self._trend_anchor = (x, float(y))
                 p = theme.active()
@@ -631,10 +741,17 @@ class ChartWidget(QtWidgets.QWidget):
         self._redo_specs.clear()  # a fresh drawing invalidates redo history
         self.drawing_placed.emit()
 
+    _TWO_POINT = ("trend", "rect", "measure")
+
     def _create_drawing(self, spec: dict) -> None:
         p = theme.active()
         kind = spec["kind"]
-        if kind == "hline":
+        if kind == "measure":
+            items = self._build_measure_items(tuple(spec["p1"]), tuple(spec["p2"]))
+            # The zone rect remembers its local anchors for serialization
+            # (measurements have no drag handles to read back).
+            items[0].setData(0, (tuple(spec["p1"]), tuple(spec["p2"])))
+        elif kind == "hline":
             items = [
                 pg.InfiniteLine(
                     pos=float(spec["y"]),
@@ -797,6 +914,13 @@ class ChartWidget(QtWidgets.QWidget):
             }
         if kind == "vline":
             return {"kind": "vline", "gx": vm.local_f_to_global(items[0].value())}
+        if kind == "measure":
+            p1, p2 = items[0].data(0)
+            return {
+                "kind": "measure",
+                "p1": (vm.local_f_to_global(p1[0]), float(p1[1])),
+                "p2": (vm.local_f_to_global(p2[0]), float(p2[1])),
+            }
         if kind in ("trend", "rect"):
             _shape, h1, h2 = items
             return {
