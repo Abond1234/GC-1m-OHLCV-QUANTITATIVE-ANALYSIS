@@ -48,7 +48,7 @@ class WorkspaceShellTests(unittest.TestCase):
 
     def test_controls_live_in_their_workspace(self):
         w = self.win
-        self.assertTrue(_in_workspace(w, w.strategy_combo, 0))  # Strategy
+        self.assertTrue(_in_workspace(w, w.strategy_browser, 0))  # Strategy
         self.assertTrue(_in_workspace(w, w._tabs, 0))
         self.assertTrue(_in_workspace(w, w.indicators_panel, 1))  # Indicators
         self.assertTrue(_in_workspace(w, w.edge_panel, 1))
@@ -73,7 +73,7 @@ class WorkspaceShellTests(unittest.TestCase):
         top = {w._controls.itemAt(i).widget() for i in range(w._controls.count())}
         self.assertIn(w.instrument_combo, top)
         self.assertIn(w.tf_combo, top)
-        self.assertNotIn(w.strategy_combo, top)
+        self.assertNotIn(w.strategy_browser, top)
         self.assertNotIn(w.session_check, top)
 
 

@@ -66,6 +66,7 @@ from .heatmap_widget import HeatmapWidget
 from .indicators_panel import IndicatorsPanel
 from .replay_animator import ReplayAnimator
 from .session_panel import SessionPanel
+from .strategy_browser import StrategyBrowser
 
 _WHATIF_COLUMNS = ["Exit rule", "Survived?", "R", "Exit", "Held"]
 
@@ -277,19 +278,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # whole chart for a checkbox is what made these toggles feel heavy.
         self.session_check.toggled.connect(self.chart.set_sessions_visible)
 
-        self.strategy_combo = QtWidgets.QComboBox()
-        # Long catalog names: keep the closed combo compact, let the popup widen.
-        self.strategy_combo.setSizeAdjustPolicy(
-            QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon
-        )
-        self.strategy_combo.setMinimumContentsLength(16)
-        # Searchable: type to filter ~200 catalog names by substring, Enter selects.
-        self.strategy_combo.setEditable(True)
-        self.strategy_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
-        completer = self.strategy_combo.completer()
-        completer.setCompletionMode(QtWidgets.QCompleter.PopupCompletion)
-        completer.setFilterMode(QtCore.Qt.MatchContains)
-        completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        # Strategy browser: search bar, family filter, collapsible groups, and
+        # per-row selected/loading/disabled/error states.
+        self.strategy_browser = StrategyBrowser()
+        self.strategy_browser.strategyActivated.connect(lambda _n: self._on_replay())
         self.custom_check = QtWidgets.QCheckBox("Custom exits")
         self.custom_check.setToolTip(
             "Replay using the Exit-rule panel instead of the frozen contract."
@@ -476,12 +468,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _make_strategy_ws(self) -> QtWidgets.QWidget:
         w, lay = self._ws_widget()
-        top = QtWidgets.QHBoxLayout()
-        top.addWidget(QtWidgets.QLabel("Strategy"))
-        top.addWidget(self.strategy_combo, 1)
-        top.addWidget(self.replay_btn)
-        lay.addLayout(top)
-        lay.addWidget(self.custom_check)
+        lay.addWidget(self.strategy_browser, 1)
+        run = QtWidgets.QHBoxLayout()
+        run.addWidget(self.custom_check)
+        run.addStretch(1)
+        run.addWidget(self.replay_btn)
+        lay.addLayout(run)
         fp = QtWidgets.QHBoxLayout()
         for x in (self.freeplay_check, self.long_radio, self.short_radio):
             fp.addWidget(x)
@@ -711,20 +703,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ny_label = ny_time_label(data["replay"].bars)
         self.blotter.set_time_label(self._ny_label)
         self._set_date_bounds(data["dates"])
-        for spec in data["replay"].list_strategies():
-            self.strategy_combo.addItem(spec.name)
-        # The closed combo stays compact; widen the popup to the longest name.
-        metrics = self.strategy_combo.fontMetrics()
-        widest = max(
-            (
-                metrics.horizontalAdvance(self.strategy_combo.itemText(i))
-                for i in range(self.strategy_combo.count())
-            ),
-            default=0,
-        )
-        self.strategy_combo.view().setMinimumWidth(widest + 48)
-        self.strategy_combo.completer().popup().setMinimumWidth(widest + 48)
-        self.strategy_combo.setCurrentIndex(0)  # editable combo starts blank otherwise
+        self.strategy_browser.populate(data["replay"].list_strategies())
         self.instrument_combo.blockSignals(True)
         self.instrument_combo.clear()
         for instrument in available_instruments():
@@ -1000,9 +979,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_replay(self) -> None:
         if self._data is None or self._instrument != "GC":
             return
-        name = self.strategy_combo.currentText()
+        name = self.strategy_browser.current_name()
         specs = {s.name: s for s in self._data["replay"].list_strategies()}
         if name not in specs:
+            self._set_status("Select a strategy in the Strategy workspace first.")
             return
         custom = self.custom_check.isChecked()
         # The config is captured here but only installed when its log arrives,
@@ -1011,12 +991,19 @@ class MainWindow(QtWidgets.QMainWindow):
         cfg_used = self.exit_panel.to_config() if custom else frozen_config()
         cfg = cfg_used if custom else None
         self._set_status(f"Replaying {name} ...")
+        self.strategy_browser.clear_error(name)
+        self.strategy_browser.set_loading(name)
         task = Task(self._data["replay"].replay, specs[name], cfg)
         task.signals.finished.connect(lambda log, c=cfg_used: self._on_replayed(log, c))
-        task.signals.error.connect(self._on_error)
+        task.signals.error.connect(lambda message, n=name: self._on_replay_error(n, message))
         self._start(task)
 
+    def _on_replay_error(self, name: str, message: str) -> None:
+        self.strategy_browser.set_error(name, message)
+        self._on_error(message)
+
     def _on_replayed(self, log: pd.DataFrame, cfg=None) -> None:
+        self.strategy_browser.set_loading(None)
         if cfg is not None:
             self._replay_cfg = cfg
         self._log = log
@@ -1464,8 +1451,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.blotter.set_time_label(self._ny_label)
         instrument = REGISTRY[symbol]
         gc_active = symbol == "GC"
-        for widget in (self.strategy_combo, self.replay_btn, self.custom_check):
+        for widget in (self.replay_btn, self.custom_check):
             widget.setEnabled(gc_active)
+        self.strategy_browser.set_enabled_with_reason(
+            gc_active, "Strategy catalog and replay are GC-only (research validity)."
+        )
         if not gc_active:
             self.replay_btn.setToolTip(
                 "Strategy catalog and replay are GC-only (research validity)."

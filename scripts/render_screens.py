@@ -107,7 +107,7 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     # 2. Replay a strategy so outcome-coloured markers appear.
     spec, log = _first_non_empty_strategy(win)
     if spec is not None:
-        win.strategy_combo.setCurrentText(spec.name)
+        win.strategy_browser.select(spec.name)
         win._on_replayed(log)
         # Jump to the day of the first trade and draw its markers.
         first = log.iloc[0]
