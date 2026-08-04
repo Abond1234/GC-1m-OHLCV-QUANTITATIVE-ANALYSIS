@@ -169,6 +169,12 @@ def qss(p: Palette) -> str:
         border: 1px solid {p.border}; border-radius: 5px; padding: 3px 6px;
         color: {p.text}; selection-background-color: {p.gold}; }}
     QComboBox:hover, QDoubleSpinBox:hover, QSpinBox:hover {{ border-color: {p.gold}; }}
+    QComboBox:disabled, QDoubleSpinBox:disabled, QSpinBox:disabled, QLineEdit:disabled,
+    QPushButton:disabled {{ color: {p.text_faint}; background: {p.panel};
+        border-color: {p.border}; }}
+    QCheckBox:disabled, QRadioButton:disabled, QLabel:disabled {{ color: {p.text_faint}; }}
+    QDoubleSpinBox[invalid="true"], QSpinBox[invalid="true"] {{ border-color: {p.down}; }}
+    QLabel[role="warn"] {{ color: {p.down}; font-size: 11px; }}
     QLineEdit {{ background: {p.panel_alt}; border: 1px solid {p.border};
         border-radius: 5px; padding: 2px 6px; color: {p.text};
         selection-background-color: {p.gold}; selection-color: {p.bg}; }}
