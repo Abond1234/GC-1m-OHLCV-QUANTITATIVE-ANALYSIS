@@ -735,13 +735,56 @@ class ChartWidget(QtWidgets.QWidget):
             spec = {"kind": "hline", "y": float(y)}
         elif kind == "vline":
             spec = {"kind": "vline", "x": x}
+        elif kind in ("hray", "cross"):
+            spec = {"kind": kind, "x": x, "y": float(y)}
         else:
             return
         self._create_drawing(spec)
         self._redo_specs.clear()  # a fresh drawing invalidates redo history
         self.drawing_placed.emit()
 
-    _TWO_POINT = ("trend", "rect", "measure")
+    # Drawing kind families. Two-point kinds share the anchor/drag gesture;
+    # the line family shares endpoint handles and differs only in extension
+    # and labelling; the position kinds are the long/short R:R tools.
+    _LINE_FAMILY = ("trend", "ray", "extline", "info", "angle")
+    _POSITION_KINDS = ("longpos", "shortpos")
+    _TWO_POINT = (*_LINE_FAMILY, *_POSITION_KINDS, "rect", "measure")
+    _EXTEND = 100_000.0  # parametric reach for rays/extended lines (clipped by Qt)
+
+    def _handle(self, pos, color=None) -> pg.TargetItem:
+        p = theme.active()
+        return pg.TargetItem(
+            pos=pos,
+            size=9,
+            movable=True,
+            pen=pg.mkPen(color or p.gold, width=1.2),
+            hoverPen=pg.mkPen(p.hook, width=2.0),
+            brush=pg.mkBrush(0, 0, 0, 0),
+        )
+
+    @staticmethod
+    def _line_label_text(kind: str, a, b, tick_size: float, decimals: int, vm) -> str:
+        """Live annotation for info lines and trend angles (data-coordinate).
+
+        Static on purpose: it is called from signal closures attached to
+        graphics items, and those closures must never capture ``self`` - a
+        chart -> item -> closure -> chart cycle makes Python's GC destroy the
+        Qt objects in arbitrary order and corrupts the heap at teardown.
+        """
+
+        import math
+
+        from ..analysis.measure import format_measurement, measure
+
+        if kind == "info":
+            minutes = abs(vm.local_f_to_global(b[0]) - vm.local_f_to_global(a[0]))
+            m = measure(a[1], b[1], tick_size, round(abs(b[0] - a[0])), minutes)
+            return format_measurement(m, decimals)
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        angle = math.degrees(math.atan2(dy, dx)) if (dx or dy) else 0.0
+        slope = dy / dx if dx else float("inf")
+        slope_text = f"{slope:+.2f} pts/bar" if math.isfinite(slope) else "vertical"
+        return f"{angle:+.1f} deg ({slope_text})"
 
     def _create_drawing(self, spec: dict) -> None:
         p = theme.active()
@@ -773,33 +816,88 @@ class ChartWidget(QtWidgets.QWidget):
                     hoverPen=pg.mkPen(p.text_dim, width=2.2),
                 )
             ]
-        elif kind == "trend":
+        elif kind in self._LINE_FAMILY:
             # A data-coordinate line with two TargetItem endpoint handles.
             # Everything lives in view coordinates with cosmetic pens, so the
-            # drawing is exact under any zoom (LineSegmentROI is not).
+            # drawing is exact under any zoom (LineSegmentROI is not). Rays and
+            # extended lines reach a huge parametric distance instead of
+            # re-projecting on every range change; info lines and trend angles
+            # carry a live label that follows the second handle.
             line = pg.PlotDataItem(pen=pg.mkPen(p.gold, width=1.6))
-            handles = [
-                pg.TargetItem(
-                    pos=spec[key],
-                    size=9,
-                    movable=True,
-                    pen=pg.mkPen(p.gold, width=1.2),
-                    hoverPen=pg.mkPen(p.hook, width=2.0),
-                    brush=pg.mkBrush(0, 0, 0, 0),
-                )
-                for key in ("p1", "p2")
-            ]
+            label = None
+            if kind in ("info", "angle"):
+                label = pg.TextItem("", color=p.bg, anchor=(0.5, 1.2), fill=pg.mkBrush(p.gold))
+            handles = [self._handle(spec[key]) for key in ("p1", "p2")]
 
-            def _sync(*_a, _line=line, _handles=handles):
-                _line.setData(
-                    [_handles[0].pos().x(), _handles[1].pos().x()],
-                    [_handles[0].pos().y(), _handles[1].pos().y()],
-                )
+            # NOTE: everything the closure needs is bound as a default - it
+            # must not capture ``self`` (see _line_label_text).
+            def _sync(
+                *_a,
+                _kind=kind,
+                _line=line,
+                _label=label,
+                _handles=handles,
+                _ext=self._EXTEND,
+                _tick=self._tick_size,
+                _dec=self._decimals,
+                _vm=self._view_map,
+                _label_fn=self._line_label_text,
+            ):
+                a = (_handles[0].pos().x(), _handles[0].pos().y())
+                b = (_handles[1].pos().x(), _handles[1].pos().y())
+                dx, dy = b[0] - a[0], b[1] - a[1]
+                if _kind == "ray" and (dx or dy):
+                    ext = (a[0] + dx * _ext, a[1] + dy * _ext)
+                    _line.setData([a[0], ext[0]], [a[1], ext[1]])
+                elif _kind == "extline" and (dx or dy):
+                    lo = (a[0] - dx * _ext, a[1] - dy * _ext)
+                    ext = (a[0] + dx * _ext, a[1] + dy * _ext)
+                    _line.setData([lo[0], ext[0]], [lo[1], ext[1]])
+                else:
+                    _line.setData([a[0], b[0]], [a[1], b[1]])
+                if _label is not None:
+                    _label.setText(_label_fn(_kind, a, b, _tick, _dec, _vm))
+                    _label.setPos(b[0], b[1])
 
             for handle in handles:
                 handle.sigPositionChanged.connect(_sync)
             _sync()
-            items = [line, *handles]
+            items = [line, *([label] if label is not None else []), *handles]
+        elif kind in self._POSITION_KINDS:
+            items = self._build_position_items(kind, spec)
+        elif kind == "hray":
+            # A horizontal ray: from its origin to the right, TradingView-style.
+            line = pg.PlotDataItem(pen=pg.mkPen(p.vwap_rolling, width=1.2))
+            origin = self._handle((float(spec["x"]), float(spec["y"])), color=p.vwap_rolling)
+
+            def _sync_hray(*_a, _line=line, _origin=origin, _ext=self._EXTEND):
+                x, y = _origin.pos().x(), _origin.pos().y()
+                _line.setData([x, x + _ext], [y, y])
+
+            origin.sigPositionChanged.connect(_sync_hray)
+            _sync_hray()
+            items = [line, origin]
+        elif kind == "cross":
+            # A crossline: full-height and full-width lines through one point.
+            h = pg.InfiniteLine(
+                angle=0,
+                movable=False,
+                pen=pg.mkPen(p.text_dim, width=1.1, style=QtCore.Qt.DashLine),
+            )
+            v = pg.InfiniteLine(
+                angle=90,
+                movable=False,
+                pen=pg.mkPen(p.text_dim, width=1.1, style=QtCore.Qt.DashLine),
+            )
+            origin = self._handle((float(spec["x"]), float(spec["y"])), color=p.text_dim)
+
+            def _sync_cross(*_a, _h=h, _v=v, _origin=origin):
+                _h.setPos(_origin.pos().y())
+                _v.setPos(_origin.pos().x())
+
+            origin.sigPositionChanged.connect(_sync_cross)
+            _sync_cross()
+            items = [h, v, origin]
         elif kind == "rect":
             # A zone box (supply/demand style): data-coordinate rect with a
             # cosmetic border and translucent fill, resized by dragging its
@@ -841,6 +939,86 @@ class ChartWidget(QtWidgets.QWidget):
             item.setZValue(12)  # above the curtain so annotations stay usable in replay
             self._price.addItem(item, ignoreBounds=True)
         self._drawing_items.append((kind, items))
+
+    def _build_position_items(self, kind: str, spec: dict) -> list:
+        """Long/Short position tool: entry, target and stop with R:R zones.
+
+        Three independent handles - entry (left), target and stop (right) -
+        drive the shaded reward/risk zones and a live R:R label. Placing by
+        drag sets the entry and the reward; the stop defaults to half the
+        reward (R:R 2) on the opposite side, then drags freely.
+        """
+
+        p = theme.active()
+        long_side = kind == "longpos"
+        x1, entry_y = float(spec["p1"][0]), float(spec["p1"][1])
+        x2 = float(spec["p2"][0])
+        if x2 == x1:
+            x2 = x1 + 1.0
+        reward = abs(float(spec["p2"][1]) - entry_y)
+        if reward == 0.0:
+            reward = self._tick_size * 20
+        target_y = entry_y + reward if long_side else entry_y - reward
+        default_stop = entry_y - reward / 2 if long_side else entry_y + reward / 2
+        stop_y = float(spec.get("stop", default_stop))
+
+        reward_rect = QtWidgets.QGraphicsRectItem()
+        risk_rect = QtWidgets.QGraphicsRectItem()
+        for rect, colour in ((reward_rect, p.target), (risk_rect, p.stop)):
+            pen = pg.mkPen(colour, width=1.1)
+            pen.setCosmetic(True)
+            rect.setPen(pen)
+            fill = QtGui.QColor(colour)
+            fill.setAlpha(30)
+            rect.setBrush(fill)
+        entry_line = pg.PlotDataItem(pen=pg.mkPen(p.text_dim, width=1.2))
+        label = pg.TextItem("", color=p.bg, anchor=(0.5, 1.15), fill=pg.mkBrush(p.gold))
+        h_entry = self._handle((x1, entry_y))
+        h_target = self._handle((x2, target_y), color=p.target)
+        h_stop = self._handle((x2, stop_y), color=p.stop)
+
+        # No ``self`` capture in the closure (see _line_label_text): bind all.
+        def _sync(
+            *_a,
+            _reward=reward_rect,
+            _risk=risk_rect,
+            _entry_line=entry_line,
+            _label=label,
+            _he=h_entry,
+            _ht=h_target,
+            _hs=h_stop,
+            _long=long_side,
+            _dec=self._decimals,
+        ):
+            ex, ey = _he.pos().x(), _he.pos().y()
+            tx, ty = _ht.pos().x(), _ht.pos().y()
+            sy = _hs.pos().y()
+            left, right = min(ex, tx), max(ex, tx)
+            if right == left:
+                right = left + 1.0
+            _reward.setRect(
+                QtCore.QRectF(QtCore.QPointF(left, ey), QtCore.QPointF(right, ty)).normalized()
+            )
+            _risk.setRect(
+                QtCore.QRectF(QtCore.QPointF(left, ey), QtCore.QPointF(right, sy)).normalized()
+            )
+            _entry_line.setData([left, right], [ey, ey])
+            win = abs(ty - ey)
+            loss = abs(ey - sy)
+            rr = win / loss if loss else float("inf")
+            rr_text = f"RR {rr:.2f}" if rr != float("inf") else "RR -"
+            side = "Long" if _long else "Short"
+            _label.setText(
+                f"{side}  {rr_text}\n"
+                f"target {ty:,.{_dec}f} (+{win:,.{_dec}f})\n"
+                f"stop {sy:,.{_dec}f} (-{loss:,.{_dec}f})"
+            )
+            _label.setPos(0.5 * (left + right), ty if _long else sy)
+
+        for handle in (h_entry, h_target, h_stop):
+            handle.sigPositionChanged.connect(_sync)
+        _sync()
+        return [reward_rect, risk_rect, entry_line, label, h_entry, h_target, h_stop]
 
     def undo_drawing(self) -> None:
         """Remove the most recent drawing on this view (or a pending anchor).
@@ -921,8 +1099,23 @@ class ChartWidget(QtWidgets.QWidget):
                 "p1": (vm.local_f_to_global(p1[0]), float(p1[1])),
                 "p2": (vm.local_f_to_global(p2[0]), float(p2[1])),
             }
-        if kind in ("trend", "rect"):
-            _shape, h1, h2 = items
+        if kind in ("hray", "cross"):
+            origin = items[-1]
+            return {
+                "kind": kind,
+                "gx": vm.local_f_to_global(origin.pos().x()),
+                "y": float(origin.pos().y()),
+            }
+        if kind in self._POSITION_KINDS:
+            h_entry, h_target, h_stop = items[-3], items[-2], items[-1]
+            return {
+                "kind": kind,
+                "p1": (vm.local_f_to_global(h_entry.pos().x()), float(h_entry.pos().y())),
+                "p2": (vm.local_f_to_global(h_target.pos().x()), float(h_target.pos().y())),
+                "stop": float(h_stop.pos().y()),
+            }
+        if kind in (*self._LINE_FAMILY, "rect"):
+            h1, h2 = items[-2], items[-1]
             return {
                 "kind": kind,
                 "p1": (vm.local_f_to_global(h1.pos().x()), float(h1.pos().y())),
@@ -937,13 +1130,19 @@ class ChartWidget(QtWidgets.QWidget):
         kind = spec["kind"]
         if kind == "hline":
             return dict(spec)
-        if kind == "vline":
-            return {"kind": "vline", "x": vm.global_to_local_f(spec["gx"])}
-        return {
+        if kind in ("vline", "hray", "cross"):
+            local = {"kind": kind, "x": vm.global_to_local_f(spec["gx"])}
+            if "y" in spec:
+                local["y"] = spec["y"]
+            return local
+        local = {
             "kind": kind,
             "p1": (vm.global_to_local_f(spec["p1"][0]), spec["p1"][1]),
             "p2": (vm.global_to_local_f(spec["p2"][0]), spec["p2"][1]),
         }
+        if "stop" in spec:
+            local["stop"] = spec["stop"]
+        return local
 
     def _stash_live_drawings(self) -> None:
         """Move live drawings into the store (called before the view rebuilds)."""
@@ -960,8 +1159,12 @@ class ChartWidget(QtWidgets.QWidget):
         if kind == "hline":
             a, b = spec.get("gspan", [lo, hi])
             return a <= hi and b >= lo
-        if kind == "vline":
+        if kind in ("vline", "cross"):
             return lo <= spec["gx"] <= hi
+        if kind == "hray":  # extends right from its origin
+            return spec["gx"] <= hi
+        if kind in ("ray", "extline"):  # reach far beyond their anchors
+            return True
         return any(lo <= spec[key][0] <= hi for key in ("p1", "p2"))
 
     def _restore_drawings(self) -> None:

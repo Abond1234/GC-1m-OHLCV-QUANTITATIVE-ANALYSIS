@@ -496,12 +496,31 @@ class MainWindow(QtWidgets.QMainWindow):
         return w
 
     def _make_drawing_ws(self) -> QtWidgets.QWidget:
-        w, lay = self._ws_widget()
-        box = QtWidgets.QGroupBox("Drawing tools")
-        bl = QtWidgets.QVBoxLayout(box)
-        for _label, mode, _tip, _hint in self._DRAW_TOOLS:
-            bl.addWidget(self._draw_buttons[mode])
-        lay.addWidget(box)
+        w = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(w)
+        outer.setContentsMargins(0, 0, 0, 0)
+        holder = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(holder)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(6)
+        lay.addWidget(self._draw_buttons[None])
+        groups: dict[str, QtWidgets.QGridLayout] = {}
+        counts: dict[str, int] = {}
+        for group, _label, mode, _tip, _hint in self._DRAW_TOOLS:
+            if mode is None:
+                continue
+            grid = groups.get(group)
+            if grid is None:
+                box = QtWidgets.QGroupBox(group)
+                grid = QtWidgets.QGridLayout(box)
+                grid.setHorizontalSpacing(6)
+                grid.setVerticalSpacing(6)
+                groups[group] = grid
+                counts[group] = 0
+                lay.addWidget(box)
+            i = counts[group]
+            grid.addWidget(self._draw_buttons[mode], i // 2, i % 2)
+            counts[group] = i + 1
         hint = QtWidgets.QLabel(
             "Undo, Redo and Clear are in the chart header. Right-click or Esc cancels."
         )
@@ -509,6 +528,11 @@ class MainWindow(QtWidgets.QMainWindow):
         hint.setProperty("role", "caption")
         lay.addWidget(hint)
         lay.addStretch(1)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setWidget(holder)
+        outer.addWidget(scroll)
         return w
 
     def _make_risk_ws(self) -> QtWidgets.QWidget:
@@ -611,35 +635,82 @@ class MainWindow(QtWidgets.QMainWindow):
         self.addToolBar(QtCore.Qt.BottomToolBarArea, bar)
         self._transport = bar
 
+    # (group, label, mode, tooltip, armed hint) - labels use the exact
+    # supplied TradingView tool names from the corrections brief.
+    _DRAG_HINT = "Drag across the chart, or click two points. Esc or right-click cancels."
+    _CLICK_HINT = "Click the chart to place it. Esc or right-click cancels."
     _DRAW_TOOLS = (
-        ("Cursor", None, "Normal interaction: crosshair, free-play clicks, drags.", ""),
+        ("", "Cursor", None, "Normal interaction: crosshair, free-play clicks, drags.", ""),
+        ("Lines", "Trendline", "trend", "A segment between two draggable endpoints.", _DRAG_HINT),
         (
-            "Level",
+            "Lines",
+            "Ray",
+            "ray",
+            "A line from its anchor through the second point, onward.",
+            _DRAG_HINT,
+        ),
+        (
+            "Lines",
+            "Info line",
+            "info",
+            "A trendline carrying its own measurement readout\n"
+            "(price change, ticks, percent, bars, elapsed time).",
+            _DRAG_HINT,
+        ),
+        ("Lines", "Extended line", "extline", "A line extended in both directions.", _DRAG_HINT),
+        (
+            "Lines",
+            "Trend angle",
+            "angle",
+            "A trendline labelled with its angle and slope in points per bar.",
+            _DRAG_HINT,
+        ),
+        (
+            "Lines",
+            "Horizontal line",
             "hline",
-            "A horizontal price level (support/resistance). Drag it later to move it.",
-            "Level armed: click a price on the chart. Right-click cancels.",
+            "A horizontal price level across the whole chart.",
+            _CLICK_HINT,
         ),
         (
-            "Trend",
-            "trend",
-            "A trendline. Drag across the chart (or click two points); drag the\n"
-            "endpoint handles later to adjust.",
-            "Trendline armed: drag across the chart, or click two points. Right-click cancels.",
+            "Lines",
+            "Horizontal ray",
+            "hray",
+            "A price level from its origin to the right only.",
+            _CLICK_HINT,
+        ),
+        ("Lines", "Vertical line", "vline", "A vertical time marker.", _CLICK_HINT),
+        (
+            "Lines",
+            "Crossline",
+            "cross",
+            "A full-height and full-width cross through one point.",
+            _CLICK_HINT,
         ),
         (
+            "Position",
+            "Long position",
+            "longpos",
+            "Entry, target and stop with shaded reward/risk zones and a live\n"
+            "R:R readout. Drag entry to target; the stop then drags freely.",
+            _DRAG_HINT,
+        ),
+        (
+            "Position",
+            "Short position",
+            "shortpos",
+            "The short-side position tool: reward below, risk above.",
+            _DRAG_HINT,
+        ),
+        (
+            "Zones",
             "Zone",
             "rect",
-            "A shaded box for supply/demand or consolidation zones. Drag a box;\n"
-            "drag its corner handles later to resize.",
-            "Zone armed: drag a box on the chart. Right-click cancels.",
+            "A shaded box for supply/demand or consolidation zones.",
+            _DRAG_HINT,
         ),
         (
-            "Time",
-            "vline",
-            "A vertical time marker. Drag it later to move it.",
-            "Time marker armed: click a bar on the chart. Right-click cancels.",
-        ),
-        (
+            "Tools",
             "Measure",
             "measure",
             "Measure between two points: price change, ticks, percent, bars and\n"
@@ -660,14 +731,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self._draw_hints: dict = {}
         self._draw_group = QtWidgets.QButtonGroup(self)
         self._draw_group.setExclusive(True)
-        for label, mode, tip, hint in self._DRAW_TOOLS:
+        for _group, label, mode, tip, hint in self._DRAW_TOOLS:
             btn = QtWidgets.QPushButton(label)
             btn.setCheckable(True)
             btn.setToolTip(tip)
             btn.clicked.connect(lambda _c=False, m=mode: self._arm_draw_tool(m))
             self._draw_group.addButton(btn)
             self._draw_buttons[mode] = btn
-            self._draw_hints[mode] = hint
+            self._draw_hints[mode] = f"{label} armed: {hint}" if hint else ""
         self._draw_buttons[None].setChecked(True)
         self.chart.drawing_placed.connect(self._on_drawing_placed)
         # Undo/Redo/Clear live compactly in the chart header (never covering the
