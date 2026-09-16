@@ -204,17 +204,13 @@ def assert_no_final_test(
         allowed = {"development", "validation", "retrospective_validation"}
         unknown = sorted(set(values.dropna()) - allowed)
         if unknown:
-            raise PermissionError(
-                f"{context} materialized unknown partition labels: {unknown}"
-            )
+            raise PermissionError(f"{context} materialized unknown partition labels: {unknown}")
     for column in timestamp_columns:
         if column not in frame:
             continue
         timestamps = pd.to_datetime(frame[column], errors="raise", utc=True)
         if timestamps.ge(FINAL_TEST_START_UTC).any():
-            raise PermissionError(
-                f"{context} materialized a post-2024 timestamp in {column}"
-            )
+            raise PermissionError(f"{context} materialized a post-2024 timestamp in {column}")
 
 
 def build_exact_date_folds(
@@ -255,9 +251,7 @@ def build_exact_date_folds(
     return folds
 
 
-def folds_to_frame(
-    folds: Sequence[DateFold], *, branch: str, session: str
-) -> pd.DataFrame:
+def folds_to_frame(folds: Sequence[DateFold], *, branch: str, session: str) -> pd.DataFrame:
     """Return an auditable one-row-per-fold summary."""
 
     records = []
@@ -271,14 +265,12 @@ def folds_to_frame(
                 "train_start": fold.train_dates[0] if fold.train_dates else pd.NaT,
                 "train_end": fold.train_dates[-1] if fold.train_dates else pd.NaT,
                 "embargo_date_count": len(fold.embargo_dates),
-                "embargo_dates": "|".join(value.strftime("%Y-%m-%d") for value in fold.embargo_dates),
+                "embargo_dates": "|".join(
+                    value.strftime("%Y-%m-%d") for value in fold.embargo_dates
+                ),
                 "assessment_date_count": len(fold.assessment_dates),
-                "assessment_start": (
-                    fold.assessment_dates[0] if fold.assessment_dates else pd.NaT
-                ),
-                "assessment_end": (
-                    fold.assessment_dates[-1] if fold.assessment_dates else pd.NaT
-                ),
+                "assessment_start": (fold.assessment_dates[0] if fold.assessment_dates else pd.NaT),
+                "assessment_end": (fold.assessment_dates[-1] if fold.assessment_dates else pd.NaT),
             }
         )
     return pd.DataFrame.from_records(records)
@@ -297,9 +289,7 @@ def fold_manifest_payload(
                 "fold_id": fold.fold_id,
                 "train_dates": [value.strftime("%Y-%m-%d") for value in fold.train_dates],
                 "embargo_dates": [value.strftime("%Y-%m-%d") for value in fold.embargo_dates],
-                "assessment_dates": [
-                    value.strftime("%Y-%m-%d") for value in fold.assessment_dates
-                ],
+                "assessment_dates": [value.strftime("%Y-%m-%d") for value in fold.assessment_dates],
             }
             for fold in folds
         ]
@@ -326,9 +316,7 @@ def deduplicate_poi_events(frame: pd.DataFrame) -> pd.DataFrame:
     if work["decision_bar_id"].isna().any() or work["true_retest_id"].isna().any():
         raise ValueError("POI deduplication identifiers must be nonmissing")
     work["_first_touch_sort"] = work["feat_first_touch"].fillna(False).astype(bool)
-    work["_structural_sort"] = (
-        work["feat_15bar_structural_validation"].fillna(False).astype(bool)
-    )
+    work["_structural_sort"] = work["feat_15bar_structural_validation"].fillna(False).astype(bool)
     age = pd.to_numeric(work["feat_poi_age_minutes"], errors="coerce")
     width = pd.to_numeric(work["feat_poi_width_atr"], errors="coerce")
     work["_age_sort"] = age.where(np.isfinite(age), np.inf)
@@ -389,33 +377,26 @@ def add_poi_interactions(frame: pd.DataFrame) -> pd.DataFrame:
         raise KeyError(f"interaction construction is missing columns: {sorted(missing)}")
     out = frame.copy()
     values = {
-        column: pd.to_numeric(out[column], errors="raise").astype("float64")
-        for column in required
+        column: pd.to_numeric(out[column], errors="raise").astype("float64") for column in required
     }
     out["int_poi_direction_x_lagged_volume"] = (
         values["poi_direction_sign"] * values["lagged_volume_return_spearman_30"]
     )
-    out["int_poi_width_x_atr_ratio"] = (
-        values["feat_poi_width_atr"] * values["atr_ratio_20_60"]
-    )
+    out["int_poi_width_x_atr_ratio"] = values["feat_poi_width_atr"] * values["atr_ratio_20_60"]
     out["int_displacement_x_efficiency"] = (
         values["feat_displacement_efficiency"] * values["efficiency_ratio_30"]
     )
     out["int_approach_overlap_x_sign_change"] = (
-        values["feat_approach_15m_candle_overlap_ratio"]
-        * values["return_sign_change_rate_30"]
+        values["feat_approach_15m_candle_overlap_ratio"] * values["return_sign_change_rate_30"]
     )
     out["int_touch_penetration_x_current_range"] = (
-        values["feat_touch_penetration_fraction"]
-        * values["current_range_over_atr"]
+        values["feat_touch_penetration_fraction"] * values["current_range_over_atr"]
     )
     out["int_approach_compression_x_acf"] = (
-        values["feat_approach_15m_range_compression_ratio"]
-        * values["return_acf_energy_60"]
+        values["feat_approach_15m_range_compression_ratio"] * values["return_acf_energy_60"]
     )
     out["int_retest_volume_x_range_volume"] = (
-        values["feat_approach_15m_relative_volume"]
-        * values["range_volume_spearman_30"]
+        values["feat_approach_15m_relative_volume"] * values["range_volume_spearman_30"]
     )
     out["int_poi_vwap_x_trend"] = (
         values["poi_direction_sign"]
@@ -437,9 +418,7 @@ def model_features(branch: str, model_id: str, session: str) -> tuple[str, ...]:
             "POI2_CONTEXT_STAT15": POI_CONTEXT_FEATURES + STAT15_FEATURES,
             "POI3_CONTEXT_FES4": POI_CONTEXT_FEATURES + fes,
             "POI4_CONTEXT_INTERACTIONS": POI_CONTEXT_FEATURES + INTERACTION_FEATURES,
-            "POI5_ALL": (
-                POI_CONTEXT_FEATURES + STAT15_FEATURES + fes + INTERACTION_FEATURES
-            ),
+            "POI5_ALL": (POI_CONTEXT_FEATURES + STAT15_FEATURES + fes + INTERACTION_FEATURES),
         }
     elif branch == "GENERAL":
         mapping = {
@@ -470,9 +449,7 @@ def fit_preprocessor(frame: pd.DataFrame, features: Sequence[str]) -> Preprocess
         if not available
     ]
     if missing_features:
-        raise ValueError(
-            f"training features have no finite values: {missing_features}"
-        )
+        raise ValueError(f"training features have no finite values: {missing_features}")
     with np.errstate(all="ignore"):
         medians = np.nanmedian(matrix, axis=0)
         q25 = np.nanpercentile(matrix, 25, axis=0, method="linear")
@@ -694,12 +671,8 @@ def daily_spearman_table(
             y = sample[target_column].rank(method="average").to_numpy("float64")
             if np.std(x) > 0 and np.std(y) > 0:
                 ic = float(np.corrcoef(x, y)[0, 1])
-        records.append(
-            {"trade_date_ny": date, "observations": observations, "daily_ic": ic}
-        )
-    return pd.DataFrame.from_records(
-        records, columns=["trade_date_ny", "observations", "daily_ic"]
-    )
+        records.append({"trade_date_ny": date, "observations": observations, "daily_ic": ic})
+    return pd.DataFrame.from_records(records, columns=["trade_date_ny", "observations", "daily_ic"])
 
 
 def _balanced_accuracy(actual_positive: np.ndarray, predicted_positive: np.ndarray) -> float:
@@ -743,18 +716,14 @@ def summarize_predictions(
         prediction_column=prediction_column,
         target_column=target_column,
     )
-    daily["daily_ic"] = pd.to_numeric(daily["daily_ic"], errors="coerce").astype(
-        "float64"
-    )
+    daily["daily_ic"] = pd.to_numeric(daily["daily_ic"], errors="coerce").astype("float64")
     eligible_daily = daily.loc[np.isfinite(daily["daily_ic"].to_numpy())].copy()
     ic_low, ic_high = bootstrap_mean_ci(eligible_daily["daily_ic"], seed=seed)
 
     paired_mean = 0.0 if anchor_prediction_column == prediction_column else math.nan
     paired_low = 0.0 if anchor_prediction_column == prediction_column else math.nan
     paired_high = 0.0 if anchor_prediction_column == prediction_column else math.nan
-    paired_concentration = (
-        0.0 if anchor_prediction_column == prediction_column else math.nan
-    )
+    paired_concentration = 0.0 if anchor_prediction_column == prediction_column else math.nan
     if anchor_prediction_column and anchor_prediction_column != prediction_column:
         anchor_daily = daily_spearman_table(
             sample,
@@ -770,9 +739,9 @@ def summarize_predictions(
             how="left",
             validate="one_to_one",
         )
-        daily["paired_daily_ic_delta"] = (
-            daily["daily_ic"] - daily["anchor_daily_ic"]
-        ).astype("float64")
+        daily["paired_daily_ic_delta"] = (daily["daily_ic"] - daily["anchor_daily_ic"]).astype(
+            "float64"
+        )
         paired = daily.loc[
             np.isfinite(daily["paired_daily_ic_delta"].to_numpy()),
             "paired_daily_ic_delta",
@@ -792,9 +761,7 @@ def summarize_predictions(
     actual_positive = target[finite][nonzero] > 0
     predicted_positive = prediction[finite][nonzero] > 0
     target_finite = target[finite]
-    evaluation_date_count = int(
-        _normalized_dates(sample["trade_date_ny"]).nunique()
-    )
+    evaluation_date_count = int(_normalized_dates(sample["trade_date_ny"]).nunique())
     summary = {
         "observation_count": int(finite.sum()),
         "evaluation_date_count": evaluation_date_count,
@@ -805,8 +772,12 @@ def summarize_predictions(
         "target_median": float(np.median(target_finite)) if len(target_finite) else math.nan,
         "target_p05": float(np.quantile(target_finite, 0.05)) if len(target_finite) else math.nan,
         "target_p95": float(np.quantile(target_finite, 0.95)) if len(target_finite) else math.nan,
-        "daily_ic_mean": float(eligible_daily["daily_ic"].mean()) if len(eligible_daily) else math.nan,
-        "daily_ic_std": float(eligible_daily["daily_ic"].std(ddof=1)) if len(eligible_daily) > 1 else math.nan,
+        "daily_ic_mean": float(eligible_daily["daily_ic"].mean())
+        if len(eligible_daily)
+        else math.nan,
+        "daily_ic_std": float(eligible_daily["daily_ic"].std(ddof=1))
+        if len(eligible_daily) > 1
+        else math.nan,
         "daily_ic_ci_low": ic_low,
         "daily_ic_ci_high": ic_high,
         "pearson_correlation": pearson,
@@ -822,9 +793,7 @@ def summarize_predictions(
         "paired_daily_ic_ci_low": paired_low,
         "paired_daily_ic_ci_high": paired_high,
         "best_ten_date_positive_paired_delta_share": paired_concentration,
-        "best_ten_date_positive_evidence_share": positive_concentration(
-            eligible_daily["daily_ic"]
-        ),
+        "best_ten_date_positive_evidence_share": positive_concentration(eligible_daily["daily_ic"]),
     }
     return summary, daily
 
@@ -869,13 +838,10 @@ def make_policy_candidates(
     orientation = np.where(selected["prediction"].ge(high_threshold), 1.0, -1.0)
     selected["policy_orientation"] = orientation
     if branch == "POI":
-        selected["gross_ticks"] = (
-            orientation
-            * pd.to_numeric(selected["signed_continuation_return_60_ticks"], errors="coerce")
+        selected["gross_ticks"] = orientation * pd.to_numeric(
+            selected["signed_continuation_return_60_ticks"], errors="coerce"
         )
-        selected["trade_direction"] = np.where(
-            orientation > 0, "POI continuation", "POI reversal"
-        )
+        selected["trade_direction"] = np.where(orientation > 0, "POI continuation", "POI reversal")
     elif branch == "GENERAL":
         selected["gross_ticks"] = orientation * pd.to_numeric(
             selected["forward_return_60_ticks"], errors="coerce"
@@ -900,9 +866,7 @@ def sequence_fixed_horizon(candidates: pd.DataFrame) -> pd.DataFrame:
         raise KeyError(f"policy candidates are missing columns: {sorted(missing)}")
     work = candidates.copy()
     work["entry_timestamp_utc"] = pd.to_datetime(work["entry_timestamp_utc"], utc=True)
-    work["exit_timestamp_utc_60"] = pd.to_datetime(
-        work["exit_timestamp_utc_60"], utc=True
-    )
+    work["exit_timestamp_utc_60"] = pd.to_datetime(work["exit_timestamp_utc_60"], utc=True)
     if "true_retest_id" not in work:
         work["true_retest_id"] = ""
     elif work["true_retest_id"].isna().any():
@@ -969,8 +933,7 @@ def summarize_policy(
     unexpected_dates = sorted(trade_dates - set(dates))
     if unexpected_dates:
         raise ValueError(
-            "policy trades fall outside the frozen eligible-date universe: "
-            f"{unexpected_dates[:5]}"
+            f"policy trades fall outside the frozen eligible-date universe: {unexpected_dates[:5]}"
         )
     daily_sum = work.groupby("trade_date_ny", sort=True)["net_ticks"].sum()
     daily_count = work.groupby("trade_date_ny", sort=True)["net_ticks"].size()

@@ -51,35 +51,23 @@ from src.statistical_research.feature_combination import (
 
 RESEARCH_ID = "poi_feature_combination_v1"
 SESSIONS = ("London", "New York")
-OUTPUT_RELATIVE_DIR = Path(
-    "data/processed/statistical_research/poi_feature_combination/v1"
-)
-REPORT_RELATIVE_DIR = Path(
-    "reports/statistical_research/poi_feature_combination/v1"
-)
+OUTPUT_RELATIVE_DIR = Path("data/processed/statistical_research/poi_feature_combination/v1")
+REPORT_RELATIVE_DIR = Path("reports/statistical_research/poi_feature_combination/v1")
 
 POI_PATH = Path("data/processed/section7_true_poi_context_frame_gc.parquet")
-ELIGIBLE_PATH = Path(
-    "data/processed/statistical_research/eligible_observations_gc.parquet"
-)
+ELIGIBLE_PATH = Path("data/processed/statistical_research/eligible_observations_gc.parquet")
 LABEL_PATH = Path("data/processed/statistical_research/forward_labels_gc.parquet")
 FEATURE_PATH = Path("data/processed/statistical_research/feature_matrix_gc.parquet")
 FROZEN_EXPANSION_PATH = Path(
     "data/processed/statistical_research/frozen_expansion_feature_set_gc.parquet"
 )
-BRANCH_B_REGISTRY_PATH = Path(
-    "data/processed/statistical_research/feature_registry_gc.parquet"
-)
+BRANCH_B_REGISTRY_PATH = Path("data/processed/statistical_research/feature_registry_gc.parquet")
 POI_REGISTRY_PATH = Path("reports/section7_true_poi_feature_registry.csv")
-FES_SELECTION_PATH = Path(
-    "reports/statistical_research/fes_project1/v1/section6_checkpoint.json"
-)
+FES_SELECTION_PATH = Path("reports/statistical_research/fes_project1/v1/section6_checkpoint.json")
 FES_HASH_MANIFEST_PATH = Path(
     "reports/statistical_research/fes_project1/v1/section2_hash_manifest.json"
 )
-FES_INPUT_MANIFEST_PATH = Path(
-    "reports/statistical_research/fes_project1/v1/input_manifest.json"
-)
+FES_INPUT_MANIFEST_PATH = Path("reports/statistical_research/fes_project1/v1/input_manifest.json")
 FES_FINAL_GATES_PATH = Path(
     "reports/statistical_research/fes_project1/v1/section6_final_feature_gates.csv"
 )
@@ -87,8 +75,7 @@ FES_REGISTRY_PATH = Path(
     "data/processed/statistical_research/fes_project1/v1/scalar_feature_registry_gc.parquet"
 )
 FES_DEVELOPMENT_PATH = Path(
-    "data/processed/statistical_research/fes_project1/v1/"
-    "scalar_features_development_gc.parquet"
+    "data/processed/statistical_research/fes_project1/v1/scalar_features_development_gc.parquet"
 )
 FES_VALIDATION_PATH = Path(
     "data/processed/statistical_research/fes_project1/v1/"
@@ -118,11 +105,15 @@ ELIGIBLE_COLUMNS = (
 )
 
 FEATURE_COLUMNS = (
-    "observation_id",
-    "trade_date_ny",
-    "entry_session",
-    "research_partition",
-) + STAT15_FEATURES + ("normalized_ols_slope_30",)
+    (
+        "observation_id",
+        "trade_date_ny",
+        "entry_session",
+        "research_partition",
+    )
+    + STAT15_FEATURES
+    + ("normalized_ols_slope_30",)
+)
 
 FES_COLUMNS = (
     "observation_id",
@@ -233,9 +224,7 @@ def _partition_filters(partition: str, *, lowercase: bool = False) -> list[tuple
     raise KeyError(f"unauthorized partition: {partition}")
 
 
-def _materialized_final_test(
-    frame: pd.DataFrame, *, timestamp_columns: Sequence[str]
-) -> bool:
+def _materialized_final_test(frame: pd.DataFrame, *, timestamp_columns: Sequence[str]) -> bool:
     if "trade_date_ny" in frame:
         dates = pd.to_datetime(frame["trade_date_ny"], errors="coerce")
         if dates.dt.tz_localize(None).ge(pd.Timestamp("2025-01-01")).any():
@@ -309,9 +298,7 @@ def _read_projected(
         raise BoundaryAccessError(
             str(error),
             access_record=access_record,
-            final_test_opened=_materialized_final_test(
-                frame, timestamp_columns=timestamp_columns
-            ),
+            final_test_opened=_materialized_final_test(frame, timestamp_columns=timestamp_columns),
         ) from error
     audit.append(access_record)
     return frame
@@ -331,9 +318,7 @@ def _input_provenance(root: Path, relative_paths: Iterable[Path]) -> list[dict[s
             parquet = pq.ParquetFile(path)
             row.update(
                 {
-                    "footer_total_rows_not_analytically_reported": int(
-                        parquet.metadata.num_rows
-                    ),
+                    "footer_total_rows_not_analytically_reported": int(parquet.metadata.num_rows),
                     "row_groups": int(parquet.metadata.num_row_groups),
                     "schema": str(parquet.schema_arrow),
                 }
@@ -345,17 +330,13 @@ def _input_provenance(root: Path, relative_paths: Iterable[Path]) -> list[dict[s
             row["schema_columns"] = list(header.columns)
         elif path.suffix.lower() == ".json":
             payload = json.loads(path.read_text(encoding="utf-8"))
-            row["top_level_keys"] = (
-                sorted(payload) if isinstance(payload, dict) else []
-            )
+            row["top_level_keys"] = sorted(payload) if isinstance(payload, dict) else []
         rows.append(row)
     return rows
 
 
 def _validate_frozen_feature_sets(root: Path) -> None:
-    fes_hash_manifest = json.loads(
-        (root / FES_HASH_MANIFEST_PATH).read_text(encoding="utf-8")
-    )
+    fes_hash_manifest = json.loads((root / FES_HASH_MANIFEST_PATH).read_text(encoding="utf-8"))
     frozen_fes_hashes = fes_hash_manifest.get("artifacts", {})
     for relative_path in (
         FES_REGISTRY_PATH,
@@ -365,13 +346,9 @@ def _validate_frozen_feature_sets(root: Path) -> None:
         expected_hash = frozen_fes_hashes.get(relative_path.as_posix())
         observed_hash = sha256_file(root / relative_path)
         if expected_hash != observed_hash:
-            raise PermissionError(
-                f"frozen FES digest mismatch for {relative_path.as_posix()}"
-            )
+            raise PermissionError(f"frozen FES digest mismatch for {relative_path.as_posix()}")
 
-    input_manifest = json.loads(
-        (root / FES_INPUT_MANIFEST_PATH).read_text(encoding="utf-8")
-    )
+    input_manifest = json.loads((root / FES_INPUT_MANIFEST_PATH).read_text(encoding="utf-8"))
     frozen_input_hashes = {
         row["path"]: row["sha256"]
         for row in input_manifest.get("inputs", [])
@@ -397,9 +374,9 @@ def _validate_frozen_feature_sets(root: Path) -> None:
         use_pandas_metadata=False,
     ).to_pandas(ignore_metadata=True)
     frozen_stat15 = tuple(
-        expansion.loc[
-            expansion["in_frozen_set"].fillna(False).astype(bool), "feature_name"
-        ].astype(str)
+        expansion.loc[expansion["in_frozen_set"].fillna(False).astype(bool), "feature_name"].astype(
+            str
+        )
     )
     if frozen_stat15 != STAT15_FEATURES:
         raise ValueError("STAT15 constants differ from the frozen expansion feature set")
@@ -613,16 +590,10 @@ def _load_poi_candidates(
     coverage = len(joined) / before if before else math.nan
     if not np.isfinite(coverage) or coverage < 0.99:
         raise ValueError(f"POI-to-eligible bridge coverage below 99%: {coverage}")
-    _assert_equal_columns(
-        joined, "retest_ts_event_utc", "decision_timestamp_utc", kind="timestamp"
-    )
+    _assert_equal_columns(joined, "retest_ts_event_utc", "decision_timestamp_utc", kind="timestamp")
     _assert_equal_columns(joined, "trade_date_ny_poi", "trade_date_ny", kind="date")
-    _assert_equal_columns(
-        joined, "feat_execution_session", "entry_session", kind="text"
-    )
-    _assert_equal_columns(
-        joined, "research_partition_poi", "research_partition", kind="partition"
-    )
+    _assert_equal_columns(joined, "feat_execution_session", "entry_session", kind="text")
+    _assert_equal_columns(joined, "research_partition_poi", "research_partition", kind="partition")
     joined = joined.drop(
         columns=[
             "trade_date_ny_poi",
@@ -653,13 +624,9 @@ def _load_labels(
     observation_ids: Sequence[Any] | None = None,
 ) -> pd.DataFrame:
     filters = _partition_filters(partition)
-    filters.extend(
-        [("entry_timestamp_utc", "<", pd.Timestamp("2025-01-01", tz="UTC"))]
-    )
+    filters.extend([("entry_timestamp_utc", "<", pd.Timestamp("2025-01-01", tz="UTC"))])
     if partition == "Validation":
-        filters.append(
-            ("exit_timestamp_utc_60", "<", pd.Timestamp("2025-01-01", tz="UTC"))
-        )
+        filters.append(("exit_timestamp_utc_60", "<", pd.Timestamp("2025-01-01", tz="UTC")))
     if observation_ids is not None:
         if not observation_ids:
             raise ValueError("outcome loader received an empty observation-ID capability")
@@ -689,9 +656,7 @@ def _join_labels(base: pd.DataFrame, labels: pd.DataFrame) -> pd.DataFrame:
     )
     coverage = len(merged) / len(base) if len(base) else math.nan
     if not np.isfinite(coverage) or coverage < 0.99:
-        raise ValueError(
-            f"60-minute label observation coverage is below 99%: {coverage}"
-        )
+        raise ValueError(f"60-minute label observation coverage is below 99%: {coverage}")
     for column, kind in (
         ("decision_bar_id", "text"),
         ("decision_timestamp_utc", "timestamp"),
@@ -751,9 +716,7 @@ def _build_poi_model_frame(
     return add_poi_interactions(selected)
 
 
-def _build_general_model_frame(
-    predictor_base: pd.DataFrame, labels: pd.DataFrame
-) -> pd.DataFrame:
+def _build_general_model_frame(predictor_base: pd.DataFrame, labels: pd.DataFrame) -> pd.DataFrame:
     return _join_labels(predictor_base, labels)
 
 
@@ -762,11 +725,7 @@ def _target_for(branch: str, target_role: str) -> str:
         return "future_range_60_atr"
     if target_role != "DIRECTIONAL":
         raise KeyError(f"unknown target role: {target_role}")
-    return (
-        "signed_continuation_return_60_atr"
-        if branch == "POI"
-        else "forward_return_60_atr"
-    )
+    return "signed_continuation_return_60_atr" if branch == "POI" else "forward_return_60_atr"
 
 
 def _prediction_column(target_role: str, model_id: str) -> str:
@@ -795,9 +754,7 @@ def _analyze_development(
     anchor = MODEL_ANCHOR[branch]
 
     for session in SESSIONS:
-        session_frame = (
-            frame.loc[frame["entry_session"].eq(session)].copy().reset_index(drop=True)
-        )
+        session_frame = frame.loc[frame["entry_session"].eq(session)].copy().reset_index(drop=True)
         folds = list(folds_by_session.get(session, ()))
         for target_role in ("DIRECTIONAL", "OPPORTUNITY_DIAGNOSTIC"):
             target = _target_for(branch, target_role)
@@ -877,12 +834,8 @@ def _analyze_development(
                             "development_gate_failures": "|".join(failures),
                             "development_daily_ic": summary["daily_ic_mean"],
                             "development_ic_ci_low": summary["daily_ic_ci_low"],
-                            "development_observation_count": summary[
-                                "observation_count"
-                            ],
-                            "development_evaluation_date_count": summary[
-                                "evaluation_date_count"
-                            ],
+                            "development_observation_count": summary["observation_count"],
+                            "development_evaluation_date_count": summary["evaluation_date_count"],
                             "development_ic_date_count": summary["ic_date_count"],
                             "development_selected": False,
                             "validation_opened": False,
@@ -898,24 +851,18 @@ def _analyze_development(
         if eligible.empty:
             continue
         maximum_ic = float(eligible["development_daily_ic"].max())
-        contenders = eligible.loc[
-            eligible["development_daily_ic"].ge(maximum_ic - 0.005)
-        ].copy()
+        contenders = eligible.loc[eligible["development_daily_ic"].ge(maximum_ic - 0.005)].copy()
         priority = {model_id: index for index, model_id in enumerate(models)}
         contenders["_priority"] = contenders["model_id"].map(priority)
-        selected_index = contenders.sort_values(
-            ["_priority", "model_id"], kind="mergesort"
-        ).index[0]
+        selected_index = contenders.sort_values(["_priority", "model_id"], kind="mergesort").index[
+            0
+        ]
         selection.loc[selected_index, "development_selected"] = True
 
     metric_frame = pd.DataFrame.from_records(metrics)
-    daily_frame = (
-        pd.concat(daily_frames, ignore_index=True) if daily_frames else pd.DataFrame()
-    )
+    daily_frame = pd.concat(daily_frames, ignore_index=True) if daily_frames else pd.DataFrame()
     coefficient_frame = (
-        pd.concat(coefficient_frames, ignore_index=True)
-        if coefficient_frames
-        else pd.DataFrame()
+        pd.concat(coefficient_frames, ignore_index=True) if coefficient_frames else pd.DataFrame()
     )
     return metric_frame, daily_frame, coefficient_frame, selection, prediction_frames
 
@@ -956,9 +903,7 @@ def _score_validation(
             raise ValueError(f"selected {branch}/{session} has no Validation rows")
         requires_anchor = selected_model in PAIRED_REQUIRED[branch]
         scored_models = (
-            tuple(dict.fromkeys((anchor, selected_model)))
-            if requires_anchor
-            else (selected_model,)
+            tuple(dict.fromkeys((anchor, selected_model))) if requires_anchor else (selected_model,)
         )
         for model_id in scored_models:
             prediction_column = _prediction_column("DIRECTIONAL", model_id)
@@ -978,18 +923,10 @@ def _score_validation(
             )
             coefficient_frames.append(coefficients)
 
-        anchor_column = (
-            _prediction_column("DIRECTIONAL", anchor)
-            if requires_anchor
-            else None
-        )
+        anchor_column = _prediction_column("DIRECTIONAL", anchor) if requires_anchor else None
         for model_id in scored_models:
             prediction_column = _prediction_column("DIRECTIONAL", model_id)
-            comparator_column = (
-                prediction_column
-                if model_id == anchor
-                else anchor_column
-            )
+            comparator_column = prediction_column if model_id == anchor else anchor_column
             summary, daily = summarize_predictions(
                 validation,
                 prediction_column=prediction_column,
@@ -999,8 +936,7 @@ def _score_validation(
             )
             development_ic = float(
                 updated.loc[
-                    updated["session"].eq(session)
-                    & updated["model_id"].eq(model_id),
+                    updated["session"].eq(session) & updated["model_id"].eq(model_id),
                     "development_daily_ic",
                 ].iloc[0]
             )
@@ -1021,9 +957,7 @@ def _score_validation(
                         else math.nan
                     ),
                     "validation_role": (
-                        "frozen_selection"
-                        if model_id == selected_model
-                        else "required_anchor"
+                        "frozen_selection" if model_id == selected_model else "required_anchor"
                     ),
                 }
             )
@@ -1039,7 +973,9 @@ def _score_validation(
             )
 
         selected_summary = next(
-            item for item in metric_rows if item["session"] == session and item["model_id"] == selected_model
+            item
+            for item in metric_rows
+            if item["session"] == session and item["model_id"] == selected_model
         )
         failures = validation_gate_failures(
             selected_summary,
@@ -1069,11 +1005,7 @@ def _score_validation(
 def _assessment_dates(folds: Sequence[DateFold]) -> tuple[pd.Timestamp, ...]:
     return tuple(
         sorted(
-            {
-                pd.Timestamp(value).normalize()
-                for fold in folds
-                for value in fold.assessment_dates
-            }
+            {pd.Timestamp(value).normalize() for fold in folds for value in fold.assessment_dates}
         )
     )
 
@@ -1123,14 +1055,11 @@ def _policy_candidates_for_model(
 ) -> pd.DataFrame:
     candidates: list[pd.DataFrame] = []
     for session, frame in frames.items():
-        source_model = (
-            selected_sessions.get(session) if selected_sessions is not None else model_id
-        )
+        source_model = selected_sessions.get(session) if selected_sessions is not None else model_id
         if source_model is None:
             continue
         threshold = thresholds.loc[
-            thresholds["session"].eq(session)
-            & thresholds["model_id"].eq(source_model)
+            thresholds["session"].eq(session) & thresholds["model_id"].eq(source_model)
         ]
         if len(threshold) != 1 or not bool(threshold.iloc[0]["enabled"]):
             continue
@@ -1203,9 +1132,7 @@ def _development_policy_diagnostics(
             frames=prediction_frames,
             thresholds=thresholds,
         )
-        sequenced = (
-            sequence_fixed_horizon(candidate) if not candidate.empty else candidate
-        )
+        sequenced = sequence_fixed_horizon(candidate) if not candidate.empty else candidate
         eligible_dates = sorted(
             {
                 value
@@ -1225,9 +1152,7 @@ def _development_policy_diagnostics(
         if not sequenced.empty:
             sequenced = sequenced.assign(partition="Development OOF")
             sequenced["net_ticks_base"] = sequenced["gross_ticks"] - BASE_COST_TICKS
-            sequenced["net_ticks_pessimistic"] = (
-                sequenced["gross_ticks"] - PESSIMISTIC_COST_TICKS
-            )
+            sequenced["net_ticks_pessimistic"] = sequenced["gross_ticks"] - PESSIMISTIC_COST_TICKS
             trades.append(sequenced)
     return (
         pd.concat(metrics, ignore_index=True),
@@ -1282,13 +1207,10 @@ def _build_validation_capability(
     authorized_cells: list[dict[str, Any]] = []
     for session, model_id in sorted(selected.items()):
         threshold = thresholds.loc[
-            thresholds["session"].eq(session)
-            & thresholds["model_id"].eq(model_id)
+            thresholds["session"].eq(session) & thresholds["model_id"].eq(model_id)
         ]
         if len(threshold) != 1:
-            raise ValueError(
-                f"missing unique frozen threshold for {branch}/{session}/{model_id}"
-            )
+            raise ValueError(f"missing unique frozen threshold for {branch}/{session}/{model_id}")
         row = threshold.iloc[0]
         authorized_cells.append(
             {
@@ -1345,13 +1267,9 @@ def _eligible_dates_for_frames(
         target = pd.to_numeric(frame[target_column], errors="coerce")
         finite = np.isfinite(prediction) & np.isfinite(target)
         dates.update(
-            pd.to_datetime(frame.loc[finite, "trade_date_ny"])
-            .dt.tz_localize(None)
-            .dt.normalize()
+            pd.to_datetime(frame.loc[finite, "trade_date_ny"]).dt.tz_localize(None).dt.normalize()
         )
-    return tuple(
-        sorted(dates)
-    )
+    return tuple(sorted(dates))
 
 
 def _selected_policy(
@@ -1396,9 +1314,7 @@ def _selected_policy(
     if not sequenced.empty:
         sequenced = sequenced.assign(partition=partition)
         sequenced["net_ticks_base"] = sequenced["gross_ticks"] - BASE_COST_TICKS
-        sequenced["net_ticks_pessimistic"] = (
-            sequenced["gross_ticks"] - PESSIMISTIC_COST_TICKS
-        )
+        sequenced["net_ticks_pessimistic"] = sequenced["gross_ticks"] - PESSIMISTIC_COST_TICKS
     return metrics, sequenced
 
 
@@ -1453,9 +1369,7 @@ def _branch_state(
     validation = base.loc[base["partition"].eq("Validation")]
     if len(development) != 1 or len(validation) != 1:
         return "PREDICTIVE_ONLY_NOT_ECONOMIC", ["selected_policy_metrics_missing"]
-    failures = _economic_gate_failures(
-        development.iloc[0].to_dict(), validation.iloc[0].to_dict()
-    )
+    failures = _economic_gate_failures(development.iloc[0].to_dict(), validation.iloc[0].to_dict())
     if failures:
         return "PREDICTIVE_ONLY_NOT_ECONOMIC", failures
     return "RESEARCH_CANDIDATE_REQUIRES_NEW_FORWARD_DATA", []
@@ -1470,9 +1384,7 @@ def _folds_for_frame(frame: pd.DataFrame) -> dict[str, list[DateFold]]:
     }
 
 
-def _fold_summary(
-    folds_by_branch: Mapping[str, Mapping[str, Sequence[DateFold]]]
-) -> pd.DataFrame:
+def _fold_summary(folds_by_branch: Mapping[str, Mapping[str, Sequence[DateFold]]]) -> pd.DataFrame:
     frames = [
         folds_to_frame(folds, branch=branch, session=session)
         for branch, by_session in folds_by_branch.items()
@@ -1502,14 +1414,10 @@ def _population_rows(
                     pd.to_datetime(sample["trade_date_ny"]).dt.normalize().nunique()
                 ),
                 "minimum_trade_date": (
-                    pd.to_datetime(sample["trade_date_ny"]).min()
-                    if len(sample)
-                    else pd.NaT
+                    pd.to_datetime(sample["trade_date_ny"]).min() if len(sample) else pd.NaT
                 ),
                 "maximum_trade_date": (
-                    pd.to_datetime(sample["trade_date_ny"]).max()
-                    if len(sample)
-                    else pd.NaT
+                    pd.to_datetime(sample["trade_date_ny"]).max() if len(sample) else pd.NaT
                 ),
             }
         )
@@ -1578,9 +1486,7 @@ def _write_blocked_artifacts(
         "overall_state": "BLOCKED_INTEGRITY_FAILURE",
         "final_test_opened": bool(final_test_opened),
         "final_test_access_state": (
-            "OPENED_BY_INTEGRITY_VIOLATION"
-            if final_test_opened
-            else "NOT_OPENED"
+            "OPENED_BY_INTEGRITY_VIOLATION" if final_test_opened else "NOT_OPENED"
         ),
         "mgc_test_run": False,
     }
@@ -1713,9 +1619,7 @@ def _run_feature_combination_research_into(
     )
     _write_json(output_dir / "pre_outcome_fold_manifest.json", fold_payload)
     fold_summary = _fold_summary(folds_by_branch)
-    fold_summary.to_parquet(
-        output_dir / "fold_summary.parquet", index=False, engine="pyarrow"
-    )
+    fold_summary.to_parquet(output_dir / "fold_summary.parquet", index=False, engine="pyarrow")
 
     poi_development_labels = _load_labels(
         project_root,
@@ -1749,9 +1653,7 @@ def _run_feature_combination_research_into(
         frame=poi_development,
         folds_by_session=folds_by_branch["POI"],
     )
-    poi_thresholds = _fit_policy_thresholds(
-        branch="POI", prediction_frames=poi_prediction_frames
-    )
+    poi_thresholds = _fit_policy_thresholds(branch="POI", prediction_frames=poi_prediction_frames)
     poi_policy_metrics, poi_policy_trades = _development_policy_diagnostics(
         branch="POI",
         prediction_frames=poi_prediction_frames,
@@ -1817,9 +1719,7 @@ def _run_feature_combination_research_into(
             validation_frame=poi_validation,
             selection=poi_selection,
         )
-        poi_metrics = pd.concat(
-            [poi_metrics, poi_validation_metrics], ignore_index=True
-        )
+        poi_metrics = pd.concat([poi_metrics, poi_validation_metrics], ignore_index=True)
         poi_daily = pd.concat([poi_daily, poi_validation_daily], ignore_index=True)
         poi_coefficients = pd.concat(
             [poi_coefficients, poi_validation_coefficients], ignore_index=True
@@ -1830,16 +1730,14 @@ def _run_feature_combination_research_into(
             branch="POI",
             selected_sessions=poi_confirmed_models,
         )
-        poi_selected_validation_metrics, poi_selected_validation_trades = (
-            _selected_policy(
-                branch="POI",
-                partition="Validation",
-                frames=poi_validation_prediction_frames,
-                selection=poi_selection,
-                thresholds=poi_thresholds,
-                eligible_dates=validation_dates,
-                confirmed_only=True,
-            )
+        poi_selected_validation_metrics, poi_selected_validation_trades = _selected_policy(
+            branch="POI",
+            partition="Validation",
+            frames=poi_validation_prediction_frames,
+            selection=poi_selection,
+            thresholds=poi_thresholds,
+            eligible_dates=validation_dates,
+            confirmed_only=True,
         )
         poi_policy_metrics = pd.concat(
             [poi_policy_metrics, poi_selected_validation_metrics], ignore_index=True
@@ -1887,9 +1785,7 @@ def _run_feature_combination_research_into(
         ].to_dict("records"),
         "pre_validation_capability_sha256": poi_validation_capability["sha256"],
         "validation_opened": poi_validation_opened,
-        "general_branch_may_open": (
-            poi_state != "RESEARCH_CANDIDATE_REQUIRES_NEW_FORWARD_DATA"
-        ),
+        "general_branch_may_open": (poi_state != "RESEARCH_CANDIDATE_REQUIRES_NEW_FORWARD_DATA"),
     }
     _write_json(output_dir / "poi_branch_checkpoint.json", poi_checkpoint)
 
@@ -1936,13 +1832,11 @@ def _run_feature_combination_research_into(
         general_thresholds = _fit_policy_thresholds(
             branch="GENERAL", prediction_frames=general_prediction_frames
         )
-        general_policy_metrics, general_policy_trades = (
-            _development_policy_diagnostics(
-                branch="GENERAL",
-                prediction_frames=general_prediction_frames,
-                folds_by_session=folds_by_branch["GENERAL"],
-                thresholds=general_thresholds,
-            )
+        general_policy_metrics, general_policy_trades = _development_policy_diagnostics(
+            branch="GENERAL",
+            prediction_frames=general_prediction_frames,
+            folds_by_session=folds_by_branch["GENERAL"],
+            thresholds=general_thresholds,
         )
         general_validation_capability = _build_validation_capability(
             branch="GENERAL",
@@ -1954,13 +1848,9 @@ def _run_feature_combination_research_into(
             output_dir / "general_pre_validation_capability.json",
             general_validation_capability,
         )
-        general_validation_opened = bool(
-            general_selection["development_selected"].any()
-        )
+        general_validation_opened = bool(general_selection["development_selected"].any())
         if general_validation_opened:
-            general_selected_sessions = tuple(
-                sorted(_selected_session_models(general_selection))
-            )
+            general_selected_sessions = tuple(sorted(_selected_session_models(general_selection)))
             general_validation_predictors, _ = _load_predictor_base(
                 project_root,
                 partition="Validation",
@@ -1972,9 +1862,7 @@ def _run_feature_combination_research_into(
                 partition="Validation",
                 audit=access_rows,
                 stage="GENERAL:Validation:frozen_selection_outcomes",
-                observation_ids=general_validation_predictors[
-                    "observation_id"
-                ].tolist(),
+                observation_ids=general_validation_predictors["observation_id"].tolist(),
             )
             general_validation = _build_general_model_frame(
                 general_validation_predictors, general_validation_labels
@@ -2002,9 +1890,7 @@ def _run_feature_combination_research_into(
             general_metrics = pd.concat(
                 [general_metrics, general_validation_metrics], ignore_index=True
             )
-            general_daily = pd.concat(
-                [general_daily, general_validation_daily], ignore_index=True
-            )
+            general_daily = pd.concat([general_daily, general_validation_daily], ignore_index=True)
             general_coefficients = pd.concat(
                 [general_coefficients, general_validation_coefficients],
                 ignore_index=True,
@@ -2073,9 +1959,7 @@ def _run_feature_combination_research_into(
             "development_selected": general_selection.loc[
                 general_selection["development_selected"], ["session", "model_id"]
             ].to_dict("records"),
-            "pre_validation_capability_sha256": general_validation_capability[
-                "sha256"
-            ],
+            "pre_validation_capability_sha256": general_validation_capability["sha256"],
             "validation_opened": general_validation_opened,
         }
         _write_json(output_dir / "general_branch_checkpoint.json", general_checkpoint)
@@ -2098,9 +1982,7 @@ def _run_feature_combination_research_into(
     policy_metrics = pd.concat(policy_metric_frames, ignore_index=True)
     nonempty_trades = [frame for frame in policy_trade_frames if not frame.empty]
     policy_trades = (
-        pd.concat(nonempty_trades, ignore_index=True)
-        if nonempty_trades
-        else pd.DataFrame()
+        pd.concat(nonempty_trades, ignore_index=True) if nonempty_trades else pd.DataFrame()
     )
     policy_trades = policy_trades.reindex(columns=POLICY_TRADE_COLUMNS)
     access_audit = pd.DataFrame.from_records(access_rows)
@@ -2169,9 +2051,7 @@ def _run_feature_combination_research_into(
             "No live GC or MGC trading system is authorized by this study.",
         ]
     )
-    (report_dir / "status.md").write_text(
-        "\n".join(summary_lines) + "\n", encoding="utf-8"
-    )
+    (report_dir / "status.md").write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
 
     return CombinationResearchResult(
         population_summary=population_summary,
@@ -2199,12 +2079,8 @@ def run_feature_combination_research(
     report_target = project_root / REPORT_RELATIVE_DIR
     output_target.parent.mkdir(parents=True, exist_ok=True)
     report_target.parent.mkdir(parents=True, exist_ok=True)
-    staging_output = Path(
-        tempfile.mkdtemp(prefix=".v1-staging-", dir=output_target.parent)
-    )
-    staging_report = Path(
-        tempfile.mkdtemp(prefix=".v1-staging-", dir=report_target.parent)
-    )
+    staging_output = Path(tempfile.mkdtemp(prefix=".v1-staging-", dir=output_target.parent))
+    staging_report = Path(tempfile.mkdtemp(prefix=".v1-staging-", dir=report_target.parent))
     contract_path = project_root / CONTRACT_RELATIVE_PATH
     contract_sha = sha256_file(contract_path) if contract_path.exists() else "MISSING"
     try:
@@ -2224,22 +2100,12 @@ def run_feature_combination_research(
             contract_sha=contract_sha,
             error=error,
             final_test_opened=(
-                error.final_test_opened
-                if isinstance(error, BoundaryAccessError)
-                else False
+                error.final_test_opened if isinstance(error, BoundaryAccessError) else False
             ),
-            access_record=(
-                error.access_record
-                if isinstance(error, BoundaryAccessError)
-                else None
-            ),
+            access_record=(error.access_record if isinstance(error, BoundaryAccessError) else None),
         )
-        _publish_directories(
-            ((staging_output, output_target), (staging_report, report_target))
-        )
+        _publish_directories(((staging_output, output_target), (staging_report, report_target)))
         raise
-    _publish_directories(
-        ((staging_output, output_target), (staging_report, report_target))
-    )
+    _publish_directories(((staging_output, output_target), (staging_report, report_target)))
     result.output_dir = output_target
     return result

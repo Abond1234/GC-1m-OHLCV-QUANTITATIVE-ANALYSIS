@@ -180,9 +180,7 @@ class PoiDeduplicationTests(unittest.TestCase):
             _poi_event("B", "c", age=10, width=2),
             _poi_event("B", "b", age=10, width=1),
         ]
-        expected = deduplicate_poi_events(pd.DataFrame(rows))[
-            ["decision_bar_id", "true_retest_id"]
-        ]
+        expected = deduplicate_poi_events(pd.DataFrame(rows))[["decision_bar_id", "true_retest_id"]]
         for seed in range(8):
             shuffled = pd.DataFrame(rows).sample(frac=1.0, random_state=seed)
             actual = deduplicate_poi_events(shuffled)[["decision_bar_id", "true_retest_id"]]
@@ -479,12 +477,8 @@ class PolicyAndBootstrapTests(unittest.TestCase):
         self.assertTrue(math.isnan(summary["profit_factor"]))
 
     def test_stationary_bootstrap_is_deterministic_bounded_and_weighted(self) -> None:
-        first = stationary_bootstrap_indices(
-            7, replicates=12, restart_probability=0.2, seed=1234
-        )
-        second = stationary_bootstrap_indices(
-            7, replicates=12, restart_probability=0.2, seed=1234
-        )
+        first = stationary_bootstrap_indices(7, replicates=12, restart_probability=0.2, seed=1234)
+        second = stationary_bootstrap_indices(7, replicates=12, restart_probability=0.2, seed=1234)
         np.testing.assert_array_equal(first, second)
         self.assertEqual(first.shape, (12, 7))
         self.assertTrue(((first >= 0) & (first < 7)).all())

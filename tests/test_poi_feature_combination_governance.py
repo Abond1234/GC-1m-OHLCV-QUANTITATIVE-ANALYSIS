@@ -110,10 +110,7 @@ class InteractionDtypeRegressionTests(unittest.TestCase):
         result = add_poi_interactions(frame)
 
         self.assertTrue(
-            all(
-                result[column].dtype == np.dtype("float64")
-                for column in INTERACTION_FEATURES
-            )
+            all(result[column].dtype == np.dtype("float64") for column in INTERACTION_FEATURES)
         )
 
 
@@ -201,12 +198,8 @@ class CapabilityFilterRegressionTests(unittest.TestCase):
             {
                 "observation_id": ["obs-1"],
                 "decision_bar_id": ["bar-1"],
-                "decision_timestamp_utc": pd.to_datetime(
-                    ["2024-01-02T15:00:00Z"], utc=True
-                ),
-                "entry_timestamp_utc": pd.to_datetime(
-                    ["2024-01-02T15:01:00Z"], utc=True
-                ),
+                "decision_timestamp_utc": pd.to_datetime(["2024-01-02T15:00:00Z"], utc=True),
+                "entry_timestamp_utc": pd.to_datetime(["2024-01-02T15:01:00Z"], utc=True),
                 "trade_date_ny": pd.to_datetime(["2024-01-02"]),
                 "entry_session": ["New York"],
                 "research_partition": ["Validation"],
@@ -280,9 +273,7 @@ class CapabilityFilterRegressionTests(unittest.TestCase):
             {
                 "true_retest_id": ["poi-1"],
                 "retest_bar_id": ["bar-1"],
-                "retest_ts_event_utc": pd.to_datetime(
-                    ["2024-01-02T15:00:00Z"], utc=True
-                ),
+                "retest_ts_event_utc": pd.to_datetime(["2024-01-02T15:00:00Z"], utc=True),
                 "trade_date_ny": pd.to_datetime(["2024-01-02"]),
                 "direction": ["bullish"],
                 "research_partition": ["validation"],
@@ -426,8 +417,7 @@ class ValidationOpeningRegressionTests(unittest.TestCase):
         side_effect=_fake_validation_summary,
     )
     @patch(
-        "src.statistical_research.feature_combination_runner."
-        "fit_development_predict_validation",
+        "src.statistical_research.feature_combination_runner.fit_development_predict_validation",
         side_effect=_fake_fit,
     )
     def test_gen2_validation_does_not_open_gen1(
@@ -463,8 +453,7 @@ class ValidationOpeningRegressionTests(unittest.TestCase):
         side_effect=_fake_validation_summary,
     )
     @patch(
-        "src.statistical_research.feature_combination_runner."
-        "fit_development_predict_validation",
+        "src.statistical_research.feature_combination_runner.fit_development_predict_validation",
         side_effect=_fake_fit,
     )
     def test_nested_gen3_validation_opens_the_required_gen1_anchor(
@@ -473,9 +462,7 @@ class ValidationOpeningRegressionTests(unittest.TestCase):
         _summary_mock,
         _gate_mock,
     ) -> None:
-        selection = _selection_for_models(
-            "GEN3_STAT15_FES4", ("GEN1_STAT15", "GEN3_STAT15_FES4")
-        )
+        selection = _selection_for_models("GEN3_STAT15_FES4", ("GEN1_STAT15", "GEN3_STAT15_FES4"))
         metrics, _, _, _, scored = _score_validation(
             branch="GENERAL",
             development_frames={"New York": pd.DataFrame()},
@@ -483,9 +470,7 @@ class ValidationOpeningRegressionTests(unittest.TestCase):
             selection=selection,
         )
 
-        self.assertEqual(
-            metrics["model_id"].tolist(), ["GEN1_STAT15", "GEN3_STAT15_FES4"]
-        )
+        self.assertEqual(metrics["model_id"].tolist(), ["GEN1_STAT15", "GEN3_STAT15_FES4"])
         self.assertEqual(fit_mock.call_count, 2)
         fitted_features = [call.kwargs["features"] for call in fit_mock.call_args_list]
         self.assertEqual(
@@ -512,9 +497,7 @@ class ValidationOpeningRegressionTests(unittest.TestCase):
 
 class ValidationCapabilityCheckpointTests(unittest.TestCase):
     def test_realized_selection_and_thresholds_are_hashed_before_access(self) -> None:
-        selection = _selection_for_models(
-            "GEN2_FES4", ("GEN1_STAT15", "GEN2_FES4")
-        )
+        selection = _selection_for_models("GEN2_FES4", ("GEN1_STAT15", "GEN2_FES4"))
         thresholds = pd.DataFrame(
             [
                 {
@@ -688,9 +671,7 @@ class ArtifactPublicationRegressionTests(unittest.TestCase):
             self.assertFalse(staging_output.exists())
             self.assertFalse(staging_report.exists())
             headline = json.loads((target_output / "headline.json").read_text("utf-8"))
-            failure = json.loads(
-                (target_output / "integrity_failure.json").read_text("utf-8")
-            )
+            failure = json.loads((target_output / "integrity_failure.json").read_text("utf-8"))
             self.assertEqual(headline["overall_state"], "BLOCKED_INTEGRITY_FAILURE")
             self.assertFalse(headline["final_test_opened"])
             self.assertEqual(failure["error_type"], "ValueError")
@@ -724,9 +705,7 @@ class ArtifactPublicationRegressionTests(unittest.TestCase):
             )
 
             headline = json.loads((output_dir / "headline.json").read_text("utf-8"))
-            audit = json.loads(
-                (output_dir / "blocked_access_audit.json").read_text("utf-8")
-            )
+            audit = json.loads((output_dir / "blocked_access_audit.json").read_text("utf-8"))
             status = (report_dir / "status.md").read_text("utf-8")
             self.assertTrue(headline["final_test_opened"])
             self.assertEqual(
