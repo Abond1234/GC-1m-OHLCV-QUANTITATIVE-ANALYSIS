@@ -195,7 +195,6 @@ INDICATORS: dict[str, IndicatorDef] = {
         IndicatorDef("rvol", "Rolling volatility", "osc", _n(30)),
         IndicatorDef("obv", "OBV", "osc"),
         IndicatorDef("vma", "Volume MA", "volume", _n(20)),
-        IndicatorDef("vwap20", "VWAP 20", "price", source="vwap20"),
         IndicatorDef("vwap_day", "VWAP day", "price", source="vwap_day"),
         IndicatorDef("vwap_session", "VWAP session", "price", source="vwap_session"),
     )

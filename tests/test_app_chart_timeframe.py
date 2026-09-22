@@ -139,6 +139,17 @@ class ChartTimeframeTests(unittest.TestCase):
         axis.mouseClickEvent(_FakeDouble())
         self.assertTrue(bool(vb.state["autoRange"][1]))
 
+    def test_buffered_view_offset_keeps_global_mapping_exact(self):
+        bars = _Bars(60)
+        rs = resample_window(bars, 10, 39, 5)
+        vm = ViewMap.from_resampled(rs, 5, display_offset=100)
+        self.assertEqual(vm.global_to_local(10), 100)
+        self.assertEqual(vm.local_to_global_start(100), 10)
+        self.assertEqual(vm.local_to_global_end(105), 39)
+        x = vm.global_to_local_f(22)
+        self.assertGreater(x, 101.0)
+        self.assertAlmostEqual(vm.local_f_to_global(x), 22.0)
+
 
 if __name__ == "__main__":
     unittest.main()

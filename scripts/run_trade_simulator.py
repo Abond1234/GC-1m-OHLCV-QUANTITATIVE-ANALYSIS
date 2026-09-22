@@ -26,7 +26,7 @@ def main() -> None:
     from src.app.ui.splash import GoldSplash
 
     app = QtWidgets.QApplication(sys.argv)
-    theme.apply(app, "dark")
+    theme.apply(app, "light")
     app.setWindowIcon(brand.app_icon())
 
     splash = GoldSplash()

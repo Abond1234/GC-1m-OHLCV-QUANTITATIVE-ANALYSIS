@@ -16,6 +16,9 @@ launching from the repo root or by setting ``GC_PROJECT_ROOT`` to the checkout:
 
 from __future__ import annotations
 
+import importlib.util
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,25 +55,44 @@ def _render_icon() -> Path:
     return icon_path
 
 
+def _packaging_environment() -> dict[str, str]:
+    """Keep unrelated PATH DLLs out of Windows dependency discovery."""
+
+    env = os.environ.copy()
+    if sys.platform == "win32":
+        windows = Path(os.environ["SystemRoot"])
+        env["PATH"] = os.pathsep.join(
+            str(path)
+            for path in (
+                Path(sys.executable).parent,
+                Path(sys.base_prefix),
+                windows / "System32",
+                windows,
+            )
+        )
+    return env
+
+
 def main() -> None:
-    try:
-        import PyInstaller.__main__ as pyi
-    except ImportError:
+    if importlib.util.find_spec("PyInstaller") is None:
         raise SystemExit(
             "PyInstaller is not installed. Run:\n  python -m pip install -r requirements-app.txt"
-        ) from None
+        )
 
     icon_path = _render_icon()
     args = [
         str(ENTRY),
         "--name=GCTradeSimulator",
         "--noconfirm",
+        "--clean",  # do not reuse dependency analysis from a polluted PATH
         "--windowed",  # no console window
         f"--icon={icon_path}",
         "--paths",
         str(PROJECT_ROOT),  # so 'src' is importable during analysis
         "--collect-submodules=src.app",
         "--collect-submodules=src.statistical_research",
+        "--add-data",
+        f"{PROJECT_ROOT / 'assets' / 'ui'}{os.pathsep}assets/ui",
         "--distpath",
         str(PROJECT_ROOT / "dist"),
         "--workpath",
@@ -79,7 +101,12 @@ def main() -> None:
         str(PROJECT_ROOT),
     ]
     print("Running PyInstaller:\n  " + "\n  ".join(args))
-    pyi.run(args)
+    subprocess.run(
+        [sys.executable, "-m", "PyInstaller", *args],
+        check=True,
+        cwd=PROJECT_ROOT,
+        env=_packaging_environment(),
+    )
     print("\nBuild complete -> dist/GCTradeSimulator/")
 
 

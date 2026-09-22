@@ -62,6 +62,8 @@ class ChartPrecisionTests(unittest.TestCase):
         c = self._chart()
         self.assertTrue(c._price.getAxis("right").isVisible())
         self.assertFalse(c._price.getAxis("left").isVisible())
+        self.assertFalse(c._volume.isVisible())  # volume is opt-in at startup
+        c.set_volume_visible(True)
         self.assertTrue(c._volume.getAxis("right").isVisible())
         self.assertFalse(c._volume.getAxis("left").isVisible())
 

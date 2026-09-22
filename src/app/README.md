@@ -79,9 +79,9 @@ simulation window spans a discontinuity; `rolling_atr_20m` is a simple
 20-minute mean of true range (the exit engine sizes ATR stops from it).
 New instruments register in `src/app/datalayer/instruments.py`.
 
-Research validity is instrument-scoped: the strategy catalog, replay markers,
-and the Edge context slate are GC evidence, so they disable - with the reason
-on screen - on every other instrument. Free-play, exits, what-ifs, exit grids,
+Research validity is instrument-scoped: the strategy catalog and replay markers
+are GC evidence, so they disable - with the reason on screen - on every other
+instrument. Free-play, exits, what-ifs, exit grids,
 drawings, replay-view, and the session money layer (which auto-syncs the
 active contract's dollars-per-point) work on any loaded instrument.
 
@@ -100,19 +100,19 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
 
 ## What it does
 
-- **Workspace shell**: the chart stays central; configuration lives in five
-  collapsible left workspaces reached from a nav rail (Ctrl+1-5) - Strategy
-  (a searchable browser with family groups, details for the selected strategy
-  only, and selected/loading/disabled/error row states), Indicators (the study
-  engine below, session shading, edge context), Drawing (the full tool set),
-  Risk (the exit rule), and Prop firm (the evaluation account). The global
-  toolbar carries only the instrument, the Start/End dates, the timeframe, and
-  the overlay popover (Off / instrument / Horizontal split / Vertical split /
-  Normalized overlay).
-- **Explicit date window**: Start and End date fields load exactly the requested
-  interval - no rolling lookback. A timeframe selector (1m-1D) resamples the
-  display; every simulation, entry, exit, and replay stays on true 1-minute bars.
-- **Chart**: GC candlesticks with volume (an explicit show/hide toggle), New
+- **Workspace shell**: the chart stays central; Indicators and Drawing remain in
+  collapsible left workspaces (Ctrl+1/2). The resizable Simulator sidebar owns
+  Strategy, Risk, Prop firm, and Performance. The global toolbar carries only
+  the instrument, chart timeframe, overlay popover, and Simulator toggle.
+- **Full-history chart and simulation dates**: the chart exposes the complete
+  loaded Development + Validation history through cached, buffered viewport
+  tiles, defaulting to a daily overview. Zoomed-out views use display-only
+  aggregation and automatically restore the selected detail while zooming in.
+  Start and End sit above the shared Simulate button and inclusively filter
+  strategy entry dates. Simulation, entries, exits, and replay stay on true
+  1-minute bars.
+- **Chart**: GC candlesticks with volume hidden by default (an Indicators
+  show/hide toggle), New
   York session shading, and one tick-formatted price scale on the right
   (left-drag to scale, double-click to auto-fit) carrying a last-price pill
   that rides the replay tape. The chart header holds the O/H/L/C-and-change
@@ -187,13 +187,10 @@ real fonts render; set `QT_QPA_PLATFORM=offscreen` for a truly headless machine.
   with the simulated payout and post-payout balance, per-rule meters, and equity
   and rule-utilization curves. Simulated fills on historical Dev+Val data -
   explicitly not live results.
-- **Edge context** (Indicators workspace): the four features that ADVANCED
-  through the FES Project 1 locked Validation batch, computed per bar with
-  the research module's own frozen helpers (a golden test pins the app's
-  values to ``build_scalar_feature_matrix`` exactly). Session-honest display -
-  London-validated and New York-validated features dim outside their windows -
-  under the verbatim verdict: PREDICTIVE_ONLY_NOT_DIRECTIONAL, FROZEN_NO_POLICY,
-  not a trade signal.
+- **Indicators**: a curated set of chart-only trend, volatility, momentum,
+  volume, daily-VWAP, and session-VWAP studies. Nothing is active at startup;
+  adding, hiding, or removing a study never changes research or simulation
+  inputs.
 - **Sessions (File menu)**: save/load the working session (trades by entry and
   exit config, drawings, view, account and evaluation settings) as versioned
   JSON under the git-ignored ``reports/sessions/``. Loaded trades are
@@ -234,3 +231,51 @@ positions, and a per-strategy (rather than per-entry) exit-grid sweep. The
 finplot backend is an optional future enhancement behind the same `ChartWidget`
 interface. (Formerly deferred and since shipped: the MGC mirror pane, the
 multi-instrument layer, session equity curves, and the evaluation-account view.)
+
+## Simulator workspace draft (September 2026)
+
+The black **Simulator** button at the top right opens a sidebar with Prop firm,
+Risk, Strategy, and Performance tabs. Drag its left divider to widen it; Close
+and reopen retain the selected tab, settings, and width. Indicators and Drawing
+remain on the left (Ctrl+1/2). Ctrl+Shift+S toggles Simulator.
+
+The main chart has no Start/End controls: it loads and displays the complete
+Development + Validation history, defaulting to a daily overview. The only date
+selectors sit above Simulate and remain visible across every Simulator tab. They
+define an inclusive strategy-entry period for each simulation and default to the
+full loaded Dev+Val range.
+
+**Simulate** first runs the selected strategy through the verified replay engine,
+then applies the configured challenge rules to those closed-trade outcomes. Only
+one account is active at a time. Reaching the trader daily profit/loss stop pauses
+that account for the day and rotates the next eligible account; a firm daily or
+overall loss breach retires it. Three consecutive account breaches stop the
+simulation for that NY trade date.
+
+Prop firm defines the pool size, original account balance, one- or two-step phase
+targets and loss limits, and a funded payout target constrained to 3-5% of the
+original balance. A successful phase advances and resets the account; the final
+challenge phase upgrades it to funded, and the funded target records a payout.
+Risk contains only risk per trade, trader daily profit target, trader daily max
+loss, and an optional trade cap. The former custom-exit, trailing, breakeven,
+frozen-contract, free-play, what-if, and exit-grid controls are not part of the
+Simulator workflow.
+
+Performance reports phase passes, challenges passed, payouts, breaches, trades,
+skipped setups, three-breach stop days, gross strategy metrics, simulated P&L,
+and an account-by-account summary. Its trade table directly shows the account,
+stage, P&L, and account event; it no longer nests the old Free-play/What-if/Exit
+grid/Trade detail/Free-play account tabs.
+
+## Packaged review workflow (September 2026)
+
+After app changes, run the full tests and lint, then rebuild with
+`.venv/Scripts/python.exe scripts/build_app.py`. Open
+`dist/GCTradeSimulator/GCTradeSimulator.exe` to review the updated app; keep its
+`_internal` folder alongside it. No uninstall/reinstall is required. Startup now
+defaults to light mode; the View menu still offers both themes.
+
+The build runs PyInstaller in a fresh subprocess with a Windows/Python-only PATH
+and clean dependency analysis. This prevents unrelated tools' DLLs (notably a
+Poppler ICU library incompatible with Qt) from contaminating the package. Always
+smoke-test the packaged executable, not just the source launcher.

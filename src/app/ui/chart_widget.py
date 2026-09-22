@@ -2,8 +2,8 @@
 
 The chart renders one day (or a bar window) at a time on an integer x-axis of bar
 indices, so non-trading gaps never stretch the candles; a custom bottom axis maps
-indices back to New York time labels. Candles are split at continuous-segment
-breaks so nothing is drawn across a roll/data discontinuity. A crosshair with an
+indices back to New York time labels. Every candle is an independent primitive,
+so one cached graphics item stays gap-honest across roll boundaries. A crosshair with an
 O/H/L/C readout follows the cursor, price is labelled on both edges, and a left
 click emits the bar index under the cursor for free-play entry placement.
 
@@ -95,18 +95,6 @@ class _PriceAxis(pg.AxisItem):
         super().mouseClickEvent(event)
 
 
-def _seg_runs(segment: np.ndarray) -> list[tuple[int, int]]:
-    """Local (start, end) index runs of constant segment id within a window."""
-
-    n = len(segment)
-    if n == 0:
-        return []
-    change = np.nonzero(np.diff(segment) != 0)[0]
-    starts = [0, *(change + 1)]
-    ends = [*change, n - 1]
-    return list(zip(starts, ends, strict=True))
-
-
 class CandlestickItem(pg.GraphicsObject):
     """Candles drawn once into a QPicture for fast repaint."""
 
@@ -162,14 +150,16 @@ class _TimeAxis(pg.AxisItem):
     def __init__(self, labels: np.ndarray, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._labels = labels
+        self._offset = 0
 
-    def set_labels(self, labels: np.ndarray) -> None:
+    def set_labels(self, labels: np.ndarray, offset: int = 0) -> None:
         self._labels = labels
+        self._offset = int(offset)
 
     def tickStrings(self, values, scale, spacing):
         out = []
         for v in values:
-            i = int(round(v))
+            i = int(round(v)) - self._offset
             if 0 <= i < len(self._labels):
                 out.append(str(self._labels[i]))
             else:
@@ -183,6 +173,7 @@ class ChartWidget(QtWidgets.QWidget):
     bar_clicked = QtCore.Signal(int)  # emits the global bar index under the cursor
     bar_hovered = QtCore.Signal(int)  # hovered displayed bar's last 1m index (crosshair)
     drawing_placed = QtCore.Signal()  # a one-shot draw mode finished placing
+    view_range_changed = QtCore.Signal(float, float)  # logical full-series x range
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -226,7 +217,10 @@ class ChartWidget(QtWidgets.QWidget):
         self._volume.setXLink(self._price)
         self._volume.showAxis("bottom", False)
         self._volume.setLabel("right", "vol")
-        self._volume_visible = True
+        self._volume_visible = False
+        self._volume.setVisible(False)
+        self._layout.ci.layout.setRowStretchFactor(1, 0)
+        self._layout.ci.layout.setRowMaximumHeight(1, 0)
 
         # Chart header: the O/H/L/C readout (a plain QLabel - updating a plot
         # title forces a graphics-layout pass per mouse move, a label repaint
@@ -268,6 +262,8 @@ class ChartWidget(QtWidgets.QWidget):
 
         self._view_start = 0  # global index of the first rendered 1m bar
         self._view_map: ViewMap = ViewMap.identity(0, 0)  # replaced by set_view
+        self._full_display_count = 1
+        self._suppress_view_signal = False
         self._minute_close: np.ndarray = np.array([])  # 1m closes for the window
         self._trade_items: list = []
         self._whatif_items: list = []  # alternative-exit overlays, cleared separately
@@ -333,6 +329,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._mouse_proxy = pg.SignalProxy(
             self._price.scene().sigMouseMoved, rateLimit=60, slot=self._on_mouse_moved
         )
+        self._price.sigXRangeChanged.connect(self._on_xrange_changed)
 
     def _make_badge(self, anchor) -> pg.TextItem:
         p = theme.active()
@@ -390,12 +387,14 @@ class ChartWidget(QtWidgets.QWidget):
         *,
         minute_close: np.ndarray | None = None,
         hover_labels: np.ndarray | None = None,
+        full_display_count: int | None = None,
+        x_range: tuple[float, float] | None = None,
     ) -> None:
         """Render a window of displayed bars described by ``view_map``.
 
         ``ohlc`` holds one entry per displayed bar (1m bars or aggregated
-        buckets) plus optionally ``segment``; candles are split at segment
-        breaks so none is drawn across a roll/data discontinuity. ``view_map``
+        buckets). Candles are standalone primitives, so roll/data gaps are
+        never connected even though the tile shares one QPicture. ``view_map``
         converts between global 1-minute indices - the simulation truth every
         caller keeps speaking - and displayed x positions. ``minute_close`` is
         the raw 1m close slice for ``[view_start, view_end]``, used so the
@@ -406,6 +405,7 @@ class ChartWidget(QtWidgets.QWidget):
         """
 
         p = theme.active()
+        self._suppress_view_signal = True
         self._stash_live_drawings()  # keep annotations for when this window returns
         self._price.clear()
         self._volume.clear()
@@ -441,6 +441,9 @@ class ChartWidget(QtWidgets.QWidget):
             self._price.addItem(badge, ignoreBounds=True)
         self._view_map = view_map
         self._view_start = view_map.view_start
+        self._full_display_count = max(
+            1, int(full_display_count if full_display_count is not None else view_map.n_display)
+        )
         self._ohlc = ohlc
         self._minute_close = (
             np.asarray(minute_close) if minute_close is not None else np.asarray(ohlc["close"])
@@ -448,22 +451,28 @@ class ChartWidget(QtWidgets.QWidget):
         self._labels = np.asarray(labels)
         self._hover_labels = np.asarray(hover_labels) if hover_labels is not None else self._labels
         n = len(ohlc["close"])
-        x = np.arange(n)
-        self._time_axis.set_labels(labels)
+        x = np.arange(n) + view_map.display_offset
+        self._time_axis.set_labels(labels, view_map.display_offset)
 
-        segment = ohlc.get("segment")
-        runs = _seg_runs(np.asarray(segment)) if segment is not None else [(0, n - 1)]
-        for a, b in runs:
-            sl = slice(a, b + 1)
+        # Candles are independent primitives, not a connected line, so one
+        # cached QPicture cannot bridge a roll/data gap. Keeping the tile in a
+        # single graphics item avoids thousands of scene objects when the
+        # source segment id changes at every daily tape boundary.
+        if n:
             self._price.addItem(
-                CandlestickItem(
-                    x[sl], ohlc["open"][sl], ohlc["high"][sl], ohlc["low"][sl], ohlc["close"][sl]
-                )
+                CandlestickItem(x, ohlc["open"], ohlc["high"], ohlc["low"], ohlc["close"])
             )
         vol = np.asarray(ohlc["volume"], dtype=float)
         self._volume.addItem(pg.BarGraphItem(x=x, height=vol, width=0.7, brush=p.text_faint))
-        self._price.setLimits(xMin=-1, xMax=n)
-        self._price.enableAutoRange()
+        self._price.setLimits(xMin=-1, xMax=self._full_display_count)
+        self._price.disableAutoRange(axis="x")
+        self._price.enableAutoRange(axis="y")
+        if x_range is None:
+            x_range = (
+                float(view_map.display_offset) - 0.5,
+                float(view_map.display_offset + max(1, n)) - 0.5,
+            )
+        self._price.setXRange(float(x_range[0]), float(x_range[1]), padding=0)
         self._last_line = pg.InfiniteLine(
             angle=0,
             movable=False,
@@ -489,7 +498,7 @@ class ChartWidget(QtWidgets.QWidget):
         self._curtains = []
         for plot in (self._price, self._volume, self._osc):
             curtain = pg.LinearRegionItem(
-                values=(n + 1, n + 2),
+                values=(self._full_display_count + 1, self._full_display_count + 2),
                 movable=False,
                 brush=pg.mkBrush(p.bg),
                 pen=pg.mkPen(None),
@@ -501,6 +510,14 @@ class ChartWidget(QtWidgets.QWidget):
 
         # Bring back annotations whose global coordinates intersect this window.
         self._restore_drawings()
+        self._suppress_view_signal = False
+
+    def _on_xrange_changed(self, _plot, value_range) -> None:
+        """Debounced by MainWindow; this signal never performs work itself."""
+
+        if self._suppress_view_signal:
+            return
+        self.view_range_changed.emit(float(value_range[0]), float(value_range[1]))
 
     # -- user drawings (levels / trendlines / time markers) -----------------
     def set_draw_mode(self, mode: str | None) -> None:
@@ -1287,11 +1304,10 @@ class ChartWidget(QtWidgets.QWidget):
             for curtain in self._curtains:
                 curtain.setVisible(False)
             return
-        n = len(self._ohlc["close"])
         last_complete = self._view_map.last_complete_local(int(up_to_global))
-        edge = min(float(last_complete) + 0.5, n + 1.0)
+        edge = min(float(last_complete) + 0.5, self._full_display_count + 1.0)
         for curtain in self._curtains:
-            curtain.setRegion((edge, n + 1.0))
+            curtain.setRegion((edge, self._full_display_count + 1.0))
             curtain.setVisible(True)
 
     def add_vwap(self, vwap: np.ndarray, kind: str = "rolling", *, visible: bool = True) -> None:
@@ -1310,22 +1326,29 @@ class ChartWidget(QtWidgets.QWidget):
         label = {"rolling": "VWAP 20", "day": "VWAP day", "session": "VWAP session"}.get(
             kind, "VWAP"
         )
-        x = np.arange(len(vwap))
+        x = np.arange(len(vwap)) + self._view_map.display_offset
         item = pg.PlotDataItem(x, vwap, pen=pg.mkPen(colour, width=1.4), name=label)
         item.setVisible(visible)
         self._price.addItem(item)
+        item.setClipToView(True)
+        item.setDownsampling(auto=True, method="peak")
         self._vwap_items[kind] = item
 
-    def set_compare_line(self, values: np.ndarray, label: str) -> None:
+    def set_compare_line(
+        self, values: np.ndarray, label: str, *, x_offset: int | None = None
+    ) -> None:
         """Overlay a normalized comparison series; the label states the method."""
 
         self.clear_compare_line()
         p = theme.active()
-        x = np.arange(len(values))
+        offset = self._view_map.display_offset if x_offset is None else int(x_offset)
+        x = np.arange(len(values)) + offset
         self._compare_item = pg.PlotDataItem(
             x, values, pen=pg.mkPen(p.gold, width=1.6, style=QtCore.Qt.DashLine), name=label
         )
         self._price.addItem(self._compare_item)
+        self._compare_item.setClipToView(True)
+        self._compare_item.setDownsampling(auto=True, method="peak")
 
     def clear_compare_line(self) -> None:
         if self._compare_item is not None:
@@ -1369,12 +1392,14 @@ class ChartWidget(QtWidgets.QWidget):
         for name, values in series.items():
             values = np.asarray(values, dtype=float)
             if x is None or len(x) != len(values):
-                x = np.arange(len(values))
+                x = np.arange(len(values)) + self._view_map.display_offset
             style = QtCore.Qt.DashLine if band is not None and name in band else QtCore.Qt.SolidLine
             item = pg.PlotDataItem(
                 x, values, pen=pg.mkPen(color, width=1.3, style=style), connect="finite"
             )
             plot.addItem(item, ignoreBounds=pane == "price")
+            item.setClipToView(True)
+            item.setDownsampling(auto=True, method="peak")
             items.append(item)
             series[name] = values
         if band is not None and band[0] in series and band[1] in series:
@@ -1387,6 +1412,9 @@ class ChartWidget(QtWidgets.QWidget):
             for extra in (upper, lower, fill):
                 plot.addItem(extra, ignoreBounds=True)
                 items.append(extra)
+            for boundary in (upper, lower):
+                boundary.setClipToView(True)
+                boundary.setDownsampling(auto=True, method="peak")
         p = theme.active()
         for level in guides:
             guide = pg.InfiniteLine(
@@ -1505,8 +1533,13 @@ class ChartWidget(QtWidgets.QWidget):
             starts = [0, *starts]
         if in_ny[-1]:
             ends = [*ends, len(in_ny)]
+        offset = self._view_map.display_offset
         for a, b in zip(starts, ends, strict=False):
-            region = pg.LinearRegionItem([a, b], movable=False, brush=pg.mkBrush(*p.session_shade))
+            region = pg.LinearRegionItem(
+                [a + offset, b + offset],
+                movable=False,
+                brush=pg.mkBrush(*p.session_shade),
+            )
             region.setZValue(-10)
             region.setVisible(visible)
             self._price.addItem(region)
@@ -1925,7 +1958,9 @@ class ChartWidget(QtWidgets.QWidget):
         # (annotation items must not drag autorange toward zero).
         if self._ohlc is not None:
             n = len(self._ohlc["close"])
-            a, b = max(0, x0), min(n - 1, x1)
+            offset = self._view_map.display_offset
+            a = max(0, int(np.floor(x0)) - offset)
+            b = min(n - 1, int(np.ceil(x1)) - offset)
             if b > a:
                 window_low = self._ohlc["low"][a : b + 1]
                 window_high = self._ohlc["high"][a : b + 1]
@@ -1951,13 +1986,14 @@ class ChartWidget(QtWidgets.QWidget):
         if self._draw_mode is not None:  # an armed drawing tool takes the click
             self.place_drawing(self._draw_mode, mouse_point.x(), mouse_point.y())
             return
-        local = int(round(mouse_point.x()))
-        if not (0 <= local < len(self._ohlc["close"])):
+        display_x = int(round(mouse_point.x()))
+        tile_i = display_x - self._view_map.display_offset
+        if not (0 <= tile_i < len(self._ohlc["close"])):
             return
         # Emit the clicked displayed bar's LAST 1m index: the free-play caller
         # adds one, entering at the first minute of the NEXT displayed bar -
         # the honest next-bar-open at any timeframe (identical at 1m).
-        self.bar_clicked.emit(self._view_map.local_to_global_end(local))
+        self.bar_clicked.emit(self._view_map.local_to_global_end(display_x))
 
     def _on_mouse_moved(self, evt) -> None:
         pos = evt[0]
@@ -1968,7 +2004,8 @@ class ChartWidget(QtWidgets.QWidget):
             self._y_badge.setVisible(False)
             return
         mp = self._price.vb.mapSceneToView(pos)
-        i = int(round(mp.x()))
+        display_x = int(round(mp.x()))
+        i = display_x - self._view_map.display_offset
         self._vline.setPos(mp.x())
         self._hline.setPos(mp.y())
         self._vline.setVisible(True)
@@ -1978,7 +2015,7 @@ class ChartWidget(QtWidgets.QWidget):
         if 0 <= i < n and i != self._last_readout_i:
             self._last_readout_i = i  # the readout only changes per bar, not per pixel
             self._readout_label.setText(self._readout(i))
-            self.bar_hovered.emit(self._view_map.local_to_global_end(i))
+            self.bar_hovered.emit(self._view_map.local_to_global_end(display_x))
 
     def _update_badges(self, x: float, y: float, i: int) -> None:
         """Pin the exact time and tick-formatted price to the view edges."""

@@ -144,16 +144,25 @@ class ViewMap:
     bucket_starts: np.ndarray
     bucket_ends: np.ndarray
     tf_minutes: int
+    display_offset: int = 0
 
     @classmethod
-    def identity(cls, lo: int, hi: int) -> ViewMap:
+    def identity(cls, lo: int, hi: int, display_offset: int = 0) -> ViewMap:
         idx = np.arange(int(lo), int(hi) + 1, dtype=np.int64)
-        return cls(bucket_starts=idx, bucket_ends=idx, tf_minutes=1)
+        return cls(
+            bucket_starts=idx,
+            bucket_ends=idx,
+            tf_minutes=1,
+            display_offset=int(display_offset),
+        )
 
     @classmethod
-    def from_resampled(cls, rs: Resampled, tf_minutes: int) -> ViewMap:
+    def from_resampled(cls, rs: Resampled, tf_minutes: int, display_offset: int = 0) -> ViewMap:
         return cls(
-            bucket_starts=rs.bucket_starts, bucket_ends=rs.bucket_ends, tf_minutes=tf_minutes
+            bucket_starts=rs.bucket_starts,
+            bucket_ends=rs.bucket_ends,
+            tf_minutes=tf_minutes,
+            display_offset=int(display_offset),
         )
 
     @property
@@ -175,7 +184,7 @@ class ViewMap:
         """Displayed bar index containing global 1m bar ``g`` (clamped)."""
 
         i = int(np.searchsorted(self.bucket_starts, int(g), side="right")) - 1
-        return max(0, min(i, self.n_display - 1))
+        return self.display_offset + max(0, min(i, self.n_display - 1))
 
     def global_to_local_f(self, g):
         """Fractional displayed x for global 1m position(s) ``g``.
@@ -193,32 +202,41 @@ class ViewMap:
         )
         starts = self.bucket_starts[li]
         spans = self.bucket_ends[li] - starts + 1
-        out = li - 0.5 + (arr - starts + 0.5) / spans
+        out = self.display_offset + li - 0.5 + (arr - starts + 0.5) / spans
         if np.isscalar(g) or getattr(g, "ndim", 1) == 0:
             return float(out)
         return out
 
     def local_to_global_start(self, local: int) -> int:
-        return int(self.bucket_starts[max(0, min(int(local), self.n_display - 1))])
+        local = int(local) - self.display_offset
+        return int(self.bucket_starts[max(0, min(local, self.n_display - 1))])
 
     def local_to_global_end(self, local: int) -> int:
-        return int(self.bucket_ends[max(0, min(int(local), self.n_display - 1))])
+        local = int(local) - self.display_offset
+        return int(self.bucket_ends[max(0, min(local, self.n_display - 1))])
 
     def local_f_to_global(self, x: float) -> float:
         """Inverse of ``global_to_local_f`` (for drawing serialization)."""
 
-        li = int(np.clip(np.floor(float(x) + 0.5), 0, self.n_display - 1))
+        tile_x = float(x) - self.display_offset
+        li = int(np.clip(np.floor(tile_x + 0.5), 0, self.n_display - 1))
         start = float(self.bucket_starts[li])
         span = float(self.bucket_ends[li] - self.bucket_starts[li] + 1)
-        return start + (float(x) - (li - 0.5)) * span - 0.5
+        return start + (tile_x - (li - 0.5)) * span - 0.5
 
     def last_complete_local(self, t: int) -> int:
         """Local index of the last bucket fully at or before 1m time ``t`` (-1 if none)."""
 
-        return int(np.searchsorted(self.bucket_ends, int(t), side="right")) - 1
+        return (
+            self.display_offset + int(np.searchsorted(self.bucket_ends, int(t), side="right")) - 1
+        )
 
     def minute_positions(self, start_g: int, count: int) -> np.ndarray:
         """Fractional x for ``count`` consecutive minutes from ``start_g``, clipped."""
 
         gs = np.arange(int(start_g), int(start_g) + int(count), dtype=np.int64)
-        return np.clip(self.global_to_local_f(gs), -1.0, float(self.n_display))
+        return np.clip(
+            self.global_to_local_f(gs),
+            float(self.display_offset) - 1.0,
+            float(self.display_offset + self.n_display),
+        )

@@ -103,6 +103,12 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     win.indicators_panel.add_study("vwap_day")
     win.indicators_panel.add_study("vwap_session")
     saved.append(_grab(win, out_dir / "01_chart_overview.png", app))
+    win.simulator_button.click()
+    saved.append(_grab(win, out_dir / "01b_simulator_strategy.png", app))
+    win.simulator_panel.select("Risk")
+    saved.append(_grab(win, out_dir / "01c_simulator_risk.png", app))
+    win.simulator_panel.select("Prop firm")
+    saved.append(_grab(win, out_dir / "01d_simulator_prop_firm.png", app))
 
     # 2. Replay a strategy so outcome-coloured markers appear.
     spec, log = _first_non_empty_strategy(win)
@@ -165,7 +171,8 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     win.indicators_panel.add_study("bollinger")
     win.indicators_panel.add_study("rsi")
     win.indicators_panel.volume_check.setChecked(False)
-    win._select_workspace(1)  # the Indicators workspace on the left
+    win._set_simulator_visible(False)
+    win._select_workspace(0)  # the Indicators workspace on the left
     saved.append(_grab(win, out_dir / "08c_studies.png", app))
     win.indicators_panel.volume_check.setChecked(True)
     for inst in list(win.indicators_panel.instances):
@@ -173,7 +180,7 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
             win.indicators_panel.remove_instance(inst.id)
 
     # 8d. Drawing tools: fib retracement, long position, and a measurement.
-    win._select_workspace(2)  # the Drawing workspace on the left
+    win._select_workspace(1)  # the Drawing workspace on the left
     lo = win._view_start
     close = win._bars.close
 
@@ -188,7 +195,8 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     win.chart.place_drawing("measure", 110.0, _price_at(110))
     saved.append(_grab(win, out_dir / "08d_drawing_tools.png", app))
     win.chart.clear_drawings()
-    win._select_workspace(0)
+    win._select_workspace(1)  # collapse chart tools
+    win._show_performance(win.trade_table)
 
     # 9. Light theme.
     win._set_theme("light")
@@ -206,6 +214,13 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
     # 10-12. Narrow-display pass: 1366x768 at 125% DPI is ~1092x614 logical
     # pixels. The truncation bugs the wide render can never show live here.
     win.resize(1092, 614)
+    win.simulator_panel.select("Strategy")
+    saved.append(_grab(win, out_dir / "10a_narrow_simulator_strategy.png", app))
+    win.simulator_panel.select("Risk")
+    saved.append(_grab(win, out_dir / "10b_narrow_simulator_risk.png", app))
+    win.simulator_panel.select("Prop firm")
+    saved.append(_grab(win, out_dir / "10c_narrow_simulator_prop_firm.png", app))
+    win._show_performance(win.trade_table)
     saved.append(_grab(win, out_dir / "10_narrow_overview.png", app))
     win._tabs.setCurrentWidget(win.whatif_table)
     saved.append(_grab(win, out_dir / "11_narrow_whatif.png", app))
@@ -215,6 +230,8 @@ def render_all(out_dir: Path | None = None, date_floor: pd.Timestamp | None = No
 
     for pth in saved:
         print(pth)
+    win.close()
+    _settle(app)
     return saved
 
 

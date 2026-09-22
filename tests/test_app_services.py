@@ -99,6 +99,26 @@ class ReplayServiceTests(unittest.TestCase):
             float(frozen["stop_ticks"].iloc[0]), float(wider["stop_ticks"].iloc[0])
         )
 
+    def test_replay_filters_inclusive_entry_date_period(self):
+        bars = _bars(20)
+        store = BarStore.from_frame(bars)
+        universe = _universe(bars, [1, 4, 7])
+        universe["trade_date_ny"] = [
+            _DATE,
+            _DATE + pd.Timedelta(days=1),
+            _DATE + pd.Timedelta(days=2),
+        ]
+        service = StrategyReplayService(universe, store)
+
+        log = service.replay(
+            _ALL_LONG,
+            start_date=_DATE + pd.Timedelta(days=1),
+            end_date=_DATE + pd.Timedelta(days=1),
+        )
+
+        self.assertEqual(log["observation_id"].tolist(), [1])
+        self.assertEqual(pd.Timestamp(log["trade_date_ny"].iloc[0]), _DATE + pd.Timedelta(days=1))
+
 
 class ForensicsServiceTests(unittest.TestCase):
     def test_context_for_real_observation(self):

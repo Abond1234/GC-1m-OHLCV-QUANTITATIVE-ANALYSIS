@@ -50,11 +50,23 @@ class StrategyReplayService:
         specs.extend(s for s in kept if s.name not in seen)
         return specs
 
-    def replay(self, spec: StrategySpec, exit_cfg: ExitConfig | None = None) -> pd.DataFrame:
-        """Trade log for a strategy; frozen contract unless an ExitConfig is given."""
+    def replay(
+        self,
+        spec: StrategySpec,
+        exit_cfg: ExitConfig | None = None,
+        *,
+        start_date=None,
+        end_date=None,
+    ) -> pd.DataFrame:
+        """Trade log for entries in an inclusive Dev+Val date period."""
 
         directions = spec.signal(self.universe, self._cfg)
         fired = (directions != 0) & (self._entry_positions >= 0)
+        trade_dates = pd.to_datetime(self.universe["trade_date_ny"])
+        if start_date is not None:
+            fired &= trade_dates >= pd.Timestamp(start_date)
+        if end_date is not None:
+            fired &= trade_dates <= pd.Timestamp(end_date)
         idx = np.nonzero(fired)[0]
         entry_positions = self._entry_positions[idx]
         dirs = directions[idx].astype(np.int8)

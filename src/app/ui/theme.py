@@ -12,7 +12,9 @@ those libraries import them lazily.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 # --- theme-independent constants (previously scattered magic numbers) --------
 CANDLE_HALF_WIDTH = 0.36  # half the candle body width, in bar-index units
@@ -140,6 +142,9 @@ def active() -> Palette:
 def qss(p: Palette) -> str:
     """A cohesive Qt stylesheet for the given palette."""
 
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
+    plus_icon = (bundle_root / "assets" / "ui" / f"spin_plus_{p.name}.svg").as_posix()
+    minus_icon = (bundle_root / "assets" / "ui" / f"spin_minus_{p.name}.svg").as_posix()
     return f"""
     QMainWindow, QWidget {{ background: {p.bg}; color: {p.text};
         font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 12px; }}
@@ -158,6 +163,8 @@ def qss(p: Palette) -> str:
         color: {p.gold}; font-weight: 600; }}
     QLabel {{ background: transparent; }}
     QLabel[role="caption"] {{ color: {p.text_faint}; font-size: 11px; }}
+    QLabel[role="heading"] {{ font-size: 16px; font-weight: 600; }}
+    QLabel[role="metric"] {{ font-size: 18px; font-weight: 600; }}
     QPushButton {{ background: {p.panel_alt}; border: 1px solid {p.border};
         border-radius: 5px; padding: 5px 12px; color: {p.text}; }}
     QPushButton:hover {{ border-color: {p.gold}; }}
@@ -165,6 +172,10 @@ def qss(p: Palette) -> str:
     QPushButton[accent="true"] {{ background: {p.gold}; color: {p.bg}; font-weight: 600;
         border: none; }}
     QPushButton[accent="true"]:hover {{ background: {p.hook}; }}
+    QPushButton#simulatorToggle {{ background: #000000; color: #ffffff;
+        font-weight: 600; border: 1px solid #555555; padding: 6px 18px; }}
+    QPushButton#simulatorToggle:hover, QPushButton#simulatorToggle:checked {{
+        background: #000000; color: #ffffff; border-color: {p.gold}; }}
     QComboBox, QDoubleSpinBox, QSpinBox {{ background: {p.panel_alt};
         border: 1px solid {p.border}; border-radius: 5px; padding: 3px 6px;
         color: {p.text}; selection-background-color: {p.gold}; }}
@@ -197,17 +208,9 @@ def qss(p: Palette) -> str:
     QDoubleSpinBox::down-button:pressed, QSpinBox::down-button:pressed {{
         background: {p.gold}; }}
     QDoubleSpinBox::up-arrow, QSpinBox::up-arrow {{
-        width: 0; height: 0; border-left: 4px solid transparent;
-        border-right: 4px solid transparent; border-bottom: 5px solid {p.text_dim}; }}
+        image: url("{plus_icon}"); width: 10px; height: 10px; }}
     QDoubleSpinBox::down-arrow, QSpinBox::down-arrow {{
-        width: 0; height: 0; border-left: 4px solid transparent;
-        border-right: 4px solid transparent; border-top: 5px solid {p.text_dim}; }}
-    QDoubleSpinBox::up-arrow:disabled, QSpinBox::up-arrow:disabled,
-    QDoubleSpinBox::up-arrow:off, QSpinBox::up-arrow:off {{
-        border-bottom-color: {p.text_faint}; }}
-    QDoubleSpinBox::down-arrow:disabled, QSpinBox::down-arrow:disabled,
-    QDoubleSpinBox::down-arrow:off, QSpinBox::down-arrow:off {{
-        border-top-color: {p.text_faint}; }}
+        image: url("{minus_icon}"); width: 10px; height: 10px; }}
     QComboBox QAbstractItemView {{ background: {p.panel_alt}; color: {p.text};
         selection-background-color: {p.gold}; selection-color: {p.bg};
         border: 1px solid {p.border}; }}
@@ -225,10 +228,39 @@ def qss(p: Palette) -> str:
         border-bottom: 1px solid {p.border}; font-weight: 600; }}
     QTableView::item:selected {{ background: {p.gold}; color: {p.bg}; }}
     QSplitter::handle {{ background: {p.border}; }}
-    QScrollBar:vertical {{ background: {p.panel}; width: 10px; margin: 0; }}
-    QScrollBar::handle:vertical {{ background: {p.border}; border-radius: 5px; min-height: 24px; }}
-    QScrollBar::handle:vertical:hover {{ background: {p.text_faint}; }}
-    QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
+    QSplitter::handle:hover {{ background: {p.gold}; }}
+    QScrollBar:vertical {{ background: {p.panel}; width: 16px; margin: 18px 0 18px 0; }}
+    QScrollBar::handle:vertical {{ background: {p.text_faint}; border: 1px solid {p.border};
+        border-radius: 7px; min-height: 32px; }}
+    QScrollBar::handle:vertical:hover {{ background: {p.gold}; border-color: {p.gold}; }}
+    QScrollBar::sub-line:vertical {{ background: {p.panel_alt}; height: 18px;
+        subcontrol-position: top; subcontrol-origin: margin; border: 1px solid {p.border}; }}
+    QScrollBar::add-line:vertical {{ background: {p.panel_alt}; height: 18px;
+        subcontrol-position: bottom; subcontrol-origin: margin; border: 1px solid {p.border}; }}
+    QScrollBar::sub-line:vertical:hover, QScrollBar::add-line:vertical:hover {{
+        background: {p.gold}; border-color: {p.gold}; }}
+    QScrollBar::sub-arrow:vertical {{ width: 0; height: 0;
+        border-left: 4px solid transparent; border-right: 4px solid transparent;
+        border-bottom: 6px solid {p.text}; }}
+    QScrollBar::add-arrow:vertical {{ width: 0; height: 0;
+        border-left: 4px solid transparent; border-right: 4px solid transparent;
+        border-top: 6px solid {p.text}; }}
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+    QScrollBar:horizontal {{ background: {p.panel}; height: 16px; margin: 0 18px 0 18px; }}
+    QScrollBar::handle:horizontal {{ background: {p.text_faint}; border: 1px solid {p.border};
+        border-radius: 7px; min-width: 32px; }}
+    QScrollBar::handle:horizontal:hover {{ background: {p.gold}; border-color: {p.gold}; }}
+    QScrollBar::sub-line:horizontal {{ background: {p.panel_alt}; width: 18px;
+        subcontrol-position: left; subcontrol-origin: margin; border: 1px solid {p.border}; }}
+    QScrollBar::add-line:horizontal {{ background: {p.panel_alt}; width: 18px;
+        subcontrol-position: right; subcontrol-origin: margin; border: 1px solid {p.border}; }}
+    QScrollBar::sub-arrow:horizontal {{ width: 0; height: 0;
+        border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+        border-right: 6px solid {p.text}; }}
+    QScrollBar::add-arrow:horizontal {{ width: 0; height: 0;
+        border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+        border-left: 6px solid {p.text}; }}
+    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
     QSlider::groove:horizontal {{ height: 4px; background: {p.border}; border-radius: 2px; }}
     QSlider::handle:horizontal {{ background: {p.gold}; width: 12px; margin: -5px 0;
         border-radius: 6px; }}
@@ -241,6 +273,7 @@ def qss(p: Palette) -> str:
     QTabBar::tab {{ background: {p.panel}; color: {p.text_dim}; padding: 5px 12px;
         border: 1px solid {p.border}; border-bottom: none; }}
     QTabBar::tab:selected {{ background: {p.panel_alt}; color: {p.gold}; }}
+    QTabWidget#simulatorTabs > QTabBar::tab {{ padding: 7px 8px; }}
     """
 
 

@@ -1,4 +1,4 @@
-"""The literal Start/End date pipeline loads exactly the requested interval.
+"""The chart uses all loaded data while Simulator owns the date period.
 
 Skips without the GUI deps or the local parquet artifacts (it builds the real
 MainWindow under a narrow bar load).
@@ -35,40 +35,41 @@ class DateWindowTests(unittest.TestCase):
         cls.win = MainWindow(data=data)
         cls.dates = [pd.Timestamp(d) for d in cls.win._active_data()["dates"]]
 
-    def _set_window(self, start_ts, end_ts):
+    def setUp(self):
+        self.win._set_date_bounds(self.win._data["dates"])
+
+    def _set_period(self, start_ts, end_ts):
         from PySide6 import QtCore
 
         self.win._date_guard = True
         for edit, t in ((self.win.start_edit, start_ts), (self.win.end_edit, end_ts)):
             edit.setDate(QtCore.QDate(t.year, t.month, t.day))
         self.win._date_guard = False
-        self.win._render_view()
 
-    def test_first_and_last_bar_match_the_chosen_dates(self):
+    def test_chart_always_spans_all_loaded_dev_val_bars(self):
         start, end = self.dates[1], self.dates[4]
-        self._set_window(start, end)
+        self._set_period(start, end)
         bars = self.win._bars
-        self.assertEqual(pd.Timestamp(bars.trade_date[self.win._view_start]), start)
-        self.assertEqual(pd.Timestamp(bars.trade_date[self.win._view_end]), end)
+        self.win._render_view()
+        self.assertEqual(self.win._view_start, 0)
+        self.assertEqual(self.win._view_end, bars.n_bars - 1)
+        self.assertEqual(pd.Timestamp(bars.trade_date[self.win._view_start]), self.dates[0])
+        self.assertEqual(pd.Timestamp(bars.trade_date[self.win._view_end]), self.dates[-1])
 
-    def test_single_day_window_is_exactly_one_day(self):
-        day = self.dates[3]
-        self._set_window(day, day)
-        bars = self.win._bars
-        self.assertEqual(pd.Timestamp(bars.trade_date[self.win._view_start]), day)
-        self.assertEqual(pd.Timestamp(bars.trade_date[self.win._view_end]), day)
-        # every bar in the window falls on that single date
-        window = bars.trade_date[self.win._view_start : self.win._view_end + 1]
-        self.assertTrue((pd.to_datetime(window) == day).all())
+    def test_simulation_period_defaults_to_all_loaded_dates(self):
+        self.assertEqual(self.win.start_edit.date().toPython(), self.dates[0].date())
+        self.assertEqual(self.win.end_edit.date().toPython(), self.dates[-1].date())
 
-    def test_ensure_date_for_widens_the_window(self):
-        self._set_window(self.dates[5], self.dates[5])  # a single later day
-        earlier = self.win._window_bounds(self.win._bars, self.dates[0], self.dates[0])[0]
-        moved = self.win._ensure_date_for(earlier)  # a bar before the window
-        self.assertTrue(moved)
-        self.assertLessEqual(
-            pd.Timestamp(self.win._bars.trade_date[self.win._view_start]), self.dates[0]
-        )
+    def test_simulation_date_pair_stays_ordered_without_changing_chart(self):
+        from PySide6 import QtCore
+
+        before = (self.win._view_start, self.win._view_end)
+        later = self.dates[5]
+        earlier = self.dates[2]
+        self.win.start_edit.setDate(QtCore.QDate(later.year, later.month, later.day))
+        self.win.end_edit.setDate(QtCore.QDate(earlier.year, earlier.month, earlier.day))
+        self.assertEqual(self.win.end_edit.date(), self.win.start_edit.date())
+        self.assertEqual((self.win._view_start, self.win._view_end), before)
 
 
 if __name__ == "__main__":

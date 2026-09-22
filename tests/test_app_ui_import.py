@@ -55,7 +55,7 @@ class ChartWidgetSmokeTests(unittest.TestCase):
         chart.draw_trade(3, 9, 100.2, np.full(6, 99.7), np.full(6, 101.2), 101.2)
         chart.clear_trades()
 
-    def test_candles_split_at_segment_break(self):
+    def test_candles_share_one_cached_graphics_item(self):
         from src.app.ui.chart_widget import CandlestickItem, ChartWidget
 
         chart = ChartWidget()
@@ -64,7 +64,9 @@ class ChartWidgetSmokeTests(unittest.TestCase):
         labels = np.array([f"{i:02d}:00" for i in range(n)])
         chart.set_view(ohlc, labels, ViewMap.identity(0, n - 1))
         candles = [it for it in chart._price.items if isinstance(it, CandlestickItem)]
-        self.assertEqual(len(candles), 2)  # one item per continuous segment
+        # Candles are independent primitives, so one QPicture cannot draw a
+        # connecting line across the segment break and is much cheaper to pan.
+        self.assertEqual(len(candles), 1)
 
     def test_crosshair_readout_reports_ohlc(self):
         from src.app.ui.chart_widget import ChartWidget
@@ -94,7 +96,7 @@ class ChartWidgetSmokeTests(unittest.TestCase):
         self.assertFalse(chart._curtains[0].isVisible())
         chart.set_reveal(7)
         for i, curtain in enumerate(chart._curtains):
-            if i < 2:  # the oscillator pane is itself hidden until a study needs it
+            if i == 0:  # volume defaults off; oscillator waits for an active study
                 self.assertTrue(curtain.isVisible())
             lo, hi = curtain.getRegion()
             self.assertAlmostEqual(lo, 7.5)

@@ -69,12 +69,12 @@ class IndicatorLifecycleTests(unittest.TestCase):
     def test_volume_toggle_never_touches_price_state(self):
         c, _ohlc = self._chart()
         x_before = c._price.vb.viewRange()[0]
-        self.assertTrue(c.volume_visible())
-        c.set_volume_visible(False)
+        self.assertFalse(c.volume_visible())
         self.assertFalse(c._volume.isVisible())
         self.assertEqual(c._price.vb.viewRange()[0], x_before)
         c.set_volume_visible(True)
         self.assertTrue(c._volume.isVisible())
+        self.assertEqual(c._price.vb.viewRange()[0], x_before)
 
     def test_header_chips_follow_active_set(self):
         c, _ohlc = self._chart()

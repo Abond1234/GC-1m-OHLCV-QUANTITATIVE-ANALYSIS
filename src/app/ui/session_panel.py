@@ -61,13 +61,21 @@ class SessionPanel(QtWidgets.QWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
+        # The standalone panel still contains everything. MainWindow mounts
+        # sizing in Risk and these result widgets in Performance, keeping one
+        # shared set of controls and the existing accounting signals.
+        self.performance_widget = QtWidgets.QWidget()
+        results_layout = QtWidgets.QVBoxLayout(self.performance_widget)
+        results_layout.setContentsMargins(8, 8, 8, 8)
+        results_layout.setSpacing(8)
+
         caption = QtWidgets.QLabel(
-            "Simulated fills on historical Dev+Val data - not live results and "
-            "not a validated strategy."
+            "Free-play account: these results cover manually placed trades on "
+            "historical Development + Validation data."
         )
         caption.setWordWrap(True)
         caption.setProperty("role", "caption")
-        layout.addWidget(caption)
+        results_layout.addWidget(caption)
 
         self.equity_plot = pg.PlotWidget()
         self.equity_plot.setMaximumHeight(170)
@@ -75,7 +83,7 @@ class SessionPanel(QtWidgets.QWidget):
         self.equity_plot.hideButtons()
         self.equity_plot.showGrid(x=False, y=True, alpha=0.12)
         self.equity_plot.setLabel("left", "$")
-        layout.addWidget(self.equity_plot)
+        results_layout.addWidget(self.equity_plot)
 
         stats_box = QtWidgets.QGroupBox("Session")
         grid = QtWidgets.QGridLayout(stats_box)
@@ -91,7 +99,7 @@ class SessionPanel(QtWidgets.QWidget):
             grid.addWidget(name, row, col * 2)
             grid.addWidget(value, row, col * 2 + 1)
             self._stat_values[key] = value
-        layout.addWidget(stats_box)
+        results_layout.addWidget(stats_box)
 
         account_box = QtWidgets.QGroupBox("Account")
         form = QtWidgets.QFormLayout(account_box)
@@ -126,10 +134,15 @@ class SessionPanel(QtWidgets.QWidget):
         self.contracts_spin.setAccelerated(True)
         form.addRow("balance $", self.balance_spin)
         form.addRow("instrument", self.instrument_combo)
-        form.addRow("sizing", self.sizing_combo)
-        form.addRow("risk / trade", self.risk_spin)
-        form.addRow("contracts", self.contracts_spin)
         layout.addWidget(account_box)
+
+        self.sizing_box = QtWidgets.QGroupBox("Risk per trade")
+        sizing = QtWidgets.QFormLayout(self.sizing_box)
+        sizing.setSpacing(6)
+        sizing.addRow("sizing", self.sizing_combo)
+        sizing.addRow("risk / trade", self.risk_spin)
+        sizing.addRow("contracts", self.contracts_spin)
+        layout.addWidget(self.sizing_box)
 
         rules_box = QtWidgets.QGroupBox("Prop-firm rules")
         rf = QtWidgets.QFormLayout(rules_box)
@@ -176,7 +189,7 @@ class SessionPanel(QtWidgets.QWidget):
             og.addWidget(name, i + 1, 0)
             og.addWidget(value, i + 1, 1)
             self._outputs[key] = value
-        layout.addWidget(out_box)
+        results_layout.addWidget(out_box)
 
         self.util_plot = pg.PlotWidget()
         self.util_plot.setMaximumHeight(120)
@@ -184,7 +197,7 @@ class SessionPanel(QtWidgets.QWidget):
         self.util_plot.hideButtons()
         self.util_plot.showGrid(x=False, y=True, alpha=0.12)
         self.util_plot.setLabel("left", "rule use")
-        layout.addWidget(self.util_plot)
+        results_layout.addWidget(self.util_plot)
 
         meters_box = QtWidgets.QGroupBox("Rule meters")
         mv = QtWidgets.QVBoxLayout(meters_box)
@@ -200,6 +213,7 @@ class SessionPanel(QtWidgets.QWidget):
             bar.setTextVisible(False)
             bar.setFixedHeight(10)
             detail = QtWidgets.QLabel("")
+            detail.setWordWrap(True)
             detail.setProperty("role", "caption")
             row.addWidget(name)
             row.addWidget(bar, 1)
@@ -211,7 +225,9 @@ class SessionPanel(QtWidgets.QWidget):
             col.addWidget(detail)
             mv.addWidget(widget)
             self._meters.append((name, bar, detail))
-        layout.addWidget(meters_box)
+        results_layout.addWidget(meters_box)
+        results_layout.addStretch(1)
+        layout.addWidget(self.performance_widget)
         layout.addStretch(1)
 
         for w in (self.balance_spin, self.risk_spin):

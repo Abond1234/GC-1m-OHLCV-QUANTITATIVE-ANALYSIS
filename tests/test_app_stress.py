@@ -73,9 +73,14 @@ class AppStressTests(unittest.TestCase):
         w.chart.start_replay(None, start_global=start)
         w.chart.replay_frame(None, start + 10, start_global=start)
         region_before = w.chart._curtains[0].getRegion()
-        for i in range(5):
+        for i in range(w._workspace_stack.count()):
             w._select_workspace(i)
             self._pump(1)
+        w._set_simulator_visible(True)
+        for i in range(w.simulator_panel.tabs.count()):
+            w.simulator_panel.tabs.setCurrentIndex(i)
+            self._pump(1)
+        w.simulator_panel.close_button.click()
         self.assertTrue(w.chart._curtains[0].isVisible())
         self.assertEqual(w.chart._curtains[0].getRegion(), region_before)
         w._select_workspace(0)

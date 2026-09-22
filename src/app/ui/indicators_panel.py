@@ -14,6 +14,19 @@ from PySide6 import QtCore, QtWidgets
 from ..analysis.indicators import INDICATORS, IndicatorInstance
 from . import theme
 
+_STUDY_HELP = {
+    "sma": "Trend baseline on the displayed timeframe.",
+    "ema": "Responsive trend baseline on the displayed timeframe.",
+    "bollinger": "Volatility envelope around a rolling mean.",
+    "atr": "Displayed-bar range and stop-distance context.",
+    "rsi": "Momentum context with 30/70 reference levels.",
+    "rvol": "Rolling variability of displayed-bar returns.",
+    "obv": "Cumulative volume signed by price direction.",
+    "vma": "Moving average of the optional volume pane.",
+    "vwap_day": "Research-day VWAP from the verified 1-minute series.",
+    "vwap_session": "Execution-session VWAP from the verified 1-minute series.",
+}
+
 # Default colour cycle for new studies, resolved from the active palette.
 _COLOR_ATTRS = ("vwap_rolling", "vwap_day", "vwap_session", "gold", "hook", "up", "down")
 
@@ -110,6 +123,29 @@ class IndicatorsPanel(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(6)
 
+        title = QtWidgets.QLabel("Chart indicators")
+        title.setProperty("role", "sectionTitle")
+        lay.addWidget(title)
+        note = QtWidgets.QLabel(
+            "Add only the visual context you need. These studies never change "
+            "strategy entries, fills, or simulator results."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "caption")
+        lay.addWidget(note)
+
+        self.volume_check = QtWidgets.QCheckBox("Show volume pane")
+        self.volume_check.setChecked(False)
+        self.volume_check.setToolTip(
+            "Display exchange volume below price. It is hidden when the app opens."
+        )
+        self.volume_check.toggled.connect(self.volumeToggled.emit)
+        lay.addWidget(self.volume_check)
+
+        available_label = QtWidgets.QLabel("Available studies")
+        available_label.setProperty("role", "caption")
+        lay.addWidget(available_label)
+
         self.search = QtWidgets.QLineEdit()
         self.search.setPlaceholderText("Search indicators...")
         self.search.setClearButtonEnabled(True)
@@ -121,6 +157,7 @@ class IndicatorsPanel(QtWidgets.QWidget):
         for key, definition in INDICATORS.items():
             item = QtWidgets.QListWidgetItem(definition.label)
             item.setData(QtCore.Qt.UserRole, key)
+            item.setToolTip(_STUDY_HELP.get(key, "Chart-only display study."))
             self.available.addItem(item)
         self.available.itemDoubleClicked.connect(
             lambda item: self.add_study(item.data(QtCore.Qt.UserRole))
@@ -131,13 +168,9 @@ class IndicatorsPanel(QtWidgets.QWidget):
         add_btn.clicked.connect(self._add_selected)
         lay.addWidget(add_btn)
 
-        self.volume_check = QtWidgets.QCheckBox("Volume pane")
-        self.volume_check.setChecked(True)
-        self.volume_check.setToolTip("Show or hide the volume panel under the chart.")
-        self.volume_check.toggled.connect(self.volumeToggled.emit)
-        lay.addWidget(self.volume_check)
-
-        lay.addWidget(QtWidgets.QLabel("Active"))
+        active_label = QtWidgets.QLabel("Active studies")
+        active_label.setProperty("role", "caption")
+        lay.addWidget(active_label)
         self.active_list = QtWidgets.QVBoxLayout()
         self.active_list.setSpacing(2)
         active_holder = QtWidgets.QWidget()

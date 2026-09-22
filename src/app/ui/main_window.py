@@ -24,6 +24,7 @@ import pandas as pd
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..analysis.account import build_equity_curve, session_stats
+from ..analysis.challenge_simulator import simulate_challenges
 from ..analysis.evaluation import evaluate_policy
 from ..analysis.excursion import compute_excursion, is_winner_on_the_hook
 from ..analysis.grid_sweep import default_axes, sweep_entry
@@ -31,6 +32,7 @@ from ..analysis.indicators import compute as compute_study
 from ..analysis.placed_trade import place_trade, recompute_config, recompute_levels
 from ..analysis.whatif import run_whatifs
 from ..datalayer.catalog_service import StrategyReplayService
+from ..datalayer.chart_viewport import ChartViewportCache, ViewportSlice
 from ..datalayer.edge_context import EdgeContextService
 from ..datalayer.forensics import ForensicsService
 from ..datalayer.instruments import REGISTRY, available_instruments, load_instrument_bars
@@ -52,7 +54,7 @@ from ..datalayer.timeframe import (
     sample_first,
     sample_last,
 )
-from ..datalayer.vwap import execution_session_vwap, research_day_vwap, rolling_vwap
+from ..datalayer.vwap import execution_session_vwap, research_day_vwap
 from ..sim.exit_config import frozen_config
 from ..sim.flex_exit import single_flex_exit
 from ..workers.tasks import Task
@@ -64,13 +66,16 @@ from .exit_panel import ExitPanel
 from .forensics_panel import ForensicsPanel
 from .heatmap_widget import HeatmapWidget
 from .indicators_panel import IndicatorsPanel
+from .input_guard import WheelInputGuard
 from .replay_animator import ReplayAnimator
 from .session_panel import SessionPanel
+from .simulation_setup import PropFirmPanel, RiskPanel
+from .simulator_panel import ReplaySummary, SimulatorPanel
 from .strategy_browser import StrategyBrowser
 
 _WHATIF_COLUMNS = ["Exit rule", "Survived?", "R", "Exit", "Held"]
 
-_TRADE_COLUMNS = ["Strategy", "Entry (NY)", "Dir", "Exit", "R", "Held"]
+_TRADE_COLUMNS = ["Account", "Stage", "Entry (NY)", "Dir", "R", "P&L", "Outcome", "Held"]
 
 
 def _session_code(minute_ny: np.ndarray) -> np.ndarray:
@@ -95,7 +100,6 @@ def load_app_data(root=None, date_floor=None) -> dict:
     return {
         "replay": replay,
         "forensics": ForensicsService(),
-        "vwap20": rolling_vwap(bars, 20),
         "vwap_day": research_day_vwap(bars),
         "vwap_session": execution_session_vwap(bars),
         "session_code": _session_code(bars.minute_ny),
@@ -112,7 +116,6 @@ def load_instrument_bundle(symbol: str, date_floor=None) -> dict:
     return {
         "symbol": symbol,
         "bars": bars,
-        "vwap20": rolling_vwap(bars, 20),
         "vwap_day": research_day_vwap(bars),
         "vwap_session": execution_session_vwap(bars),
         "session_code": _session_code(bars.minute_ny),
@@ -125,6 +128,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, data: dict | None = None):
         super().__init__()
+        self._wheel_input_guard = WheelInputGuard(self)
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self._wheel_input_guard)
         self.setWindowTitle("GC Trade Simulator - Development + Validation")
         self.setMinimumSize(960, 600)
         self._fit_to_screen(1600, 940)
@@ -132,6 +139,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._tasks: set = set()  # keep runnables alive until they finish (PySide6 GC)
         self._data: dict | None = None
         self._log: pd.DataFrame | None = None  # replay trade log
+        self._replay_running = False
+        self._replay_token = 0
+        self._simulator_width = 500
         self._view_start = 0
         self._view_end = 0
         self._replay_cfg = frozen_config()
@@ -156,6 +166,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._pending_session: dict | None = None  # session applied after a switch
         self._date_guard = False  # suppress re-render while setting both date edits
         self._rs = None  # the displayed window's Resampled (for study evaluation)
+        self._chart_cache: ChartViewportCache | None = None
+        self._viewport_slice: ViewportSlice | None = None
+        self._effective_tf = TIMEFRAMES["1D"]
+        self._rendering_view = False
+        self._pending_chart_range: tuple[float, float] | None = None
+        self._viewport_timer = QtCore.QTimer(self)
+        self._viewport_timer.setSingleShot(True)
+        self._viewport_timer.setInterval(70)
+        self._viewport_timer.timeout.connect(self._apply_chart_viewport)
         self._edge_service = EdgeContextService()
         self._edge_token = 0
         self._edge_day: tuple[int, int] | None = None  # anchor day's 1m [lo, hi]
@@ -197,6 +216,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chart = ChartWidget()
         self.chart.bar_clicked.connect(self._on_bar_clicked)
         self.chart.bar_hovered.connect(self._on_bar_hovered)
+        self.chart.view_range_changed.connect(self._on_chart_range_changed)
         self._animator = ReplayAnimator(self.chart)
         self._animator.stateChanged.connect(self._on_replay_state)
         self._animator.positionChanged.connect(self._on_replay_position)
@@ -214,8 +234,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_exit_panel()
         self._build_draw_actions()
         self._build_workspaces()
+        self._build_simulator()
         self._build_transport()
-        self.indicators_panel.add_study("vwap20")  # the default study, as before
 
         chart_col = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         chart_col.addWidget(self.chart)
@@ -227,13 +247,16 @@ class MainWindow(QtWidgets.QMainWindow):
         split = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         split.addWidget(self._workspace_panel)  # collapsible left workspace
         split.addWidget(chart_col)  # the chart stays central
-        split.addWidget(self._right)  # trade inspector
-        split.setSizes([320, 980, 380])
+        split.addWidget(self.simulator_panel)
+        split.setHandleWidth(8)
+        split.setSizes([280, 820, self._simulator_width])
         split.setStretchFactor(1, 1)
         split.setCollapsible(0, True)
         split.setCollapsible(1, False)  # the chart itself never collapses
-        split.setCollapsible(2, True)
+        split.setCollapsible(2, False)
         self._split = split
+        split.handle(2).setToolTip("Drag left to make Simulator wider.")
+        self.simulator_panel.hide()
 
         central = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(central)
@@ -252,25 +275,26 @@ class MainWindow(QtWidgets.QMainWindow):
             "Strategy replay and Edge context stay GC-only (research validity)."
         )
         self.instrument_combo.currentIndexChanged.connect(self._on_instrument_changed)
-        # Literal date window: Start and End load exactly the requested interval,
-        # with no "ending at the selected date" lookback behaviour.
+        # The only date range in the app is the inclusive simulation period.
+        # These controls are mounted in the Strategy tab, not the chart toolbar.
         self.start_edit = QtWidgets.QDateEdit()
         self.end_edit = QtWidgets.QDateEdit()
         for edit, tip in (
-            (self.start_edit, "First trade date to load (inclusive)."),
-            (self.end_edit, "Last trade date to load (inclusive)."),
+            (self.start_edit, "First strategy entry date to simulate (inclusive)."),
+            (self.end_edit, "Last strategy entry date to simulate (inclusive)."),
         ):
             edit.setCalendarPopup(True)
             edit.setDisplayFormat("yyyy-MM-dd")
-            edit.setToolTip(tip + " The chart loads exactly this interval.")
+            edit.setToolTip(tip)
             edit.dateChanged.connect(self._on_dates_changed)
         self.tf_combo = QtWidgets.QComboBox()
         self.tf_combo.addItems(list(TIMEFRAMES))
+        self.tf_combo.setCurrentText("1D")
         self.tf_combo.setToolTip(
             "Chart display timeframe. Aggregation is display-only: every\n"
             "simulation, entry, exit, and replay stays on true 1-minute bars."
         )
-        self.tf_combo.currentTextChanged.connect(lambda _t: self._render_view())
+        self.tf_combo.currentTextChanged.connect(self._on_timeframe_changed)
         self.session_check = QtWidgets.QCheckBox("NY session")
         self.session_check.setChecked(True)
         self.session_check.setToolTip("Shade the New York execution window (07:00-12:00 NY).")
@@ -286,7 +310,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.custom_check.setToolTip(
             "Replay using the Exit-rule panel instead of the frozen contract."
         )
-        self.replay_btn = QtWidgets.QPushButton("Replay")
+        self.replay_btn = QtWidgets.QPushButton("Simulate")
+        self.replay_btn.setProperty("accent", True)
+        self.replay_btn.setMinimumHeight(34)
+        self.replay_btn.setEnabled(False)
+        self.replay_btn.setToolTip("Run the selected strategy over the chosen simulation period.")
         self.replay_btn.clicked.connect(self._on_replay)
         self.freeplay_check = QtWidgets.QCheckBox("Free-play (click to enter)")
         self.freeplay_check.setToolTip("Click the chart to place a trade at the next bar's open.")
@@ -326,16 +354,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._overlay_menu = QtWidgets.QMenu(self)
         self.overlay_btn.setMenu(self._overlay_menu)
 
-        # The global toolbar stays lean: instrument, the literal date window, the
-        # display timeframe, and the comparison overlay.
+        # The global toolbar stays lean: instrument, display timeframe, and overlay.
         self._controls = QtWidgets.QHBoxLayout()
         self._controls.setSpacing(6)
         for w in (
             self.instrument_combo,
-            QtWidgets.QLabel("Start"),
-            self.start_edit,
-            QtWidgets.QLabel("End"),
-            self.end_edit,
             QtWidgets.QLabel("TF"),
             self.tf_combo,
             _sep(),
@@ -343,6 +366,12 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             self._controls.addWidget(w)
         self._controls.addStretch(1)
+        self.simulator_button = QtWidgets.QPushButton("Simulator")
+        self.simulator_button.setObjectName("simulatorToggle")
+        self.simulator_button.setCheckable(True)
+        self.simulator_button.setToolTip("Open Simulator. Drag its left edge to resize it.")
+        self.simulator_button.toggled.connect(self._set_simulator_visible)
+        self._controls.addWidget(self.simulator_button)
 
     def _build_side(self) -> None:
         self.trade_table = QtWidgets.QTableWidget(0, len(_TRADE_COLUMNS))
@@ -371,10 +400,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.heatmap = HeatmapWidget()
         self.heatmap.cellChosen.connect(self._on_grid_cell)
 
-        # Trade list + analysis live in the Strategy workspace (left); the right
-        # sidebar is the trade inspector.
+        # Existing trade lists and analysis are mounted under Performance.
         self._tabs = QtWidgets.QTabWidget()
-        self._tabs.addTab(self.trade_table, "Replay")
+        self._tabs.addTab(self.trade_table, "Trades")
         self._tabs.addTab(self.blotter, "Free-play")
         self._tabs.addTab(self.whatif_table, "What-if")
         self._tabs.addTab(self.heatmap, "Exit grid")
@@ -392,12 +420,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.overview.setContentsMargins(10, 8, 10, 8)
         overview_box = QtWidgets.QGroupBox("Trade overview")
         QtWidgets.QVBoxLayout(overview_box).addWidget(self.overview)
+        self._overview_box = overview_box
 
         self.forensics = ForensicsPanel()
         self._right = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        self._right.addWidget(overview_box)
         self._right.addWidget(self.forensics)
-        self._right.setSizes([150, 520])
+        self._tabs.addTab(self._right, "Trade detail")
         self.trade_table.doubleClicked.connect(lambda _i: self._activate_selected_row())
 
     def _build_exit_panel(self) -> None:
@@ -405,23 +433,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.exit_panel.configChanged.connect(self._on_config_changed)
 
     # -- workspaces --------------------------------------------------------
-    _WORKSPACES = ("Strategy", "Indicators", "Drawing", "Risk", "Prop firm")
+    _WORKSPACES = ("Indicators", "Drawing")
 
     def _build_workspaces(self) -> None:
-        """Five collapsible left workspaces behind a vertical nav rail."""
+        """Chart tools stay on the left; simulation setup lives on the right."""
 
         self._workspace_stack = QtWidgets.QStackedWidget()
         for maker in (
-            self._make_strategy_ws,
             self._make_indicators_ws,
             self._make_drawing_ws,
-            self._make_risk_ws,
-            self._make_propfirm_ws,
         ):
             self._workspace_stack.addWidget(maker())
 
         panel = QtWidgets.QWidget()
-        panel.setMinimumWidth(300)
+        panel.setMinimumWidth(260)
         pl = QtWidgets.QVBoxLayout(panel)
         pl.setContentsMargins(0, 0, 0, 0)
         pl.addWidget(self._workspace_stack)
@@ -440,7 +465,71 @@ class MainWindow(QtWidgets.QMainWindow):
             self._ws_actions.append(act)
         self.addToolBar(QtCore.Qt.LeftToolBarArea, rail)
         self._nav_rail = rail
-        self._select_workspace(0)  # Strategy open by default
+        panel.hide()
+
+    def _build_simulator(self) -> None:
+        self.prop_firm_panel = PropFirmPanel()
+        self.risk_panel = RiskPanel()
+        self.simulation_period = QtWidgets.QGroupBox("Simulation period")
+        dates = QtWidgets.QGridLayout(self.simulation_period)
+        dates.addWidget(QtWidgets.QLabel("Start"), 0, 0)
+        dates.addWidget(self.start_edit, 0, 1)
+        dates.addWidget(QtWidgets.QLabel("End"), 1, 0)
+        dates.addWidget(self.end_edit, 1, 1)
+        dates.setColumnStretch(1, 1)
+        self.simulation_period.setToolTip(
+            "Inclusive strategy entry dates used for every simulation."
+        )
+        pages = (
+            ("Prop firm", self._make_propfirm_ws()),
+            ("Risk", self._make_risk_ws()),
+            ("Strategy", self._make_strategy_ws()),
+            ("Performance", self._make_performance_ws()),
+        )
+        self.simulator_panel = SimulatorPanel(self.replay_btn, self.simulation_period, pages)
+        self.simulator_panel.closeRequested.connect(lambda: self._set_simulator_visible(False))
+
+    def _set_simulator_visible(self, visible: bool) -> None:
+        """Toggle the sidebar without rebuilding controls or losing its width."""
+
+        was_visible = not self.simulator_panel.isHidden()
+        if not visible and was_visible:
+            self._simulator_width = self._split.sizes()[2]
+        self.simulator_button.blockSignals(True)
+        self.simulator_button.setChecked(visible)
+        self.simulator_button.blockSignals(False)
+        self.simulator_panel.setVisible(visible)
+        if visible and not was_visible:
+            sizes = self._split.sizes()
+            available = sum(sizes) - sizes[0]
+            width = min(self._simulator_width, max(370, available - 240))
+            self._split.setSizes([sizes[0], max(240, available - width), width])
+
+    def _show_performance(self, widget=None) -> None:
+        self._set_simulator_visible(True)
+        self.simulator_panel.select("Performance")
+        if widget is not None and self._tabs.indexOf(widget) >= 0:
+            self._tabs.setCurrentWidget(widget)
+
+    def _make_performance_ws(self) -> QtWidgets.QWidget:
+        w, lay = self._ws_widget()
+        lay.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
+        self.replay_summary = ReplaySummary()
+        self.replay_summary.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum
+        )
+        self._overview_box.setSizePolicy(
+            QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum
+        )
+        lay.addWidget(self.replay_summary)
+        lay.addWidget(self._overview_box)
+        self.trade_table.setMinimumHeight(280)
+        lay.addWidget(self.trade_table, 1)
+        self._performance_scroll = QtWidgets.QScrollArea()
+        self._performance_scroll.setWidgetResizable(True)
+        self._performance_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self._performance_scroll.setWidget(w)
+        return self._performance_scroll
 
     def _select_workspace(self, index: int) -> None:
         """Show a workspace; clicking the open one again collapses the panel."""
@@ -466,23 +555,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _make_strategy_ws(self) -> QtWidgets.QWidget:
         w, lay = self._ws_widget()
+        note = QtWidgets.QLabel(
+            "Select one verified strategy. Its research-defined exits remain fixed; "
+            "the Prop firm and Risk rules are applied to the resulting trades."
+        )
+        note.setWordWrap(True)
+        note.setProperty("role", "caption")
+        lay.addWidget(note)
         lay.addWidget(self.strategy_browser, 1)
-        run = QtWidgets.QHBoxLayout()
-        run.addWidget(self.custom_check)
-        run.addStretch(1)
-        run.addWidget(self.replay_btn)
-        lay.addLayout(run)
-        fp = QtWidgets.QHBoxLayout()
-        for x in (self.freeplay_check, self.long_radio, self.short_radio):
-            fp.addWidget(x)
-        fp.addStretch(1)
-        lay.addLayout(fp)
-        acts = QtWidgets.QHBoxLayout()
-        for x in (self.excursion_check, self.whatif_btn, self.grid_btn):
-            acts.addWidget(x)
-        acts.addStretch(1)
-        lay.addLayout(acts)
-        lay.addWidget(self._tabs, 1)
         return w
 
     def _make_indicators_ws(self) -> QtWidgets.QWidget:
@@ -490,9 +570,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.indicators_panel = IndicatorsPanel()
         self.indicators_panel.changed.connect(self._on_indicators_changed)
         self.indicators_panel.volumeToggled.connect(self.chart.set_volume_visible)
+        self.chart.set_volume_visible(self.indicators_panel.volume_check.isChecked())
         lay.addWidget(self.indicators_panel, 3)
         lay.addWidget(self.session_check)
-        lay.addWidget(self.edge_panel, 2)
         return w
 
     def _make_drawing_ws(self) -> QtWidgets.QWidget:
@@ -541,7 +621,10 @@ class MainWindow(QtWidgets.QMainWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setWidget(self.exit_panel)
+        holder, contents = self._ws_widget()
+        contents.addWidget(self.risk_panel)
+        contents.addStretch(1)
+        scroll.setWidget(holder)
         lay.addWidget(scroll)
         return w
 
@@ -551,7 +634,10 @@ class MainWindow(QtWidgets.QMainWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setWidget(self.session_panel)  # the panel is dense; let it scroll
+        holder, contents = self._ws_widget()
+        contents.addWidget(self.prop_firm_panel)
+        contents.addStretch(1)
+        scroll.setWidget(holder)
         lay.addWidget(scroll)
         return w
 
@@ -573,11 +659,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         menu = self._view_menu
         menu.addSeparator()
+        simulator = menu.addAction("Simulator")
+        simulator.setShortcut("Ctrl+Shift+S")
+        simulator.triggered.connect(self.simulator_button.click)
         inspector = menu.addAction("Trade inspector")
-        inspector.setCheckable(True)
-        inspector.setChecked(True)
         inspector.setShortcut("Ctrl+I")
-        inspector.toggled.connect(self._right.setVisible)
+        inspector.triggered.connect(lambda: self._show_performance(self._right))
         self._inspector_action = inspector
         transport_act = self._transport.toggleViewAction()
         transport_act.setText("Replay transport")
@@ -855,6 +942,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.instrument_combo.blockSignals(False)
         self._populate_compare_combo()
         self.session_panel.sync_instruments(available_instruments(), self._instrument)
+        self.replay_btn.setEnabled(True)
         self._set_status(f"Loaded {data['replay'].bars.n_bars:,} GC bars (Dev+Val).")
         self._render_view()
         self.loadFinished.emit(True)
@@ -877,13 +965,13 @@ class MainWindow(QtWidgets.QMainWindow):
         return QtCore.QDate(t.year, t.month, t.day)
 
     def _set_date_bounds(self, dates) -> None:
-        """Constrain both date edits to the loaded window and default to the last day."""
+        """Constrain simulation dates to Dev+Val and default to the full period."""
 
         first, last = self._qdate(dates[0]), self._qdate(dates[-1])
         self._date_guard = True
         for edit in (self.start_edit, self.end_edit):
             edit.setDateRange(first, last)
-        self.start_edit.setDate(last)  # default: the most recent single day
+        self.start_edit.setDate(first)
         self.end_edit.setDate(last)
         self._date_guard = False
 
@@ -907,51 +995,155 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.start_edit.setDate(self.end_edit.date())
             self._date_guard = False
-        self._render_view()
+
+    def _ensure_chart_cache(self) -> ChartViewportCache:
+        bars = self._bars
+        if self._chart_cache is None or self._chart_cache.bars is not bars:
+            self._chart_cache = ChartViewportCache(bars)
+            self._viewport_slice = None
+        return self._chart_cache
+
+    def _on_timeframe_changed(self, _text: str) -> None:
+        if self._data is None or self._viewport_slice is None:
+            self._render_view()
+            return
+        self._animator.stop()
+        cache = self._ensure_chart_cache()
+        x0, x1 = (float(x) for x in self.chart._price.viewRange()[0])
+        global_start, global_end = cache.global_range_for_x(self._effective_tf, x0, x1)
+        requested = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        width = max(600, int(self.chart._price.vb.width()))
+        effective = cache.choose_timeframe(requested, global_start, global_end, width)
+        if effective == self._effective_tf and cache.tile_contains(self._viewport_slice, x0, x1):
+            if effective != requested:
+                label = next((k for k, value in TIMEFRAMES.items() if value == effective), "")
+                self._set_status(
+                    f"{self.tf_combo.currentText()} selected; {label} overview shown until you zoom in."
+                )
+            return
+        self._render_chart_window(
+            global_start,
+            global_end,
+            requested=requested,
+            effective=effective,
+            x_range=(x0, x1) if effective == self._effective_tf else None,
+        )
+
+    def _on_chart_range_changed(self, x0: float, x1: float) -> None:
+        """Queue viewport work so a wheel/drag gesture never rebuilds per event."""
+
+        if self._rendering_view or self._data is None or self._viewport_slice is None:
+            return
+        self._pending_chart_range = (float(x0), float(x1))
+        self._viewport_timer.start()
+
+    def _apply_chart_viewport(self) -> None:
+        pending = self._pending_chart_range
+        viewport = self._viewport_slice
+        if pending is None or viewport is None or self._data is None or self._rendering_view:
+            return
+        self._pending_chart_range = None
+        cache = self._ensure_chart_cache()
+        global_start, global_end = cache.global_range_for_x(
+            self._effective_tf, pending[0], pending[1]
+        )
+        requested = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        width = max(600, int(self.chart._price.vb.width()))
+        effective = cache.choose_timeframe(requested, global_start, global_end, width)
+        if effective == self._effective_tf and cache.tile_contains(
+            viewport, pending[0], pending[1]
+        ):
+            return  # current QPictures and line objects remain reusable
+        self._render_chart_window(
+            global_start,
+            global_end,
+            requested=requested,
+            effective=effective,
+            x_range=pending if effective == self._effective_tf else None,
+        )
 
     def _render_view(self) -> None:
-        """Render the literal [Start, End] date window at the display timeframe."""
+        """Render the current visible period from the full Dev+Val history."""
 
         if self._data is None:
             return
-        self._animator.stop()  # leaving the window ends any running animation
+        self._animator.stop()  # an explicit view/timeframe change ends animation
         bars = self._bars
-        lo, hi = self._window_bounds(
-            bars, self.start_edit.date().toPython(), self.end_edit.date().toPython()
-        )
-        if hi < lo:
-            self._set_status("No bars in the selected date range.")
+        if bars.n_bars <= 0:
+            self._set_status("No Development + Validation bars are available.")
             return
-        self._view_start, self._view_end = lo, hi
-        multi_day = bars.trade_date[lo] != bars.trade_date[hi]
-        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
-        rs = resample_window(bars, lo, hi, tf)
-        view_map = ViewMap.from_resampled(rs, tf)
-        labels = bucket_labels(bars, rs, tf, multi_day=multi_day)
-        ohlc = {
-            "open": rs.open,
-            "high": rs.high,
-            "low": rs.low,
-            "close": rs.close,
-            "volume": rs.volume,
-            "segment": rs.segment,
-        }
-        self.chart.set_tick_size(REGISTRY[self._instrument].spec.tick_size)
-        self.chart.set_view(
-            ohlc,
-            labels,
-            view_map,
-            minute_close=bars.close[lo : hi + 1],
-            hover_labels=hover_labels(bars, rs, tf),
+        cache = self._ensure_chart_cache()
+        if self._viewport_slice is None:
+            global_start, global_end = 0, bars.n_bars - 1
+        else:
+            x0, x1 = (float(x) for x in self.chart._price.viewRange()[0])
+            global_start, global_end = cache.global_range_for_x(self._effective_tf, x0, x1)
+        self._render_chart_window(global_start, global_end)
+
+    def _render_chart_window(
+        self,
+        global_start: int,
+        global_end: int,
+        *,
+        requested: int | None = None,
+        effective: int | None = None,
+        x_range: tuple[float, float] | None = None,
+    ) -> None:
+        """Paint one buffered tile; research and simulation data remain untouched."""
+
+        if self._data is None:
+            return
+        bars = self._bars
+        cache = self._ensure_chart_cache()
+        requested = requested or TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        width = max(600, int(self.chart._price.vb.width()))
+        viewport = cache.window(
+            requested,
+            max(0, int(global_start)),
+            min(bars.n_bars - 1, int(global_end)),
+            width,
+            timeframe=effective,
         )
-        self._rs = rs  # active studies re-evaluate against this window
-        self._render_indicators()
-        self.chart.shade_sessions(
-            sample_first(self._active_data()["session_code"], rs),
-            visible=self.session_check.isChecked(),
-        )
-        self._redraw_overlays()
-        self._refresh_edge_context()
+        rs = viewport.resampled
+        if len(rs.close) == 0:
+            return
+        self._rendering_view = True
+        try:
+            self._viewport_slice = viewport
+            self._effective_tf = viewport.timeframe
+            self._view_start = int(rs.bucket_starts[0])
+            self._view_end = int(rs.bucket_ends[-1])
+            view_map = ViewMap.from_resampled(
+                rs, viewport.timeframe, display_offset=viewport.tile_start
+            )
+            multi_day = bars.trade_date[self._view_start] != bars.trade_date[self._view_end]
+            labels = bucket_labels(bars, rs, viewport.timeframe, multi_day=bool(multi_day))
+            self.chart.set_tick_size(REGISTRY[self._instrument].spec.tick_size)
+            self.chart.set_view(
+                {
+                    "open": rs.open,
+                    "high": rs.high,
+                    "low": rs.low,
+                    "close": rs.close,
+                    "volume": rs.volume,
+                    "segment": rs.segment,
+                },
+                labels,
+                view_map,
+                minute_close=bars.close[self._view_start : self._view_end + 1],
+                hover_labels=hover_labels(bars, rs, viewport.timeframe),
+                full_display_count=viewport.full_count,
+                x_range=x_range or viewport.x_range,
+            )
+            self._rs = rs
+            self._render_indicators()
+            self.chart.shade_sessions(
+                sample_first(self._active_data()["session_code"], rs),
+                visible=self.session_check.isChecked(),
+            )
+            self._redraw_overlays()
+        finally:
+            self._rendering_view = False
 
     def _in_view(self, position: int) -> bool:
         return self._view_start <= position <= self._view_end
@@ -1103,28 +1295,29 @@ class MainWindow(QtWidgets.QMainWindow):
         return entry + t.stop_points, entry - t.target_points
 
     def _ensure_date_for(self, position: int) -> bool:
-        """Widen the date window to include the bar; True if that re-rendered."""
+        """Load a chart tile around ``position``; simulation dates stay untouched."""
 
         if self._in_view(position):
             return False
-        qd = self._qdate(self._bars.trade_date[position])
-        self._date_guard = True
-        if qd < self.start_edit.date():
-            self.start_edit.setDate(qd)
-        elif qd > self.end_edit.date():
-            self.end_edit.setDate(qd)
-        self._date_guard = False
-        self._render_view()
+        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        radius = max(360, tf * theme.CHART_PAD_BARS * 2)
+        self._render_chart_window(
+            max(0, int(position) - radius),
+            min(self._bars.n_bars - 1, int(position) + radius),
+            requested=tf,
+        )
         return True
 
     # -- replay ------------------------------------------------------------
     def _on_replay(self) -> None:
-        if self._data is None or self._instrument != "GC":
+        if self._data is None or self._instrument != "GC" or self._replay_running:
             return
         name = self.strategy_browser.current_name()
         specs = {s.name: s for s in self._data["replay"].list_strategies()}
         if name not in specs:
-            self._set_status("Select a strategy in the Strategy workspace first.")
+            self._set_simulator_visible(True)
+            self.simulator_panel.select("Strategy")
+            self.simulator_panel.status.setText("Select a strategy before pressing Simulate.")
             return
         custom = self.custom_check.isChecked()
         # The config is captured here but only installed when its log arrives,
@@ -1132,44 +1325,109 @@ class MainWindow(QtWidgets.QMainWindow):
         # config that log was actually produced with.
         cfg_used = self.exit_panel.to_config() if custom else frozen_config()
         cfg = cfg_used if custom else None
-        self._set_status(f"Replaying {name} ...")
+        self._replay_running = True
+        self._replay_token += 1
+        token = self._replay_token
+        self.replay_btn.setEnabled(False)
+        self.replay_btn.setText("Simulating...")
+        self.simulator_panel.status.setText(f"Simulating {name}...")
+        self._set_status(f"Simulating {name} ...")
         self.strategy_browser.clear_error(name)
         self.strategy_browser.set_loading(name)
-        task = Task(self._data["replay"].replay, specs[name], cfg)
-        task.signals.finished.connect(lambda log, c=cfg_used: self._on_replayed(log, c))
-        task.signals.error.connect(lambda message, n=name: self._on_replay_error(n, message))
+        start_date = self.start_edit.date().toPython()
+        end_date = self.end_edit.date().toPython()
+        period = (start_date.isoformat(), end_date.isoformat())
+        task = Task(
+            self._data["replay"].replay,
+            specs[name],
+            cfg,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        task.signals.finished.connect(
+            lambda log, c=cfg_used, t=token, n=name, x=custom, p=period: self._on_replayed(
+                log, c, t, n, x, p
+            )
+        )
+        task.signals.error.connect(
+            lambda message, n=name, t=token: self._on_replay_error(n, message, t)
+        )
         self._start(task)
 
-    def _on_replay_error(self, name: str, message: str) -> None:
+    def _on_replay_error(self, name: str, message: str, token: int | None = None) -> None:
+        if token is not None and token != self._replay_token:
+            return
+        self._replay_running = False
+        self.replay_btn.setText("Simulate")
+        self.replay_btn.setEnabled(self._instrument == "GC")
+        self.simulator_panel.status.setText(f"Simulation failed for {name}. You can retry.")
         self.strategy_browser.set_error(name, message)
         self._on_error(message)
 
-    def _on_replayed(self, log: pd.DataFrame, cfg=None) -> None:
+    def _on_replayed(
+        self,
+        log: pd.DataFrame,
+        cfg=None,
+        token: int | None = None,
+        strategy: str | None = None,
+        custom: bool = False,
+        period: tuple[str, str] | None = None,
+    ) -> None:
+        if token is not None and token != self._replay_token:
+            return
+        self._replay_running = False
+        self.replay_btn.setText("Simulate")
+        self.replay_btn.setEnabled(self._instrument == "GC")
         self.strategy_browser.set_loading(None)
         if cfg is not None:
             self._replay_cfg = cfg
-        self._log = log
+        self._raw_log = log
+        result = simulate_challenges(
+            log,
+            self.prop_firm_panel.rules(),
+            self.risk_panel.rules(),
+        )
+        self._challenge_result = result
+        self._log = result.trades
+        self._focused_result = None
+        self._focused_obs_id = None
+        self._whatif_runs = []
+        self._forensics_token += 1
+        self._whatif_token += 1
+        self.overview.setText(self._inspector_hint)
+        self.forensics.clear()
+        self.replay_summary.set_results(result, strategy, period=period)
+        self.simulator_panel.status.setText(
+            f"Simulation complete: {result.challenges_passed} passed, "
+            f"{result.payouts_received} payouts, {result.accounts_breached} breached."
+            if len(log)
+            else "Simulation complete. No trades fired for this strategy."
+        )
         self.trade_table.setRowCount(0)
-        wins = int((log["gross_r"] > 0).sum()) if not log.empty else 0
+        wins = result.wins
         self._set_status(
-            f"{len(log):,} trades, {wins:,} winners, mean R {log['gross_r'].mean():.3f}"
-            if not log.empty
+            f"{result.trades_taken:,} trades, {wins:,} winners, "
+            f"{result.challenges_passed:,} challenges passed, "
+            f"{result.payouts_received:,} payouts"
+            if result.trades_taken
             else "No trades fired."
         )
-        for _, row in log.head(theme.TABLE_ROW_CAP).iterrows():
+        for _, row in self._log.head(theme.TABLE_ROW_CAP).iterrows():
             self._append_trade_row(row)
-        self._tabs.setCurrentWidget(self.trade_table)
+        self._show_performance(self.trade_table)
         self._render_view()
 
     def _append_trade_row(self, row) -> None:
         r = self.trade_table.rowCount()
         self.trade_table.insertRow(r)
         values = [
-            str(row.get("strategy", "")),
+            str(row.get("account_id", "-")),
+            str(row.get("account_stage", "-")),
             self._ny_label(int(row["entry_position"])),
             "L" if row["direction"] > 0 else "S",
-            str(row["exit_reason"]),
             f"{row['gross_r']:+.2f}",
+            f"${float(row.get('simulated_pnl', 0.0)):+,.2f}",
+            str(row.get("account_event", row.get("exit_reason", ""))),
             str(int(row["holding_minutes"])),
         ]
         for c, v in enumerate(values):
@@ -1220,6 +1478,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
     def _focus_trade(self, trade) -> None:
+        self._show_performance(self._right)
         self.overview.setText(self._overview_html(trade))
         result = single_flex_exit(
             int(trade["entry_position"]),
@@ -1277,7 +1536,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.blotter.set_trades(list(self._placed.values()))
         self.blotter.select_trade(active.id)
         self._recompute_session()
-        self._tabs.setCurrentWidget(self.blotter)
+        self._show_performance(self.blotter)
         self._explain(active.result, observation_id=None)
 
     def _on_level_dragged(self, kind: str, price: float) -> None:
@@ -1576,8 +1835,21 @@ class MainWindow(QtWidgets.QMainWindow):
         """
 
         self._animator.stop()
+        self._replay_token += 1  # ignore results from the previous instrument
+        self._replay_running = False
+        self.replay_btn.setText("Simulate")
+        self.strategy_browser.set_loading(None)
+        self.replay_summary.clear()
+        self.simulator_panel.status.setText(
+            "Choose a strategy, then press Simulate."
+            if symbol == "GC"
+            else "Strategy simulation is available on GC only."
+        )
         self._instrument = symbol
         self._instrument_data = bundle
+        self._chart_cache = None
+        self._viewport_slice = None
+        self._pending_chart_range = None
         self._placed.clear()
         self._active_id = None
         self._focused_result = None
@@ -1598,21 +1870,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.strategy_browser.set_enabled_with_reason(
             gc_active, "Strategy catalog and replay are GC-only (research validity)."
         )
-        if not gc_active:
-            self.replay_btn.setToolTip(
-                "Strategy catalog and replay are GC-only (research validity)."
-            )
+        self.replay_btn.setToolTip(
+            "Run the selected strategy over the chosen simulation period."
+            if gc_active
+            else "Strategy catalog and replay are GC-only (research validity)."
+        )
         # The comparison list excludes the new primary; reset it to Off on a switch.
         self.compare_chart.setVisible(False)
         self.chart.clear_compare_line()
         self._compare_symbol = None
         self._populate_compare_combo()
         self.session_panel.sync_instruments(available_instruments(), symbol)
-        self._set_date_bounds(self._active_data()["dates"])
+        if gc_active:
+            self._set_date_bounds(self._data["dates"])
         self.setWindowTitle(f"GQ Trade Simulator - {instrument.display} - Development + Validation")
         self._render_view()
         self._recompute_session()
-        note = "" if gc_active else " Blotter cleared; replay and edge context are GC-only."
+        note = "" if gc_active else " Blotter cleared; strategy replay is GC-only."
         self._set_status(f"{instrument.display}: {self._bars.n_bars:,} bars loaded.{note}")
         if self._pending_session is not None:
             payload, self._pending_session = self._pending_session, None
@@ -1632,7 +1906,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._edge_day = None
             return
         bars = self._bars
-        day_str = self.end_edit.date().toString("yyyy-MM-dd")
+        day_str = pd.Timestamp(bars.trade_date[-1]).strftime("%Y-%m-%d")
         anchor = np.datetime64(pd.Timestamp(day_str))
         day_lo = int(np.searchsorted(bars.trade_date, anchor, side="left"))
         day_hi = int(np.searchsorted(bars.trade_date, anchor, side="right")) - 1
@@ -1744,7 +2018,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return  # the user moved on to a different trade meanwhile
         self._whatif_runs = runs
         self._fill_whatif_table(runs)
-        self._tabs.setCurrentWidget(self.whatif_table)
+        self._show_performance(self.whatif_table)
         self._redraw_overlays(reset_levels=False)
         self._set_status(f"{len(runs)} alternative exits over the same entry.")
 
@@ -1794,7 +2068,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _on_grid_ready(self, grid) -> None:
         self.heatmap.set_grid(grid)
-        self._tabs.setCurrentWidget(self.heatmap)
+        self._show_performance(self.heatmap)
         self._set_status(f"Exit grid: {grid.trials} exits swept on one entry (exploratory).")
 
     def _on_grid_cell(self, stop_mult: float, target_r: float) -> None:
@@ -1917,11 +2191,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_compare_mode()
 
     def _apply_compare_mode(self) -> None:
+        primary_x = tuple(float(x) for x in self.chart._price.viewRange()[0])
         symbol = self._compare_symbol
         if not symbol or symbol not in self._compare_bars:
             self.compare_chart.setVisible(False)
             self.compare_chart._price.setXLink(None)
             self.chart.clear_compare_line()
+            self.chart._price.setXRange(primary_x[0], primary_x[1], padding=0)
             return
         if self._compare_mode == "Normalized":
             self.compare_chart.setVisible(False)
@@ -1935,6 +2211,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.compare_chart.setVisible(True)
             self._compare_range = None  # force a fresh render
             self._update_compare()
+        # Linking, unlinking, and hiding a differently sized comparison plot can
+        # all update the linked ViewBox.  The overlay control must never move
+        # the primary chart as a side effect.
+        self.chart._price.setXRange(primary_x[0], primary_x[1], padding=0)
 
     def _refresh_compare(self) -> None:
         """Keep the comparison in step with the primary view (per redraw)."""
@@ -1958,16 +2238,21 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             return
         cmp = self._compare_bars[symbol]
-        lo, hi = self._window_bounds(
-            cmp, self.start_edit.date().toPython(), self.end_edit.date().toPython()
-        )
+        if self._viewport_slice is None:
+            return
+        primary = self._bars
+        lo = int(np.searchsorted(cmp.ts, primary.ts[self._view_start], side="left"))
+        hi = int(np.searchsorted(cmp.ts, primary.ts[self._view_end], side="right")) - 1
+        lo = max(0, min(lo, cmp.n_bars - 1))
+        hi = max(lo, min(hi, cmp.n_bars - 1))
         if hi < lo:
             self.compare_chart.clear_trades()
             self._set_status(f"No {symbol} bars in this range.")
             return
         multi_day = cmp.trade_date[lo] != cmp.trade_date[hi]
-        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        tf = self._effective_tf
         if force_render or self._compare_range != (lo, hi, tf, symbol):
+            primary_x = tuple(float(x) for x in self.chart._price.viewRange()[0])
             self._compare_range = (lo, hi, tf, symbol)
             rs = resample_window(cmp, lo, hi, tf)
             labels = bucket_labels(cmp, rs, tf, multi_day=multi_day)
@@ -1983,9 +2268,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     "segment": rs.segment,
                 },
                 labels,
-                ViewMap.from_resampled(rs, tf),
+                ViewMap.from_resampled(rs, tf, display_offset=self._viewport_slice.tile_start),
                 minute_close=cmp.close[lo : hi + 1],
                 hover_labels=hover_labels(cmp, rs, tf),
+                full_display_count=self._viewport_slice.full_count,
+                x_range=primary_x,
             )
             self.compare_chart.shade_sessions(
                 sample_first(_session_code(cmp.minute_ny), rs),
@@ -1993,7 +2280,14 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             # Time synchronisation: link the compare X to the primary so panning
             # or zooming one pane moves the other (aligned for a same-clock tape).
+            # set_view enables auto-range on both axes; leave Y automatic but
+            # disable X before linking so a delayed compare auto-range cannot
+            # push its differently sized history back onto the primary chart.
+            self.compare_chart._price.disableAutoRange(axis="x")
             self.compare_chart._price.setXLink(self.chart._price)
+            # Linking differently sized histories must not change what the user
+            # was viewing on the primary chart.
+            self.chart._price.setXRange(primary_x[0], primary_x[1], padding=0)
         self.compare_chart.clear_trades()
         result, _cfg = self._current()
         if self._instrument != "GC" or result is None or not self._in_view(result.entry_position):
@@ -2019,21 +2313,23 @@ class MainWindow(QtWidgets.QMainWindow):
         """Normalized overlay: the comparison rebased to the primary's first close."""
 
         cmp = self._compare_bars[symbol]
-        lo, hi = self._window_bounds(
-            cmp, self.start_edit.date().toPython(), self.end_edit.date().toPython()
-        )
-        if hi < lo or len(self._bars.close) == 0:
+        if self._viewport_slice is None or len(self._bars.close) == 0:
             self.chart.clear_compare_line()
             return
-        tf = TIMEFRAMES.get(self.tf_combo.currentText(), 1)
+        primary = self._bars
+        lo = int(np.searchsorted(cmp.ts, primary.ts[self._view_start], side="left"))
+        hi = int(np.searchsorted(cmp.ts, primary.ts[self._view_end], side="right")) - 1
+        lo = max(0, min(lo, cmp.n_bars - 1))
+        hi = max(lo, min(hi, cmp.n_bars - 1))
+        tf = self._effective_tf
         rs = resample_window(cmp, lo, hi, tf)
         if len(rs.close) == 0 or float(rs.close[0]) == 0.0:
             self.chart.clear_compare_line()
             return
-        base = float(self._bars.close[self._view_start])
+        base = float(primary.close[self._view_start])
         norm = base * np.asarray(rs.close, dtype=float) / float(rs.close[0])
         label = f"{symbol} (normalized: rebased to {self._instrument}'s first close)"
-        self.chart.set_compare_line(norm, label)
+        self.chart.set_compare_line(norm, label, x_offset=self._viewport_slice.tile_start)
 
     # -- animated replay ---------------------------------------------------
     def _replay_day(self) -> None:
@@ -2107,11 +2403,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._focused_obs_id = None
                 self.forensics.clear()
                 self.overview.setText(self._inspector_hint)
+                self._show_performance(self.trade_table)
                 self._render_view()  # un-zoom; date, strategy, and replay stay
                 return
         super().keyPressEvent(event)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        app = QtWidgets.QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self._wheel_input_guard)
         self._animator.stop()
         self._forensics_token += 1  # orphan any in-flight worker completions
         self._whatif_token += 1
