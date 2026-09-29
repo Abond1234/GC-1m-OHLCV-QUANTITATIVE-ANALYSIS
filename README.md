@@ -48,6 +48,8 @@ Project 1 succeeded as a governed research program, but not as a strategy-discov
 | Trading economics | The best POI policy diagnostic averaged about `+1.51` gross ticks and `-1.09` ticks after the declared `2.6`-tick round-trip cost. The broader 196-strategy laboratory also advanced zero directional strategies. |
 | Governance outcome | The combination study remained Development-only because no directional model passed the frozen gate; its 2024 Validation batch, the 2025+ Final Test, and MGC execution testing were therefore not opened. |
 
+> **System-design conclusion:** POI should remain the event clock and the frozen STAT15 feature set should remain the opportunity/risk layer. The missing component is an orthogonal directional signal. The next research program may test order flow, depth imbalance, aggressor flow, and cross-market lead-lag as possible sources of that missing information, but none is assumed to have an edge before validation.
+
 Accordingly, this repository is now a closed evidence record and an engineering reference. The POI framework may remain useful as an event-location or risk-context layer, and the opportunity features may remain useful for volatility or movement forecasting, but neither should be described or deployed as a market edge. Further tuning on the same one-minute OHLCV evidence would create more selection risk without resolving the missing directional information.
 
 ### Next project: MBP-1 research
