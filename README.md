@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="#final-project-conclusion">Final conclusion</a> ·
   <a href="#project-status">Project status</a> ·
   <a href="#research-architecture">Research architecture</a> ·
   <a href="#getting-started">Getting started</a> ·
@@ -16,7 +17,7 @@ Quant Project 1 is a systematic intraday research codebase for CME Gold Futures 
 
 This repository is a research environment, not a live trading system. It does not contain an approved strategy or production execution. What it does contain is a completed, honestly-reported research program - two independent branches plus the FES Project 1 and MLAT feature lines, taken through pre-declared contracts, cost-aware sequential backtests, and integration research, ending in defensible rejections - together with a desktop practice platform (`src/app`, the GQ Trade Simulator) and forward-test/prop-firm engineering (`src/execution`) built on the same verified engines.
 
-> **Current decision:** the Phase 2 research program is closed for both branches. The S7P02 continuation-short family — the only policy that ever survived screening — shows a real frictionless event-level edge but was SEQUENTIAL_REJECTED at base costs (Section 8), and every conditioning form in the frozen Section 12B contract (sizing, exits, suppression) failed Validation. Per the authorization memo's linkage the family is **archived** with its evidence chain. Remaining PRD work is engineering: GC-to-MGC transfer validation, prop-firm rules, and forward-test scaffolding. Any new research question requires a fresh pre-declared contract. FES Project 1 subsequently completed its single locked Validation batch with verdict **PREDICTIVE_ONLY_NOT_DIRECTIONAL**: four scalar features advance (range/participation, session-specific), zero models or policies advance, and **FROZEN_NO_POLICY** remains in force.
+> **Final decision — Project 1 concluded:** the completed evidence does not establish a robust, repeatable, cost-surviving directional edge that can be implemented on GC or executed on MGC. POI interactions and several feature families contain useful information about *where and when price may move*, but none of the tested POI-first or general feature combinations converts that opportunity signal into a reliable trade direction. The final state is **FROZEN_NO_DIRECTIONAL_MODEL**: no strategy, GC signal policy, MGC execution policy, or live deployment is authorized.
 
 ## Project at a glance
 
@@ -32,7 +33,26 @@ This repository is a research environment, not a live trading system. It does no
 | Research partitions | Development through 2023, Validation in 2024, Final test from 2025 through 22 May 2026 |
 | Automated tests | 587 unittest cases across 77 test modules, plus 83 pytest-only FES research tests |
 | Desktop application | GQ Trade Simulator (`src/app`): charting, bar replay, evaluation accounts, validated edge context, sessions, multi-asset switching |
-| Repository state | Phase 2 research complete; FES Project 1 Validation batch locked; no strategy approved; S7P02 family archived |
+| Repository state | **Project 1 concluded**; evidence archived; no robust market edge established and no strategy approved |
+
+## Final project conclusion
+
+Project 1 succeeded as a governed research program, but not as a strategy-discovery program. The negative conclusion is itself the result: after testing the POI hypothesis, independent statistical features, FES and MLAT feature lines, multivariate combinations, sequential economics, and GC-to-MGC transfer constraints, there is no defensible trading system to carry forward.
+
+| Evidence | Final interpretation |
+|---|---|
+| POI behaviour | True POI retests are meaningful reaction and expansion locations, so the original discretionary observation was not dismissed. They are not, by themselves, directional signals. |
+| POI-first combinations | The strongest Development directional combination reached daily rank IC `0.0237`, but its confidence interval crossed zero (`-0.0383` to `0.0856`) and sign accuracy was `48.0%`. It did not qualify for Validation. |
+| Opportunity forecasting | POI context plus the frozen 15-feature statistical set produced Development opportunity IC `0.4159` and a paired IC improvement of `0.0847`. This supports movement-magnitude forecasting, not long/short selection. |
+| General combinations | The strongest non-POI directional candidate reached IC `0.0214`, but its lower confidence bound was `-0.0006` and sign accuracy was `49.8%`. No general directional model qualified. |
+| Trading economics | The best POI policy diagnostic averaged about `+1.51` gross ticks and `-1.09` ticks after the declared `2.6`-tick round-trip cost. The broader 196-strategy laboratory also advanced zero directional strategies. |
+| Governance outcome | The combination study remained Development-only because no directional model passed the frozen gate; its 2024 Validation batch, the 2025+ Final Test, and MGC execution testing were therefore not opened. |
+
+Accordingly, this repository is now a closed evidence record and an engineering reference. The POI framework may remain useful as an event-location or risk-context layer, and the opportunity features may remain useful for volatility or movement forecasting, but neither should be described or deployed as a market edge. Further tuning on the same one-minute OHLCV evidence would create more selection risk without resolving the missing directional information.
+
+### Next project: MBP-1 research
+
+The next research program will move to the new MBP-1 market-by-price data. Its purpose is to test whether event-level order-book state and flow contain incremental information that the one-minute OHLCV data cannot supply. That work will begin under a new pre-declared contract, with fresh data-quality gates, leakage controls, Development/Validation/Final partitions, realistic cost and fill assumptions, and no inherited claim that the POI system or any Project 1 feature has an edge.
 
 ## Repository layout
 
